@@ -9,6 +9,7 @@ knitr::opts_chunk$set(echo = TRUE)
 source('inference_functions/bRF.R')
 source('inference_functions/LASSO-D3S.R')
 source('inference_functions/evaluateNetwork.R')
+source('inference_functions/MSE.R')
 ```
 
 This document demonstrates the use of the bRF and LASSO-D3S functions for integrative GRN inference.
@@ -59,7 +60,7 @@ head(grn_bRF); dim(grn_bRF)
 Let's infer a GRN using LASSO-D3S with $\alpha=0.8$ and $D = 0.01$.
 
 ```{r}
-pvalues <- LASSO.D3S_inference(counts, genes, tfs, alpha = 0.8, N = 100,
+pvalues <- LASSO.D3S_inference(counts, genes, tfs, alpha = 0.8, N = 50,
                                pwm_occurrence = pwm_occurrence, nCores = 50)
 grn_lasso.d3s <- LASSO.D3S_network(pvalues, density = 0.01, pwm_occurrence, genes, tfs)
 head(grn_lasso.d3s); dim(grn_lasso.d3s)
@@ -70,8 +71,18 @@ head(grn_lasso.d3s); dim(grn_lasso.d3s)
 
 ```{r}
 connecTF_validation <- evaluate_networks(list("bRF" = grn_bRF, "LASSO-D3S" = grn_lasso.d3s), 
-                  input_genes = genes, input_tfs = tfs, nCores = 50); connecTF_validation
+                  input_genes = genes, input_tfs = tfs, nCores = 10); connecTF_validation
 ```
 
-In this example, 44.5% of predicted edges by bRF and supported by ConnecTF, this is the case for 38.3% of the edges predicted by LASSO-D3S.
+In this example, approximately 44% of predicted edges by bRF and supported by ConnecTF, this is the case for 38% of the edges predicted by LASSO-D3S.
+
+
+### Computing prediction error
+
+```{r}
+get_MSE(grn_bRF, method = "bRF")
+get_MSE(grn_lasso.d3s, method = "LASSO-D3S")
+```
+
+The error in predicting the target gene expression is however lower in LASSO-D3S.
 

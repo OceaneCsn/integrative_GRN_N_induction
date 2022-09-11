@@ -124,7 +124,9 @@ LASSO.D3S_inference <- function(counts, genes, tfs, alpha=0.25,
 
 LASSO.D3S_network <- function(mat, density, pwm_occurrence, genes, tfs){
   edges_ <- mat[order(mat$importance, decreasing = F),] 
-  edges_ <- edges_[1:get_nEdges(density, length(genes), length(tfs)),]
+  
+  nEdges = round(density * (length(genes) - 1) * length(tfs), 0)
+  edges_ <- edges_[1:nEdges,]
   
   pwm_imputed <- pwm_occurrence
   pwm_imputed[is.na(pwm_imputed)] <- 0.5
