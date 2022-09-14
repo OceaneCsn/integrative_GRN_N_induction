@@ -34,7 +34,7 @@ LASSO.D3S_inference <- function(counts, genes, tfs, alpha=0.25,
                                 pwm_occurrence, 
                                resampling_prop = 1, int_pwm_noise = 0.1,
                                 nfolds.cv = 5, N = 100, lambda = "min", 
-                               score = "pval", robustness = 0.8,
+                               score = "pval", robustness = 0.7,
                                 nCores = ifelse(is.na(detectCores()),1,
                                                 max(detectCores() - 1, 1))){
   
