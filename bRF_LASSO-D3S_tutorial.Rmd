@@ -45,25 +45,27 @@ dim(pwm_occurrence)
 
 ### bRf : biased Random Forests
 
-Let's infer a GRN using bRF with $\alpha=0.8$ and $D = 0.01$.
+Let's infer a GRN using bRF with $\alpha=0.8$ and $D = 0.005$.
 
 ```{r}
 importances <- bRF_inference(counts, genes, tfs, alpha = 0.8, 
                              pwm_occurrence = pwm_occurrence, nCores = 40)
-grn_bRF <- bRF_network(importances, density = 0.01, pwm_occurrence, genes, tfs)
+grn_bRF <- bRF_network(importances, density = 0.005, pwm_occurrence, genes, tfs)
 head(grn_bRF); dim(grn_bRF)
+mean(grn_bRF$pwm)
 ```
 
 
 ### LASSO-D3S : LASSO with Differential Shrinkage and Stability Selection
 
-Let's infer a GRN using LASSO-D3S with $\alpha=0.8$ and $D = 0.01$.
+Let's infer a GRN using LASSO-D3S with $\alpha=0.5$ and $D = 0.005$.
 
 ```{r}
-pvalues <- LASSO.D3S_inference(counts, genes, tfs, alpha = 0.8, N = 50,
+pvalues <- LASSO.D3S_inference(counts, genes, tfs, alpha = 0.5, N = 50,
                                pwm_occurrence = pwm_occurrence, nCores = 50)
-grn_lasso.d3s <- LASSO.D3S_network(pvalues, density = 0.01, pwm_occurrence, genes, tfs)
+grn_lasso.d3s <- LASSO.D3S_network(pvalues, density = 0.005, pwm_occurrence, genes, tfs)
 head(grn_lasso.d3s); dim(grn_lasso.d3s)
+mean(grn_lasso.d3s$pwm)
 ```
 
 
@@ -71,10 +73,10 @@ head(grn_lasso.d3s); dim(grn_lasso.d3s)
 
 ```{r}
 connecTF_validation <- evaluate_networks(list("bRF" = grn_bRF, "LASSO-D3S" = grn_lasso.d3s), 
-                  input_genes = genes, input_tfs = tfs, nCores = 10); connecTF_validation
+                                         input_genes = genes, input_tfs = tfs, nCores = 2);connecTF_validation
 ```
 
-In this example, approximately 44% of predicted edges by bRF and supported by ConnecTF, this is the case for 38% of the edges predicted by LASSO-D3S.
+In this example, approximately approximately 40% of predicted edges by bRF and LASSO-D3S are supported by ConnecTF experiments.
 
 
 ### Computing prediction error
@@ -84,5 +86,4 @@ get_MSE(grn_bRF, method = "bRF")
 get_MSE(grn_lasso.d3s, method = "LASSO-D3S")
 ```
 
-The error in predicting the target gene expression is however lower in LASSO-D3S.
 

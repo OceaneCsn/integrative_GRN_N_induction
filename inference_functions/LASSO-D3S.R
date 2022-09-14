@@ -8,6 +8,28 @@ library(doRNG)
 library(glmnet)
 
 
+#' Title
+#'
+#' @param counts expression matrix with gene IDs as rownames and conditions in columns
+#' @param genes list of genes used as inputs for GRN inference
+#' @param tfs list of TFs used as predictors for GRN inference
+#' @param alpha integration strength, value should be between 0 and 1.
+#' @param scale weather or not to scale expression data to z-scores.
+#' @param pwm_occurrence matrix of prior data Pi containing TFBS scores between
+#' TFs and genes
+#' @param resampling_prop Proportion of experimental conditions sampled during 
+#' bootstrapping for each tree
+#' @param int_pwm_noise value of noise added to differential shrinkage 
+#' during stability selection
+#' @param nfolds.cv number of folds during cross validation
+#' @param N Number of stability selection iterations
+#' @param lambda lambda type for feature selection : "min" or "1se"
+#' @param score scoring of the interactions "pval" or "freq"
+#' @param robustness threshold of frequency selection required for a 
+#' TF to be included in unpenalized regressions
+#' @param nCores Number of cores for multithreading. (Not supported on Windows)
+#'
+#' @return list of regulatory interactions weighted by p-value
 LASSO.D3S_inference <- function(counts, genes, tfs, alpha=0.25, 
                                 pwm_occurrence, 
                                resampling_prop = 1, int_pwm_noise = 0.1,
@@ -122,6 +144,16 @@ LASSO.D3S_inference <- function(counts, genes, tfs, alpha=0.25,
 
 
 
+#' Threshold LASSO-D3S GRN to a desired density
+#'
+#' @param mat result of LASSO.D3S_inference function
+#' @param density desired network density
+#' @param pwm_occurrence matrix of prior data Pi containing TFBS scores between
+#' TFs and genes
+#' @param genes list of genes used as inputs for GRN inference
+#' @param tfs list of TFs used as predictors for GRN inference
+#'
+#' @return dataframe of oriented edges, and their prior value in pwm_occurrence
 LASSO.D3S_network <- function(mat, density, pwm_occurrence, genes, tfs){
   edges_ <- mat[order(mat$importance, decreasing = F),] 
   

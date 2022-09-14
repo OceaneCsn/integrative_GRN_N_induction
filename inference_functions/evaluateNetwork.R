@@ -8,27 +8,20 @@ load('rdata/connectf_N_responsive_genes.rdata')
 #' (useful to accurately compute recall, so that genes in input but not in
 #' predicted edges are counted as false negatives. If not given, will only 
 #' count as false negatives genes missed in the predicted network)
+#' @param input_tfs vector of TFs AGIs used for network inference as input
+#' (useful to accurately compute recall, so that genes in input but not in
+#' predicted edges are counted as false negatives. If not given, will only 
+#' count as false negatives genes missed in the predicted network)
 #' @param validation type of edge in the validation database that
 #' should be considered to defined a true/supported prediction in the
 #' evaluation process.
 #' The validation type must be a vector of one or more
 #' of the following values : CHIPSeq, DAPSeq, Litterature, TARGET
-#' @param subset_validated_edges potential dataframe of validated edges
-#' (that should however contain all the nodes in the inferred network).
-#' Made to speed up computation in ROC and test again random.
-#'
 #' @return a list containing true positives, true positive rate (precision),
 #' false positives, false positive rate, the false positives,
 #' and the recall value. It also returns the input network dataframe
 #' with an additional column to characterize how is the edge supported
 #' by known interactions
-#'
-#' @export
-#' @examples 
-#' #' data("abiotic_stress_Heat_genes_net")
-#' set.seed(999)
-#' results <- evaluate_network(abiotic_stress_Heat_genes_net)
-#' results[c("tp", "fp", "tpr", "fpr", "fn", "recall")]
 evaluate_network <-
   function(net, input_genes = NULL, input_tfs = NULL,
            validation = c("CHIPSeq", "DAPSeq", "TARGET"),
