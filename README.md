@@ -1,5 +1,5 @@
 # Integrative Gene Regulatory Inference via two regression-based methods
-
+---
 
 This repository contains code and data for the manuscript "Integration of binding sites to expression improves regression-based Gene Regulatory Network inference in *Arabidopsis thaliana*", Cassan et al, 2022.
 
@@ -11,12 +11,15 @@ This notebook also shows how to compute precision and recall of the inferred GRN
 
 
 # Requirements
+---
 
 Before being able to use bRF, the modified C++ Random Forest implementation have to be set up on your computer. To do so, run in your system terminal from the root of this project :
 
-```R CMD SHLIB inference_functions/Cpp_dependencies/rfutils.c```
-```R CMD SHLIB inference_functions/Cpp_dependencies/regTree.c```
-```R CMD SHLIB inference_functions/Cpp_dependencies/regrf_mse.c```
+```
+R CMD SHLIB inference_functions/Cpp_dependencies/rfutils.c
+R CMD SHLIB inference_functions/Cpp_dependencies/regTree.c
+R CMD SHLIB inference_functions/Cpp_dependencies/regrf_mse.c
+```
 
 The R packages that you will need to install are :
 doParallel, parallel, foreach, doRNG, randomForest, igraph, boot, stringr, tictoc, GENIE3
