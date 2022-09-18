@@ -38,7 +38,6 @@ Qle0.01<-topTable(fit,coef=8:12,adjust="BH",p.value=0.001,number=20000)
 degs<-rownames(Qle0.01)
 draw_PCA(normalized_counts[degs,])
 
-zzzzzzzzzzzzzzzzzzzzzzzz
 load("rdata/regulators.rdata")
 regulators_in_degs <- intersect(regulators, degs)
 
@@ -51,6 +50,5 @@ r <- group_regressors(genes = degs,
                       corr_thr = 1)
 
 input_data <- r
-
 save(input_data, file = "rdata/inference_input_N_response_varala.rdata")
 

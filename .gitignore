@@ -3,3 +3,5 @@
 .Ruserdata
 rdata/connectf.rdata
 rdata/pwm_prom_jaspar_dap.rdata
+*.so
+*.o

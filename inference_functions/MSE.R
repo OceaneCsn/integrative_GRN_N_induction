@@ -9,7 +9,8 @@ library(boot)
 library(randomForest)
 library(stringr)
 
-get_MSE <- function(net, method, nCores=30){
+get_MSE <- function(net, method, nCores=ifelse(is.na(detectCores()),1,
+                                               max(detectCores() - 1, 1))){
   registerDoParallel(cores = nCores)
   if(method == "bRF" ){
     x <- t(counts[tfs,])

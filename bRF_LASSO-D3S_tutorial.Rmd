@@ -3,6 +3,15 @@ title: "Integrative GRN inference tutorial"
 output: html_document
 ---
 
+Before being able to use bRF, the modified C++ Random Forest implementation have to be set up on your computer. To do so, run in your system terminal :
+
+```R CMD SHLIB inference_functions/Cpp_dependencies/rfutils.c```
+```R CMD SHLIB inference_functions/Cpp_dependencies/regTree.c```
+```R CMD SHLIB inference_functions/Cpp_dependencies/regrf_mse.c```
+
+The R packages that you will need to install are :
+doParallel, parallel, foreach, doRNG, randomForest, igraph, boot, stringr, tictoc, GENIE3
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
@@ -49,7 +58,7 @@ Let's infer a GRN using bRF with $\alpha=0.8$ and $D = 0.005$.
 
 ```{r}
 importances <- bRF_inference(counts, genes, tfs, alpha = 0.8, 
-                             pwm_occurrence = pwm_occurrence, nCores = 40)
+                             pwm_occurrence = pwm_occurrence, nCores = 7)
 grn_bRF <- bRF_network(importances, density = 0.005, pwm_occurrence, genes, tfs)
 head(grn_bRF); dim(grn_bRF)
 mean(grn_bRF$pwm)
@@ -62,7 +71,7 @@ Let's infer a GRN using LASSO-D3S with $\alpha=0.5$ and $D = 0.005$.
 
 ```{r}
 pvalues <- LASSO.D3S_inference(counts, genes, tfs, alpha = 0.5, N = 50,
-                               pwm_occurrence = pwm_occurrence, nCores = 50)
+                               pwm_occurrence = pwm_occurrence, nCores = 7)
 grn_lasso.d3s <- LASSO.D3S_network(pvalues, density = 0.005, pwm_occurrence, genes, tfs)
 head(grn_lasso.d3s); dim(grn_lasso.d3s)
 mean(grn_lasso.d3s$pwm)
@@ -73,7 +82,8 @@ mean(grn_lasso.d3s$pwm)
 
 ```{r}
 connecTF_validation <- evaluate_networks(list("bRF" = grn_bRF, "LASSO-D3S" = grn_lasso.d3s), 
-                                         input_genes = genes, input_tfs = tfs, nCores = 2);connecTF_validation
+                                         input_genes = genes, input_tfs = tfs, 
+                                         nCores =2);connecTF_validation
 ```
 
 In this example, approximately approximately 40% of predicted edges by bRF and LASSO-D3S are supported by ConnecTF experiments.
@@ -82,8 +92,8 @@ In this example, approximately approximately 40% of predicted edges by bRF and L
 ### Computing prediction error
 
 ```{r}
-get_MSE(grn_bRF, method = "bRF")
-get_MSE(grn_lasso.d3s, method = "LASSO-D3S")
+get_MSE(grn_bRF, method = "bRF", nCores=6)
+get_MSE(grn_lasso.d3s, method = "LASSO-D3S", nCores=6)
 ```
 
 

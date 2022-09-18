@@ -8,7 +8,7 @@ library(doRNG)
 library(glmnet)
 
 
-#' Title
+#' LASSO with Differential Shrinkage and Stability Selection for GRN inference
 #'
 #' @param counts expression matrix with gene IDs as rownames and conditions in columns
 #' @param genes list of genes used as inputs for GRN inference

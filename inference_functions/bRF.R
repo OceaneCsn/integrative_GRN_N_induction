@@ -10,7 +10,6 @@ library(doRNG)
 ###################### imports to use C++ code
 dyn.load("inference_functions/Cpp_dependencies/rfutils.so")
 dyn.load("inference_functions/Cpp_dependencies/regTree.so")
-dyn.load("inference_functions/Cpp_dependencies/regrf.so")
 dyn.load("inference_functions/Cpp_dependencies/regrf_mse.so")
 
 
@@ -57,7 +56,7 @@ bRF_inference <- function(counts, genes, tfs, alpha=0.25, scale = FALSE,
   
   # the regressions for each genes are done in parallel
   registerDoParallel(cores = nCores)
-  message(paste("\nCustom iRafNet Using", foreach::getDoParWorkers(), "cores."))
+  message(paste("\nbRF is running using", foreach::getDoParWorkers(), "cores."))
   "%dopar%" <- foreach::"%dopar%"
   tic()
   suppressPackageStartupMessages(result.reg <-

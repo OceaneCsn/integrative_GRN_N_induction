@@ -8,3 +8,15 @@ In particular, the file `bRF_LASSO-D3S_tutorial.Rmd` is a notebook showing how t
 GRNs are inferred from expression profiles and binding sites information of the regulators into the promoter regions.
 
 This notebook also shows how to compute precision and recall of the inferred GRNs on the validation database [ConnecTF](https://connectf.org/), and how to compute prediction errors (MSE) for both models.
+
+
+# Requirements
+
+Before being able to use bRF, the modified C++ Random Forest implementation have to be set up on your computer. To do so, run in your system terminal from the root of this project :
+
+```R CMD SHLIB inference_functions/Cpp_dependencies/rfutils.c```
+```R CMD SHLIB inference_functions/Cpp_dependencies/regTree.c```
+```R CMD SHLIB inference_functions/Cpp_dependencies/regrf_mse.c```
+
+The R packages that you will need to install are :
+doParallel, parallel, foreach, doRNG, randomForest, igraph, boot, stringr, tictoc, GENIE3
