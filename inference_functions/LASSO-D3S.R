@@ -40,8 +40,12 @@ LASSO.D3S_inference <- function(counts, genes, tfs, alpha=0.25,
   
   
   # to avoid convergence issues : "inner loop 3; cannot correct step size"
-  if(alpha==1)
+  maxit = 1e+05
+  if(alpha==1){
     alpha=1-1e-8
+    maxit = 1e+06
+  }
+    
   
  counts <- round(counts, 0)
  x <- t(counts[tfs,])
@@ -52,7 +56,7 @@ LASSO.D3S_inference <- function(counts, genes, tfs, alpha=0.25,
   
   # parallel computing of the lasso
   registerDoParallel(cores = nCores)
-  message(paste("\nUsing", foreach::getDoParWorkers(), "cores."))
+  message(paste("\nUsing LASSO-D3S with", foreach::getDoParWorkers(), "cores."))
   "%dopar%" <- foreach::"%dopar%"
   tic()
   suppressPackageStartupMessages(result.reg <-
@@ -71,23 +75,40 @@ LASSO.D3S_inference <- function(counts, genes, tfs, alpha=0.25,
                                                       
                                                       for(n in 1:N) {
                                                         # bootstrapping observations
-                                                        sampled <-sample(1:nrow(x), replace = T,
-                                                                        size = round(resampling_prop*nrow(x), 0))
-                                                        # perturbating PWM penalties
+                                                        # sampled <-sample(1:nrow(x), replace = T,
+                                                        #                 size = round(resampling_prop*nrow(x), 0))
+                                                        
+                                                        # bootstrapping observations and controlling that
+                                                        # duplicated observations are in the same fold
+                                                        idx <- sample(1:length(y), replace = F)
+                                                        folds_bg <- split(idx, ceiling(seq_along(idx)/(length(y)/nfolds.cv)))
+                                                        breaks <- c(0,cumsum(lengths(folds_bg)))
+                                                        
+                                                        sampled_idx <- rep(0, length(y))
+                                                        foldid <- rep(0, length(y))
+                                                        for(fold in 1:length(folds_bg)){
+                                                          sampled_idx[(breaks[fold]+1):(breaks[fold+1])] <- 
+                                                            sample(folds_bg[[fold]], replace = T, size = lengths(folds_bg)[fold])
+                                                          foldid[(breaks[fold]+1):(breaks[fold+1])] <- fold
+                                                        }
+                                                        
+                                                        # perturbating differential shrinkage
                                                         noisy_penalty_factor <- pmax(pmin(penalty_factor + 
                                                           runif(n=length(penalty_factor),
                                                                 min = -int_pwm_noise*alpha, 
                                                                 max = int_pwm_noise*alpha), 1),0)
                                                         # models are try-catched because in rare cases glmnet
-                                                        # crashes for some obscure convergence issues
+                                                        # crashes for convergence issues
                                                         tryCatch(
                                                           error = function(cnd) "cv.glmnet internal error due to convergence issues",
                                                           
                                                           {mymodels_pen = cv.glmnet(
-                                                          x_target[sampled,],
-                                                          y[sampled],
+                                                          x_target[sampled_idx,],
+                                                          y[sampled_idx],
+                                                          maxit=maxit,
                                                           family = "poisson",
                                                           nfolds = nfolds.cv,
+                                                          foldid = foldid,
                                                           penalty.factor = noisy_penalty_factor,
                                                           keep = TRUE)
                                                         

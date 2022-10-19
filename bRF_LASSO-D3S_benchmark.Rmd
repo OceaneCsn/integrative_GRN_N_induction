@@ -1,0 +1,278 @@
+---
+title: "Benchmarking bRF and LASSO-D3S"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggpubr)
+source('inference_functions/bRF.R')
+source('inference_functions/LASSO-D3S.R')
+source('inference_functions/evaluateNetwork.R')
+source('inference_functions/MSE.R')
+theme_set(theme_pubr())
+```
+
+# Context and data
+
+This document benchmarks the bRF and LASSO-D3S functions for integrative GRN inference.
+
+> If you are interested in using those functions on your data, and especially on your personal computer, we recommend that you go to the tutorial Rmd file instead of this one. This benchmark is intended to be used only to reproduce the results of the article, and and requires very intensive computing.
+
+Those functions infer the regulatory pathways of *Arabidopsis thaliana*'s roots in response to nitrate (N) induction from [Varala et al., 2018](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE97500).
+
+They use as inputs the expression profiles of N-responsive genes and TFBS information. 
+Prior TFBS information was built by searching in the promoters of the N-responsive genes the PWM of the N-responsive regulators. 
+
+## Data import
+
+### Expression data
+
+Import of the expression data and the N-responsive genes and regulators :
+
+```{r}
+load('rdata/inference_input_N_response_varala.rdata')
+genes <- input_data$grouped_genes; length(genes)
+tfs <- input_data$grouped_regressors; length(tfs)
+counts <- input_data$counts; dim(counts)
+```
+
+### TFBS data
+
+Presence or absence of the TFs motifs in the targets promoter :
+
+```{r}
+load("rdata/pwm_occurrences_N_response_varala.rdata")
+dim(pwm_occurrence)
+```
+
+
+# Benchmark
+
+## Benchmark funtion 
+
+```{r}
+infer_networks <- function(alphas, densities, 
+                         counts, genes, tfs, 
+                         nCores = 50, nrep = 3){
+  edges <- list()
+    
+  for(alpha in alphas){ # exploring PWM integration strength
+    for(rep in 1:nrep){ # exploring inherent variability
+      
+      mat_rf <- bRF_inference(counts, genes, tfs, nTrees = 1000,
+                              alpha = alpha, prior_strength = 2,
+                              pwm_occurrence = pwm_occurrence, 
+                              nCores = nCores, 
+                              importance = "%IncMSE")
+      
+      mat_lasso <- LASSO.D3S_inference(counts, genes, tfs, 
+                                       alpha = alpha, N = 50,
+                                       robustness = 0.7, nfolds.cv = 5,
+                                       pwm_occurrence = pwm_occurrence, 
+                                       nCores = nCores)
+      
+      for(density in densities){ # exploring importance threshold stringency
+        
+        edges[[paste0("bRF_", as.character(alpha),  '_', density, '_', rep)]] <- 
+          bRF_network(mat_rf, density = density, pwm_occurrence, genes, tfs)
+        
+        edges[[paste0("LASSO-D3S_", as.character(alpha),  '_', density, '_', rep)]] <- 
+          LASSO.D3S_network(mat_lasso, density = density, pwm_occurrence, genes, tfs)
+      }
+    }
+  }
+  return(edges)
+}
+```
+
+## Actual benchmark 
+
+```{r}
+ALPHAS <- seq(0,1, by = 0.1)
+DENSITIES <- c(0.005, 0.01, 0.025, 0.05, 0.1)
+set.seed(121314)
+edges <- infer_networks(alphas = ALPHAS, densities = DENSITIES, 
+             counts = counts, genes = genes, tfs = tfs, 
+             nCores = 45, nrep = 3)
+
+save(edges, file = "../PWM_models_data_article/networks_for_benchmark_alpha_density.rdata")
+```
+
+
+# Plotting results
+
+## PWM Support
+
+```{r, fig.width=15}
+color_palette = c("#88002D", "#C12131", "#EC5D2F", "#FE945C", "#FFC08E" )
+prettyZero <- function(l){
+    max.decimals = max(nchar(str_extract(l, "\\.[0-9]+")), na.rm = T)-1
+    lnew = formatC(l, replace.zero = T, zero.print = "0",
+        digits = max.decimals, format = "f", preserve.width=T)
+    return(lnew)
+}
+
+
+settings <- c("method", "alpha", "density", "rep")
+
+# number of edges per network
+nrows <-
+  data.frame(alpha_rep = names(unlist(lapply(edges, FUN = nrow))),
+             n_edges = unlist(lapply(edges, FUN = nrow)))
+nrows[, settings] <-
+  str_split_fixed(nrows$alpha_rep, '_', length(settings))
+
+edges_num <- lapply(edges, function(df)
+  df[sapply(df, is.numeric)])
+pwm_support <-
+  data.frame(alpha_rep = names(unlist(lapply(edges_num, FUN = nrow))),
+             pwm = unlist(lapply(edges_num, FUN = colMeans)))
+pwm_support[, settings] <-
+  str_split_fixed(pwm_support$alpha_rep, '_', length(settings))
+
+pwm_support_plot <- pwm_support %>%
+  full_join(nrows, by = settings) %>%
+  mutate(alpha = as.numeric(alpha),
+         density_label = paste(density, ':', n_edges, 'edges')) %>%
+  ggplot(aes(color = density_label, x = alpha, y = pwm)) +
+  ggh4x::facet_nested_wrap(vars(method), ncol = 8, nest_line = T) +
+  geom_point() +
+  geom_smooth(aes(fill = density_label), alpha = 0.1) +
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.position = "top",
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12)
+  ) +
+  xlab(expression(alpha)) + ylab("Mean PWM score in selected edges") +
+  ggtitle("Average PWM support of inferred edges") +
+  guides(color = guide_legend(nrow = 1, byrow = TRUE),
+         fill = guide_legend(nrow = 1, byrow = TRUE)) +
+  ylab(expression(paste("mean(", pi[tr], ")"))) +
+  scale_x_continuous(labels = prettyZero) +
+  scale_color_manual(name = "Network density", values = color_palette) +
+  scale_fill_manual(name = "Network density", values = color_palette)
+pwm_support_plot
+```
+
+
+## Validation against ConnecTF
+
+### Running the valdiation
+
+
+```{r, fig.width=15}
+val_conn <-
+  evaluate_networks(
+    edges,
+    validation = c("TARGET", "CHIPSeq", "DAPSeq"),
+    nCores = 45,
+    input_genes = genes,
+    input_tfs = tfs
+  )
+val_conn[, settings] <-
+  str_split_fixed(val_conn$network_name, '_', length(settings))
+```
+
+### Plotting precision and recall analyses
+
+```{r, fig.width=17}
+val_connecTF <-  val_conn %>%
+  select(-network_name) %>%
+  left_join(nrows, by = settings) %>%
+  mutate(alpha = as.numeric(alpha)) %>%
+  mutate(density_label = paste(density, ':', n_edges, 'edges')) %>%
+  ggplot(aes(color = density_label, x = alpha, y = precision)) +
+  ggh4x::facet_nested_wrap(vars(method), ncol = 8, nest_line = T) + geom_point() +
+  geom_smooth(aes(fill = density_label), alpha = 0.1) +
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'none'
+  ) +
+  xlab(expression(alpha)) + ylab("Precision") +
+  ggtitle("Precision against ConnecTF") +
+  scale_x_continuous(labels = prettyZero) +
+  scale_color_manual(name = "Network density", values = color_palette) +
+  scale_fill_manual(name = "Network density", values = color_palette)
+val_connecTF
+
+
+val_connecTF_recall <-  val_conn %>%
+  select(-network_name) %>%
+  left_join(nrows, by = settings) %>%
+  mutate(alpha = as.numeric(alpha)) %>%
+  mutate(density_label = paste(density, ':', n_edges, 'edges')) %>%
+  ggplot(aes(color = density_label, x = alpha, y = recall)) +
+  ggh4x::facet_nested_wrap(vars(method), ncol = 8, nest_line = T) + geom_point() +
+  geom_smooth(aes(fill = density_label), alpha = 0.1) +
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'none'
+  ) +
+  scale_x_continuous(labels = prettyZero) +
+  xlab(expression(alpha)) + ylab("Recall") +
+  ggtitle("Recall against ConnecTF") +
+  scale_color_manual(name = "Network density", values = color_palette) +
+  scale_fill_manual(name = "Network density", values = color_palette)
+val_connecTF_recall
+```
+
+## Intersection between the two methods
+
+```{r}
+
+intersections <- list()
+
+for(alpha in ALPHAS){ # exploring PWM integration strength
+  for(rep in 1:3){ # exploring inherent variability
+    for(density in DENSITIES){ # exploring importance threshold stringency
+      
+      net1 <- edges[[paste0("bRF_", as.character(alpha),  '_', 
+                     density, '_', rep)]]
+      net2 <- edges[[paste0("LASSO-D3S_", as.character(alpha),  
+                     '_', density, '_',  rep)]]
+      
+      intersections[[paste0(as.character(alpha), '_', density, '_', rep)]] <- 
+        inner_join(net1, net2, by = c("from", "to", "pwm"))
+    }
+  }
+}
+
+
+settings <- c("alpha", "density", "rep")
+# number of edges per network
+nrows_int <- data.frame(alpha_rep = names(unlist(lapply(intersections, FUN = nrow))),
+                n_edges = unlist(lapply(intersections, FUN = nrow)))
+nrows_int[, settings] <- str_split_fixed(nrows_int$alpha_rep,'_', length(settings))
+n_edges <- nrows_int %>%
+  mutate(alpha = as.numeric(alpha), 
+         total_edges = as.numeric(nrows$n_edges[seq_along(nrows$n_edges) %%2 == 0])) %>%
+  ggplot(aes(color = density, x = alpha, y = n_edges/total_edges)) +
+  geom_point() + 
+  geom_smooth(aes(fill = density), alpha = 0.1) +
+  theme(strip.background = element_blank(), axis.title.x = element_text(size = 22),
+        title = element_text(size = 16), strip.text = element_text(size = 16), legend.position = 'none',
+        legend.text = element_text(size = 15), axis.text = element_text(size = 12)) +
+  xlab(expression(alpha)) + ylab("Fraction of common edges") + 
+  ggtitle("Fraction of edges shared by bRF and LASSO-3DS") + 
+  scale_x_continuous(labels = prettyZero)+
+  scale_color_manual(name = "Network density", values = color_palette) +
+  scale_fill_manual(name = "Network density", values = color_palette);n_edges
+```
+
