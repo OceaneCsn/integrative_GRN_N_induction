@@ -8,6 +8,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(ggpubr)
+library(patchwork)
 source('inference_functions/bRF.R')
 source('inference_functions/LASSO-D3S.R')
 source('inference_functions/evaluateNetwork.R')
@@ -146,7 +147,7 @@ pwm_support_plot <- pwm_support %>%
     axis.title.x = element_text(size = 22),
     title = element_text(size = 16),
     strip.text = element_text(size = 16),
-    legend.position = "top",
+    legend.position = "none",
     legend.text = element_text(size = 15),
     axis.text = element_text(size = 12)
   ) +
@@ -275,4 +276,14 @@ n_edges <- nrows_int %>%
   scale_color_manual(name = "Network density", values = color_palette) +
   scale_fill_manual(name = "Network density", values = color_palette);n_edges
 ```
+
+## Main figure
+
+```{r, fig.width=14, fig.height=10}
+figure <- pwm_support_plot + val_connecTF + val_connecTF_recall + n_edges + 
+  patchwork::plot_annotation(tag_levels = "a") + plot_layout(ncol=2, widths = c(1,1,1,0.9)); figure
+
+ggexport(figure, filename = "results/figure3.pdf", width = 14, height = 10)
+```
+
 
