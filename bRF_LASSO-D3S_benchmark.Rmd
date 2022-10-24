@@ -234,12 +234,15 @@ val_connecTF_recall <-  val_conn %>%
 val_connecTF_recall
 ```
 
-## Intersection between the two methods
+## Intersection of predicted edges between the two methods
+
+### Common edges and common hubs
 
 ```{r}
 
 intersections <- list()
-
+intersection_hubs <- list()
+top_hubs <- 20
 for(alpha in ALPHAS){ # exploring PWM integration strength
   for(rep in 1:3){ # exploring inherent variability
     for(density in DENSITIES){ # exploring importance threshold stringency
@@ -249,6 +252,11 @@ for(alpha in ALPHAS){ # exploring PWM integration strength
       net2 <- edges[[paste0("LASSO-D3S_", as.character(alpha),  
                      '_', density, '_',  rep)]]
       
+      # intersection of top degree regulators from network 1 and 2
+      intersection_hubs[[paste0(as.character(alpha), '_', density, '_', rep)]] <-
+        length(intersect(names(sort(-table(net1$from))[1:top_hubs]), 
+                  names(sort(-table(net2$from))[1:top_hubs])))/top_hubs
+      
       intersections[[paste0(as.character(alpha), '_', density, '_', rep)]] <- 
         inner_join(net1, net2, by = c("from", "to", "pwm"))
     }
@@ -256,11 +264,11 @@ for(alpha in ALPHAS){ # exploring PWM integration strength
 }
 
 
-settings <- c("alpha", "density", "rep")
+settings_intersection <- c("alpha", "density", "rep")
 # number of edges per network
 nrows_int <- data.frame(alpha_rep = names(unlist(lapply(intersections, FUN = nrow))),
                 n_edges = unlist(lapply(intersections, FUN = nrow)))
-nrows_int[, settings] <- str_split_fixed(nrows_int$alpha_rep,'_', length(settings))
+nrows_int[, settings_intersection] <- str_split_fixed(nrows_int$alpha_rep,'_', length(settings_intersection))
 n_edges <- nrows_int %>%
   mutate(alpha = as.numeric(alpha), 
          total_edges = as.numeric(nrows$n_edges[seq_along(nrows$n_edges) %%2 == 0])) %>%
@@ -275,7 +283,71 @@ n_edges <- nrows_int %>%
   scale_x_continuous(labels = prettyZero)+
   scale_color_manual(name = "Network density", values = color_palette) +
   scale_fill_manual(name = "Network density", values = color_palette);n_edges
+
+
+
+hubs <- data.frame(network_name = names(intersection_hubs),
+                   common_hubs = unlist(intersection_hubs))
+
+hubs[, settings_intersection] <- str_split_fixed(hubs$network_name,'_', length(settings_intersection))
+hubs_shared <- hubs %>%
+  mutate(alpha = as.numeric(alpha)) %>%
+  ggplot(aes(color = density, x = alpha, y = common_hubs)) +
+  geom_point() + 
+  geom_smooth(aes(fill = density), alpha = 0.1) +
+  theme(strip.background = element_blank(), axis.title.x = element_text(size = 22),
+        title = element_text(size = 16), strip.text = element_text(size = 16), legend.position = 'none',
+        legend.text = element_text(size = 15), axis.text = element_text(size = 12)) +
+  xlab(expression(alpha)) + ylab("Fraction of hubs") + 
+  ggtitle("Fraction of hubs (top 20) shared") + 
+  scale_x_continuous(labels = prettyZero)+
+  scale_color_manual(name = "Network density", values = color_palette) +
+  scale_fill_manual(name = "Network density", values = color_palette);hubs_shared
+  
 ```
+
+
+### Biological validation of common edges between the two methods
+
+
+```{r, fig.width=17, fig.height=8}
+val_inter <- evaluate_networks(intersections, validation = c("TARGET", "CHIPSeq", "DAPSeq"), 
+                              nCores = 45, input_genes = genes, input_tfs = tfs)
+val_inter[,settings_intersection] <- str_split_fixed(val_inter$network_name,'_',length(settings_intersection))
+val_inter_plot <- val_inter %>%
+  mutate(alpha = as.numeric(alpha), 
+         total_edges = as.numeric(nrows$n_edges[seq_along(nrows$n_edges) %%2 == 0])) %>%
+  ggplot(aes(color = density, x = alpha, y = precision)) +
+  geom_point() + 
+  geom_smooth(aes(fill = density), alpha = 0.1) +
+  theme(strip.background = element_blank(), axis.title.x = element_text(size = 22),
+        title = element_text(size = 16), strip.text = element_text(size = 16), legend.position = 'top',
+        legend.text = element_text(size = 15), axis.text = element_text(size = 12)) +
+  xlab(expression(alpha)) + ylab("Precision") + 
+  ggtitle("Precision of edges shared") + 
+  scale_x_continuous(labels = prettyZero)+
+  scale_color_manual(name = "Network density", values = color_palette) +
+  scale_fill_manual(name = "Network density", values = color_palette)
+
+
+val_inter_plot_recall <- val_inter %>%
+  mutate(alpha = as.numeric(alpha), 
+         total_edges = as.numeric(nrows$n_edges[seq_along(nrows$n_edges) %%2 == 0])) %>%
+  ggplot(aes(color = density, x = alpha, y = recall)) +
+  geom_point() + 
+  geom_smooth(aes(fill = density), alpha = 0.1) +
+  theme(strip.background = element_blank(), axis.title.x = element_text(size = 22),
+        title = element_text(size = 16), strip.text = element_text(size = 16), legend.position = 'none',
+        legend.text = element_text(size = 15), axis.text = element_text(size = 12)) +
+  xlab(expression(alpha)) + ylab("Recall") + 
+  ggtitle("Recall of edges shared") + 
+  scale_x_continuous(labels = prettyZero)+
+  scale_color_manual(name = "Network density", values = color_palette) +
+  scale_fill_manual(name = "Network density", values = color_palette)
+
+val_inter_plot + val_inter_plot_recall + hubs_shared
+```
+
 
 ## Main figure
 
@@ -285,5 +357,7 @@ figure <- pwm_support_plot + val_connecTF + val_connecTF_recall + n_edges +
 
 ggexport(figure, filename = "results/figure3.pdf", width = 14, height = 10)
 ```
+
+
 
 
