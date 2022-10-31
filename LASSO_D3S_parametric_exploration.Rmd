@@ -1,0 +1,430 @@
+---
+title: "Parametrizing LASSO-D3S"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggpubr)
+library(patchwork)
+source('inference_functions/bRF.R')
+source('inference_functions/LASSO-D3S.R')
+source('inference_functions/LASSO-D3S_exploration.R')
+source('inference_functions/evaluateNetwork.R')
+source('inference_functions/MSE.R')
+theme_set(theme_pubr())
+```
+
+# Context and data
+
+This document benchmarks the bRF and LASSO-D3S functions for integrative GRN inference.
+
+> If you are interested in using those functions on your data, and especially on your personal computer, we recommend that you go to the tutorial Rmd file instead of this one. This benchmark is intended to be used only to reproduce the results of the article, and and requires very intensive computing.
+
+Those functions infer the regulatory pathways of *Arabidopsis thaliana*'s roots in response to nitrate (N) induction from [Varala et al., 2018](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE97500).
+
+They use as inputs the expression profiles of N-responsive genes and TFBS information. 
+Prior TFBS information was built by searching in the promoters of the N-responsive genes the PWM of the N-responsive regulators. 
+
+## Data import
+
+### Expression data
+
+Import of the expression data and the N-responsive genes and regulators :
+
+```{r}
+load('rdata/inference_input_N_response_varala.rdata')
+genes <- input_data$grouped_genes; length(genes)
+tfs <- input_data$grouped_regressors; length(tfs)
+counts <- input_data$counts; dim(counts)
+```
+
+### TFBS data
+
+Presence or absence of the TFs motifs in the targets promoter :
+
+```{r}
+load("rdata/pwm_occurrences_N_response_varala.rdata")
+dim(pwm_occurrence)
+```
+
+
+# Benchmark
+
+## Benchmark funtion 
+
+```{r}
+######### building networks for several parameters and methods
+get_networks <- function(alphas, densities, robs, 
+                         counts, genes, tfs, 
+                         nCores = 50, nrep = 3){
+  edges <- list()
+  
+    for(alpha in alphas){ # exploring PWM integration strengh
+      
+      for(rep in 1:nrep){ # exploring inherent variability
+        
+        for(rob in robs){ # SS robustness threshold
+          
+            mat_lasso <- LASSO.D3S_inference(counts, genes, tfs, 
+                                       alpha = alpha, N = 50, int_pwm_noise = 0,
+                                       robustness = rob, score = "pval",
+                                       pwm_occurrence = pwm_occurrence, 
+                                       nCores = nCores)
+          
+          
+            for(density in densities){ # exploring importance threshold stringency
+
+               edges[[paste0(as.character(alpha), '_', "pval",    
+                             '_', density, '_', rob, '_', rep)]] <- 
+                 LASSO.D3S_network(mat_lasso, density = density, 
+                                   pwm_occurrence, genes, tfs, with_score = T)
+
+            }
+        }
+        
+        mat_lasso <- LASSO.D3S_inference(counts, genes, tfs, 
+                                       alpha = alpha, N = 50,int_pwm_noise = 0,
+                                       robustness = rob, score = "freq",
+                                       pwm_occurrence = pwm_occurrence, 
+                                       nCores = nCores)
+        
+        for(density in densities){ # exploring importance threshold stringency
+
+               edges[[paste0(as.character(alpha), '_', "freq",    
+                             '_', density, '_', rob, '_', rep)]] <- 
+                 LASSO.D3S_network(mat_lasso, density = density, 
+                                   pwm_occurrence, genes, tfs, freq = TRUE,
+                                   with_score = T)
+
+        }
+      }
+    }
+  return(edges)
+}
+```
+
+
+
+# Actual Benchmark
+
+```{r}
+ALPHAS <- seq(0,1, by = 0.2)
+DENSITIES <- c(0.005, 0.01, 0.025, 0.05, 0.1)
+ROBUSTNESSES <- c(0.1, 0.2, 0.3, 0.5, 0.7, 0.8)
+
+edges <- get_networks(alphas = ALPHAS, densities = DENSITIES, robs = ROBUSTNESSES,
+             counts = counts, genes = genes, tfs = tfs, nCores = 48, nrep = 3)
+
+edges_rob <- get_networks(alphas = c(0.5), densities = DENSITIES, robs = c(0.1,0.3,0.7),
+             counts = counts, genes = genes, tfs = tfs, nCores = 48, nrep = 2)
+
+a <- edges_rob$`0.5_pval_0.1_0.1_1`
+
+save(edges, file = "../PWM_models_data_article/robustness_exploration_no_pert.rdata")
+```
+
+# Result figures
+
+```{r}
+settings <- c("alpha", "score", "density", "robustness", "rep")
+
+# number of edges per network
+nrows <- data.frame(alpha_rep = names(unlist(lapply(edges, FUN = nrow))),
+                n_edges = unlist(lapply(edges, FUN = nrow)))
+nrows[, settings] <- str_split_fixed(nrows$alpha_rep,'_', length(settings))
+```
+
+## PWM proportion
+
+
+```{r, fig.width=17}
+# mean of pwm presence score of network edges
+edges_num <- lapply(edges, function(df) df[sapply(df, is.numeric)])
+d <- data.frame(alpha_rep = names(unlist(lapply(edges_num, FUN = nrow))),
+                pwm = unlist(lapply(edges_num, FUN = colMeans)))
+d[, settings] <- str_split_fixed(d$alpha_rep,'_', length(settings))
+
+color_palette = c("#88002D", "#C12131", "#EC5D2F", "#FE945C", "#FFC08E" )
+
+pwm_support <- d %>%
+  full_join(nrows, by = settings) %>%
+  mutate(alpha = as.numeric(alpha),
+         robustness = ifelse(score=="freq", '', robustness),
+         score = ifelse(score=="freq", 'Selection frequency', 'P-value')) %>%
+  mutate(density_label = paste(density, ':', n_edges, 'edges')) %>%
+  ggplot(aes(color = density_label, x = alpha, y = pwm)) +
+  ggh4x::facet_nested_wrap(vars(score, robustness), ncol =8, nest_line = T) + 
+  geom_point() + 
+  geom_smooth(aes(fill = density_label)) +
+  theme(strip.background = element_blank(), axis.title.x = element_text(size = 22),
+        title = element_text(size = 16), strip.text = element_text(size = 16), 
+        legend.text = element_text(size = 15), axis.text = element_text(size = 12)) +
+  xlab(expression(alpha)) + ylab("Mean of edges PWM presence scores") + 
+  ggtitle("Average PWM support of selected edges") + 
+  scale_color_manual(name = "Network density", values = color_palette) +
+  scale_fill_manual(name = "Network density", values = color_palette);pwm_support
+
+```
+
+
+
+## Validation against ConnecTF
+
+
+
+```{r, fig.width=17}
+
+val_conn <- evaluate_networks(edges, validation = c("TARGET", "CHIPSeq", "DAPSeq"), 
+                              nCores = 45, input_genes = genes, input_tfs = tfs)
+val_conn[,settings] <- str_split_fixed(val_conn$network_name,'_',length(settings))
+
+```
+
+```{r, fig.width=15, fig.height=15}
+
+
+val_connecTF <-  val_conn %>%
+                 select(-network_name) %>%
+                 left_join(nrows, by = settings) %>%
+                 mutate(alpha = as.numeric(alpha),
+                        robustness = ifelse(score=="freq", '', robustness),
+                        score = ifelse(score=="freq", 'Selection frequency', 'P-value')) %>%
+                 mutate(density_label = paste(density, ':', n_edges, 'edges')) %>%
+                 ggplot(aes(color = density_label, x = alpha, y = precision)) +
+                 ggh4x::facet_nested_wrap(vars(score, robustness), ncol = 8, nest_line = T) + geom_point() + 
+                 geom_smooth(aes(fill = density_label), alpha = 0.1) +
+                 theme(strip.background = element_blank(), axis.title.x = element_text(size = 22),
+                       title = element_text(size = 16), strip.text = element_text(size = 16), 
+                       legend.text = element_text(size = 15), axis.text = element_text(size = 12), 
+                       legend.position = 'none') +
+                 xlab(expression(alpha)) + ylab("Precision") + 
+                 ggtitle("Networks precision against ConnecTF") + 
+                 scale_color_manual(name = "Network density", values = color_palette) +
+                 scale_fill_manual(name = "Network density", values =color_palette);val_connecTF
+
+
+figure <- pwm_support / val_connecTF; figure
+ggexport(figure, filename = "results/LASSO_D3S_parametric_exploration_no_pert.pdf", width = 19, height = 10)
+```
+# Minimal frequency selection
+
+Question de sophie : Est-ce que tu pourrais regarder la fréquence de sélection minimale des arêtes pour chaque courbe (densité 0.005 à 0.1) dans le cas 'selection frequency only' (graphe en haut à droite) ?
+
+
+```{r}
+######### building networks for several parameters and methods
+
+get_min_freq <- function(alphas, densities, 
+                         counts, genes, tfs, 
+                         nCores = 48, nrep = 3){
+  min_freqs <- list()
+  
+    for(alpha in alphas){ # exploring PWM integration strengh
+      
+      for(rep in 1:nrep){ # exploring inherent variability
+        
+        mat_lasso <- LASSO.D3S_inference(counts, genes, tfs, 
+                                       alpha = alpha, N = 50,
+                                       int_pwm_noise = 0, score = "freq",
+                                       pwm_occurrence = pwm_occurrence, 
+                                       nCores = nCores)
+        
+        for(density in densities){ # exploring importance threshold stringency
+              grn <- LASSO.D3S_network(mat_lasso, density = density, 
+                                   pwm_occurrence, genes, tfs, 
+                                   with_score = TRUE, freq = TRUE)
+               min_freqs[[paste0(as.character(alpha), '_', "freq",    
+                             '_', density, '_', rep)]] <- min(grn$importance)
+                 
+
+        }
+      }
+    }
+  return(min_freqs)
+}
+
+
+
+ALPHAS <- seq(0,1, by = 0.2)
+DENSITIES <- c(0.005, 0.01, 0.025, 0.05, 0.1)
+
+min_freqs <- get_min_freq(ALPHAS, DENSITIES, counts, genes, tfs, nrep = 1)
+```
+## Results
+
+```{r}
+frequencies <- data.frame("min_freq" = unlist(min_freqs), "network_name" = names(unlist(min_freqs)))
+settings <- c("alpha", "score", "density", "rep")
+frequencies[,settings] <- str_split_fixed(frequencies$network_name,'_',length(settings))
+
+frequencies %>%
+                 select(-network_name) %>%
+                 mutate(alpha = as.numeric(alpha),
+                        score = ifelse(score=="freq", 'Selection frequency', 'P-value')) %>%
+                 ggplot(aes(color = density, x = alpha, y = min_freq)) +
+                 geom_smooth(aes(fill = density), alpha = 0.1) + geom_point()+
+                 theme(strip.background = element_blank(), axis.title.x = element_text(size = 22),
+                       title = element_text(size = 16), strip.text = element_text(size = 16), 
+                       legend.text = element_text(size = 15), axis.text = element_text(size = 12), 
+                       legend.position = 'none') +
+                 xlab(expression(alpha)) + ylab("Frequency") + 
+                 ggtitle("Minimum selection frequency in inferred GRNs") + 
+                 scale_color_manual(name = "Network density", values = color_palette) +
+                 scale_fill_manual(name = "Network density", values =color_palette)
+```
+
+```{r}
+load(file = "../PWM_models_data_article/robustness_exploration_no_pert.rdata")
+
+get_selection_rate <- function(net){
+  return(sum(table(net$to))/(length(genes)*length(tfs)))
+}
+
+topo <- data.frame(network_name = names(edges),
+                selection_rate = unlist(lapply(edges, FUN = get_selection_rate)))
+
+settings <- c("alpha", "score", "density", "robustness", "rep")
+topo[,settings] <- str_split_fixed(topo$network_name,'_',length(settings))
+topo %>%
+                 select(-network_name) %>%
+                 mutate(alpha = as.numeric(alpha),
+                        robustness = ifelse(score=="freq", '', robustness),
+                        score = ifelse(score=="freq", 'Selection frequency', 'P-value')) %>%
+                 ggplot(aes(color = density, x = alpha, y = selection_rate)) +
+                 ggh4x::facet_nested_wrap(vars(score, robustness), ncol = 8, nest_line = T) + geom_point() + 
+                 geom_smooth(aes(fill = density), alpha = 0.1) +
+                 theme(strip.background = element_blank(), axis.title.x = element_text(size = 22),
+                       title = element_text(size = 16), strip.text = element_text(size = 16), 
+                       legend.text = element_text(size = 15), axis.text = element_text(size = 12), 
+                       legend.position = 'none') +
+                 xlab(expression(alpha)) + ylab("Precision") + 
+                 ggtitle("Networks precision against ConnecTF") + 
+                 scale_color_manual(name = "Network density", values = color_palette) +
+                 scale_fill_manual(name = "Network density", values =color_palette)
+```
+Et aussi, je me demande quel est le taux moyen d'arêtes sélectionnées par le lasso-D3S ? (pour avoir une idée de ce que l'on peut espérer en terme de fréquence de sélection)
+
+```{r}
+res<-LASSO.D3S_selection_rate(counts, genes, tfs, 
+                                   alpha = 0, N = 50,
+                                   int_pwm_noise = 0, score = "freq",
+                                   pwm_occurrence = pwm_occurrence, 
+                                   nCores = nCores)
+res$alpha = 0
+
+for(alpha in c(0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1)){ # exploring PWM integration strength
+    
+    mat_lasso <- LASSO.D3S_selection_rate(counts, genes, tfs, 
+                                   alpha = alpha, N = 50,
+                                   int_pwm_noise = 0, score = "freq",
+                                   pwm_occurrence = pwm_occurrence, 
+                                   nCores = nCores)
+    mat_lasso$alpha = alpha
+    res <- rbind.data.frame(res, mat_lasso)
+}
+
+res %>%
+                 ggplot(aes(color = alpha, x = as.factor(alpha), y = sel_rate)) +
+                 geom_boxplot()+
+                 theme(strip.background = element_blank(), axis.title.x = element_text(size = 22),
+                       title = element_text(size = 16), strip.text = element_text(size = 16), 
+                       legend.text = element_text(size = 15), axis.text = element_text(size = 12), 
+                       legend.position = 'none') +
+                 xlab(expression(alpha)) + ylab("Frequency") + 
+                 ggtitle("Mean number of TFs selected in the LASSO steps of SS (each point is a gene)") 
+res %>%
+                 ggplot(aes(color = alpha, x = as.factor(alpha), y = i_l_min)) +
+                 geom_boxplot()+
+                 theme(strip.background = element_blank(), axis.title.x = element_text(size = 22),
+                       title = element_text(size = 16), strip.text = element_text(size = 16), 
+                       legend.text = element_text(size = 15), axis.text = element_text(size = 12), 
+                       legend.position = 'none') +
+                 xlab(expression(alpha)) + ylab("Frequency") + 
+                 ggtitle("Mean number of TFs selected in the LASSO steps of SS (each point is a gene)") 
+
+
+```
+
+## PWM support as a function of robustness instead of density
+
+```{r}
+ROBUSTNESSES <- c(0.1, 0.2, 0.3, 0.4, 0.5, 0.7, 0.8)
+
+get_networks_rob <- function(alphas, robs, 
+                         counts, genes, tfs, 
+                         nCores = 48, nrep = 3){
+  min_freqs <- list()
+  
+    for(alpha in alphas){ # exploring PWM integration strengh
+      
+      for(rep in 1:nrep){ # exploring inherent variability
+        
+        
+        
+        for(rob in robs){ # exploring importance threshold stringency
+              min_freqs[[paste0(as.character(alpha), '_', "freq",    
+                             '_', rob, '_', rep)]] <- LASSO.D3S_robutness(counts, genes, tfs, 
+                                       alpha = alpha, N = 50,robustness = rob,
+                                       int_pwm_noise = 0, score = "freq",
+                                       pwm_occurrence = pwm_occurrence, 
+                                       nCores = nCores)
+              
+
+        }
+      }
+    }
+  return(min_freqs)
+}
+edges_rob <- get_networks_rob(ALPHAS, ROBUSTNESSES, counts, genes, tfs, nrep = 2)
+```
+
+```{r, fig.width=10}
+settings <- c("alpha", "score", "robustness", "rep")
+
+# number of edges per network
+nrows <- data.frame(alpha_rep = names(unlist(lapply(edges_rob, FUN = nrow))),
+                n_edges = unlist(lapply(edges_rob, FUN = nrow)))
+nrows[, settings] <- str_split_fixed(nrows$alpha_rep,'_', length(settings))
+
+
+edges_num <- lapply(edges_rob, function(df) df[sapply(df, is.numeric)])
+d <- data.frame(alpha_rep = names(unlist(lapply(edges_num, FUN = nrow))),
+                pwm = unlist(lapply(edges_num, FUN = colMeans)))
+d[, settings] <- str_split_fixed(d$alpha_rep,'_', length(settings))
+
+#color_palette = c("#88002D", "#C12131", "#EC5D2F", "#FE945C", "#FFC08E" )
+
+pwm_support <- d %>%
+  full_join(nrows, by = settings) %>%
+  mutate(alpha = as.numeric(alpha),
+         score = ifelse(score=="freq", 'Selection frequency', 'P-value')) %>%
+  ggplot(aes(color = robustness, x = alpha, y = pwm)) +
+  geom_point() + 
+  geom_smooth(aes(fill = robustness)) +
+  theme(strip.background = element_blank(), axis.title.x = element_text(size = 22),
+        title = element_text(size = 16), strip.text = element_text(size = 16), 
+        legend.text = element_text(size = 15), axis.text = element_text(size = 12)) +
+  xlab(expression(alpha)) + ylab("Mean of edges PWM presence scores") + 
+  ggtitle("Average PWM support of selected edges")+
+   d %>%
+  full_join(nrows, by = settings) %>%
+  mutate(alpha = as.numeric(alpha),
+         score = ifelse(score=="freq", 'Selection frequency', 'P-value')) %>%
+  ggplot(aes(color = robustness, x = alpha, y = n_edges/((length(genes)-1)*length(tfs)))) +
+  geom_point() + 
+  geom_smooth(aes(fill = robustness)) +
+  theme(strip.background = element_blank(), axis.title.x = element_text(size = 22),
+        title = element_text(size = 16), strip.text = element_text(size = 16), 
+        legend.text = element_text(size = 15), axis.text = element_text(size = 12)) +
+  xlab(expression(alpha)) + ylab("Density") + 
+  ggtitle("Density");pwm_support
+
+```
+
+
+
+
+

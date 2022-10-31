@@ -12,6 +12,8 @@ library(stringr)
 get_MSE <- function(net, method, nCores=ifelse(is.na(detectCores()),1,
                                                max(detectCores() - 1, 1))){
   registerDoParallel(cores = nCores)
+  message(paste("MSE for method", method))
+  tic()
   if(method == "bRF" ){
     x <- t(counts[tfs,])
     suppressPackageStartupMessages(mmse <-
@@ -53,10 +55,11 @@ get_MSE <- function(net, method, nCores=ifelse(is.na(detectCores()),1,
                                              data = data.frame(t(round(counts,0))), 
                                              family = "poisson")
                                            
-                                           cv.glm(glmfit = lm_target, K=5, 
+                                           cv.glm(glmfit = lm_target, K=length(y), 
                                                   data = data.frame(t(round(counts,0))))$delta[2]
                                          }
                                        }))
+    toc()
     attr(mmse, "rng") <- NULL
     mmmse <- mean(log(unlist(mmse)), na.rm=TRUE)
   }

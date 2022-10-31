@@ -71,7 +71,7 @@ infer_networks <- function(alphas, densities,
       
       mat_lasso <- LASSO.D3S_inference(counts, genes, tfs, 
                                        alpha = alpha, N = 50,
-                                       robustness = 0.7, nfolds.cv = 5,
+                                       robustness = 0.1,int_pwm_noise = 0,
                                        pwm_occurrence = pwm_occurrence, 
                                        nCores = nCores)
       
@@ -93,13 +93,13 @@ infer_networks <- function(alphas, densities,
 
 ```{r}
 ALPHAS <- seq(0,1, by = 0.1)
-DENSITIES <- c(0.005, 0.01, 0.025, 0.05, 0.1)
-set.seed(121314)
+DENSITIES <- c(0.005, 0.01, 0.025, 0.05)
+set.seed(1213)
 edges <- infer_networks(alphas = ALPHAS, densities = DENSITIES, 
              counts = counts, genes = genes, tfs = tfs, 
              nCores = 45, nrep = 3)
 
-save(edges, file = "../PWM_models_data_article/networks_for_benchmark_alpha_density.rdata")
+save(edges, file = "../PWM_models_data_article/networks_for_benchmark_alpha_density_oob_no_pert_rob_0.1.rdata")
 ```
 
 
@@ -135,7 +135,8 @@ pwm_support[, settings] <-
   str_split_fixed(pwm_support$alpha_rep, '_', length(settings))
 
 pwm_support_plot <- pwm_support %>%
-  full_join(nrows, by = settings) %>%
+  filter(density <= 0.05) %>% 
+  left_join(nrows, by = settings) %>%
   mutate(alpha = as.numeric(alpha),
          density_label = paste(density, ':', n_edges, 'edges')) %>%
   ggplot(aes(color = density_label, x = alpha, y = pwm)) +
@@ -243,6 +244,8 @@ val_connecTF_recall
 intersections <- list()
 intersection_hubs <- list()
 top_hubs <- 20
+
+
 for(alpha in ALPHAS){ # exploring PWM integration strength
   for(rep in 1:3){ # exploring inherent variability
     for(density in DENSITIES){ # exploring importance threshold stringency
@@ -303,7 +306,6 @@ hubs_shared <- hubs %>%
   scale_x_continuous(labels = prettyZero)+
   scale_color_manual(name = "Network density", values = color_palette) +
   scale_fill_manual(name = "Network density", values = color_palette);hubs_shared
-  
 ```
 
 
@@ -355,9 +357,119 @@ val_inter_plot + val_inter_plot_recall + hubs_shared
 figure <- pwm_support_plot + val_connecTF + val_connecTF_recall + n_edges + 
   patchwork::plot_annotation(tag_levels = "a") + plot_layout(ncol=2, widths = c(1,1,1,0.9)); figure
 
-ggexport(figure, filename = "results/figure3.pdf", width = 14, height = 10)
+ggexport(figure, filename = "results/figure3_oob_no_perturbation_0.1rob.pdf", width = 14, height = 10)
 ```
 
+
+# Prediction error and networks topology
+
+## Computing prediction error on test expression data
+
+```{r}
+load(file = "../PWM_models_data_article/networks_for_benchmark_alpha_density_oob_no_pert_rob_0.1.rdata")
+
+mses <- list()
+for(network in names(edges)){
+  mses[[network]] <- get_MSE(edges[[network]], method = str_split_fixed(network, '_', 2)[,1], nCores=52)
+}
+save(mses, file = "../PWM_models_data_article/mse.rdata")
+
+```
+## Plotting the results
+
+
+```{r}
+settings <- c("method", "alpha", "density", "rep")
+mse <- data.frame(alpha_rep = names(unlist(mses)),
+                mmmse = unlist(mses))
+mse[, settings] <- str_split_fixed(mse$alpha_rep,'_', length(settings))
+
+mse_plot <- mse %>%  
+  left_join(nrows, by = settings) %>%
+  mutate(alpha = as.numeric(alpha)) %>%
+  mutate(density_label = paste(density, ':', n_edges, 'edges')) %>%
+  ggplot(aes(color = density_label, x = alpha, y = mmmse)) +
+  ggh4x::facet_nested_wrap(vars(method), ncol = 8, nest_line = T) + geom_point() +
+  geom_smooth(aes(fill = density_label), alpha = 0.1) +
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'none'
+  ) +
+  scale_x_continuous(labels = prettyZero) +
+  xlab(expression(alpha))+ ylab("Log(mean(MSE))") + 
+                 ggtitle("Log of average MSE") +
+  scale_color_manual(name = "Network density", values = color_palette) +
+  scale_fill_manual(name = "Network density", values = color_palette)
+
+get_nTF <- function(net){
+  return(mean(table(net$to)))
+}
+
+get_TF <- function(net){
+  return(length(unique(net$from)))
+}
+
+topo <- data.frame(alpha_rep = names(edges),
+                n_TFs = unlist(lapply(edges, FUN = get_nTF)),
+                TFs = unlist(lapply(edges, FUN = get_TF)))
+
+topo[, settings] <- str_split_fixed(topo$alpha_rep,'_', length(settings))
+
+nTFs <- topo %>%  
+  left_join(nrows, by = settings) %>%
+  mutate(alpha = as.numeric(alpha)) %>%
+  mutate(density_label = paste(density, ':', n_edges, 'edges')) %>%
+  ggplot(aes(color = density_label, x = alpha, y = n_TFs)) +
+  ggh4x::facet_nested_wrap(vars(method), ncol = 8, nest_line = T) + geom_point() +
+  geom_smooth(aes(fill = density_label), alpha = 0.1) +
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'none'
+  ) +
+  scale_x_continuous(labels = prettyZero) +
+  xlab(expression(alpha)) + ylab("Average number of regulator per gene") + 
+                 ggtitle("Average number of regulator per gene") +
+  scale_color_manual(name = "Network density", values = color_palette) +
+  scale_fill_manual(name = "Network density", values = color_palette)
+
+
+
+nRegs <- topo %>%  
+  left_join(nrows, by = settings) %>%
+  mutate(alpha = as.numeric(alpha)) %>%
+  mutate(density_label = paste(density, ':', n_edges, 'edges')) %>%
+  ggplot(aes(color = density_label, x = alpha, y = TFs)) +
+  ggh4x::facet_nested_wrap(vars(method), ncol = 8, nest_line = T) + geom_point() +
+  geom_smooth(aes(fill = density_label), alpha = 0.1) +
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'none'
+  ) +
+  scale_x_continuous(labels = prettyZero) +
+  xlab(expression(alpha))+ ylab("Number of distinct regulators") + 
+                 ggtitle("Number of distinct regulators") + 
+  scale_color_manual(name = "Network density", values = color_palette) +
+  scale_fill_manual(name = "Network density", values = color_palette)
+
+
+figure <- mse_plot+nTFs+nRegs + plot_layout(widths = c(1,1, 1)) + plot_annotation(tag_levels = 'a');figure
+ggexport(figure, filename = "results/figure4.pdf", width = 16, height = 5)
+```
 
 
 
