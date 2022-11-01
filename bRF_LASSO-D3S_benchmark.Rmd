@@ -8,7 +8,10 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(ggpubr)
+library(clusterProfiler)
 library(patchwork)
+library(visNetwork)
+library(igraph)
 source('inference_functions/bRF.R')
 source('inference_functions/LASSO-D3S.R')
 source('inference_functions/evaluateNetwork.R')
@@ -93,7 +96,7 @@ infer_networks <- function(alphas, densities,
 
 ```{r}
 ALPHAS <- seq(0,1, by = 0.1)
-DENSITIES <- c(0.005, 0.01, 0.025, 0.05)
+DENSITIES <- c(0.005, 0.01, 0.025, 0.05, 0.075)
 set.seed(1213)
 edges <- infer_networks(alphas = ALPHAS, densities = DENSITIES, 
              counts = counts, genes = genes, tfs = tfs, 
@@ -135,7 +138,6 @@ pwm_support[, settings] <-
   str_split_fixed(pwm_support$alpha_rep, '_', length(settings))
 
 pwm_support_plot <- pwm_support %>%
-  filter(density <= 0.05) %>% 
   left_join(nrows, by = settings) %>%
   mutate(alpha = as.numeric(alpha),
          density_label = paste(density, ':', n_edges, 'edges')) %>%
@@ -285,7 +287,7 @@ n_edges <- nrows_int %>%
   ggtitle("Fraction of edges shared by bRF and LASSO-3DS") + 
   scale_x_continuous(labels = prettyZero)+
   scale_color_manual(name = "Network density", values = color_palette) +
-  scale_fill_manual(name = "Network density", values = color_palette);n_edges
+  scale_fill_manual(name = "Network density", values = color_palette)
 
 
 
@@ -305,7 +307,7 @@ hubs_shared <- hubs %>%
   ggtitle("Fraction of hubs (top 20) shared") + 
   scale_x_continuous(labels = prettyZero)+
   scale_color_manual(name = "Network density", values = color_palette) +
-  scale_fill_manual(name = "Network density", values = color_palette);hubs_shared
+  scale_fill_manual(name = "Network density", values = color_palette)
 ```
 
 
@@ -366,7 +368,7 @@ ggexport(figure, filename = "results/figure3_oob_no_perturbation_0.1rob.pdf", wi
 ## Computing prediction error on test expression data
 
 ```{r}
-load(file = "../PWM_models_data_article/networks_for_benchmark_alpha_density_oob_no_pert_rob_0.1.rdata")
+#load(file = "../PWM_models_data_article/networks_for_benchmark_alpha_density_oob_no_pert_rob_0.1.rdata")
 
 mses <- list()
 for(network in names(edges)){
@@ -471,5 +473,268 @@ figure <- mse_plot+nTFs+nRegs + plot_layout(widths = c(1,1, 1)) + plot_annotatio
 ggexport(figure, filename = "results/figure4.pdf", width = 16, height = 5)
 ```
 
+# Study of Nitrate-related genes in the inferred GRNs
 
+## Degree of important regulators of Nitrate nutrition
+
+
+```{r}
+n_genes_favorites <- c("LBD37", "LBD38", "LBD39", "TGA1", "TGA4",
+                       "HRS1", "HHO2", "HHO3", "HHO4", "DIV1" )
+
+pwm_imputed <- pwm_occurrence
+pwm_imputed[is.na(pwm_imputed)] <- 0.5
+
+
+networks_N_genes <- function(edges_list, n_genes, nCores = 32){
+  
+  registerDoParallel(cores = nCores)
+  message(paste("\nParallel network N validation Using", foreach::getDoParWorkers(), "cores."))
+  "%dopar%" <- foreach::"%dopar%"
+  tic()
+  suppressPackageStartupMessages(
+    result.validation <-
+      doRNG::"%dorng%"(foreach::foreach(network_name = names(edges_list), .combine = rbind),
+                       {
+                         net<- graph_from_data_frame(edges_list[[network_name]], directed = TRUE)
+                         net_data <- network_data(net, regulators_per_organism[["Arabidopsis thaliana"]], 
+                                                  gene_annotations$`Arabidopsis thaliana`)
+                         nodes <- net_data$nodes
+                         nodes$pwm_status = ifelse(nodes$group != "Regulator", "target", NA)
+                         nodes[is.na(nodes$pwm_status),]$pwm_status =ifelse(
+                           colMeans(pwm_imputed[,nodes[is.na(nodes$pwm_status),]$id]) != 0.5, "known", "unknown" )
+                         nodes$degree_rank <- rank(nodes$degree)/nrow(nodes)
+                         res <- nodes[str_detect(nodes$label, paste(n_genes, collapse = '|')),
+                                      c("label", "degree", "degree_rank", "id")]
+                         res$known_pwm <- ifelse(colMeans(pwm_imputed[,res$id]) != 0.5, "PWM available", "PWM missing")
+                         res <- rbind.data.frame(res, c(" Mean", mean(nodes[nodes$pwm_status == "known",]$degree),
+                                                        mean(nodes[nodes$pwm_status == "known",]$degree_rank), NA, "PWM available"))
+                         res <- rbind.data.frame(res, c(" Mean", mean(nodes[nodes$pwm_status == "unknown",]$degree),
+                                                        mean(nodes[nodes$pwm_status == "unknown",]$degree_rank), NA, "PWM missing"))
+                         
+                         rownames(res) <- NULL
+                         res$network_name <- network_name
+                         res
+                       })
+  )
+  toc()
+  attr(result.validation, "rng") <- NULL # It contains the whole sequence of RNG seeds
+  return(result.validation)
+}
+
+N_rank_fav <- networks_N_genes(edges, n_genes_favorites, nCores = 40)
+N_rank_fav[,settings] <- str_split_fixed(N_rank_fav$network_name,'_',length(settings))
+
+n_genes_favored <- N_rank_fav %>%
+  mutate(`Mean value` = str_detect(label, "mean"))%>% 
+  filter(density %in% c(0.005, 0.025, 0.05)) %>%
+  select(-network_name) %>%
+  mutate(alpha = as.numeric(alpha),
+         method = str_replace(method, "Biased Random Forests", "bRF"),
+         method = str_replace(method, "Differentially shrinked lasso SS", "LASSO-D3S"),
+         density = paste0("D=", density)) %>%
+  ggplot(aes(color = label, x = alpha, fill = label, y = as.numeric(degree_rank))) +
+  ggh4x::facet_nested_wrap(vars(method, known_pwm, density), ncol = 12, nest_line = T) + 
+  theme_pubr() +
+  geom_smooth(aes(fill = label, linetype = `Mean value`), alpha = 0.15) +
+  theme(strip.background = element_blank(), axis.title.x = element_text(size = 22),
+        title = element_text(size = 16), strip.text = element_text(size = 16), 
+        legend.text = element_text(size = 15), axis.text = element_text(size = 12), 
+        legend.position = 'left') +
+  xlab(expression(alpha)) + ylab("Relative rank in degree") + 
+  ggtitle("Degree rank of N relevant TFs in the inferred GRNs") + 
+  scale_x_continuous(labels = prettyZero, breaks =c(0,0.5,  1))+
+  scale_linetype_discrete(guide = "none")+ylim(0.4,1)+
+  guides(color=guide_legend(nrow=10,byrow=TRUE),
+         fill=guide_legend(nrow=10,byrow=TRUE))+
+  scale_color_discrete(name = "Regulator") +
+  scale_fill_discrete(name = "Regulator") +
+  scale_y_continuous(labels = prettyZero);n_genes_favored
+```
+
+## Ontology enrichment along network degree
+
+```{r}
+
+N_go <- c("GO:0006807", "GO:0051171", "GO:0051173", "GO:0022622")
+
+
+get_nodes_degree <- function(graph){
+  data <- toVisNetworkData(graph)
+  degree <- igraph::degree(graph)
+  data$nodes$degree <- degree[match(data$nodes$id, names(degree))]
+  return(data$nodes)
+}
+
+convert_from_agi <- function(ids){
+  x <- org.At.tair.db::org.At.tairENTREZID
+  mapped_genes <- AnnotationDbi::mappedkeys(x)
+  xx <- as.list(x[mapped_genes])
+  return(unlist(xx[as.vector(ids)]))
+}
+
+
+networks_N_GSEA <- function(edges_list, N_go, nCores = 1){
+  
+  registerDoParallel(cores = nCores)
+  message(paste("\nParallel network N validation Using", foreach::getDoParWorkers(), "cores."))
+  "%dopar%" <- foreach::"%dopar%"
+  tic()
+  suppressPackageStartupMessages(
+    result.validation <-
+      doRNG::"%dorng%"(foreach::foreach(network_name = names(edges_list), .combine = rbind),
+                       {
+                         net<- graph_from_data_frame(edges_list[[network_name]], directed = TRUE)
+                         nodes <- get_nodes_degree(net)
+                        
+                         rownames(nodes) <- nodes$id
+                         nodes[names(convert_from_agi(nodes$id)), "entrez"] <- 
+                           convert_from_agi(nodes$id)
+                         
+                         degrees <- sort(setNames(nodes$degree, nodes$entrez), decreasing = T)
+                         
+                         gse <- gseGO(geneList=degrees, 
+                                      ont ="BP", 
+                                      minGSSize = 3, 
+                                      maxGSSize = 800, nPerm =1000,
+                                      pvalueCutoff = 1, 
+                                      verbose = TRUE, scoreType = "pos",
+                                      OrgDb = org.At.tair.db::org.At.tair.db, 
+                                      pAdjustMethod = "BH")
+                         res <- gse@result[gse@result$ID %in% N_go,c("Description", "enrichmentScore", "p.adjust")]
+                         if(nrow(res)>1){
+                           res$network_name <- network_name
+                           res
+                         }
+                         
+                       })
+  )
+  toc()
+  attr(result.validation, "rng") <- NULL # It contains the whole sequence of RNG seeds
+  return(result.validation)
+}
+
+
+N_gsea <- networks_N_GSEA(edges, N_go, nCores = 1)
+N_gsea[,settings] <- str_split_fixed(N_gsea$network_name,'_',length(settings))
+
+save(N_gsea, file = "../PWM_models_data_article/N_gsea.rdata")
+
+n_genes_gsea <- N_gsea %>%
+  filter(density %in% c(0.005, 0.025, 0.05)) %>%
+  select(-network_name) %>%
+  mutate(alpha = as.numeric(alpha),
+         density = paste0("D=", density),
+         Pathway = str_replace(Description, "nitrogen compound", "N"),
+         Pathway = str_replace(Pathway, "positive regulation of N metabolic process",
+                               "positive regulation of\nN metabolic process"),
+         Pathway = str_replace(Pathway, "regulation of N metabolic process",
+                               "regulation of N metabolic\nprocess")) %>%
+  ggplot(aes(color = Pathway, x = as.numeric(alpha), y = enrichmentScore, 
+             fill = Pathway, group = Pathway)) +
+  ggh4x::facet_nested_wrap(vars(method, density), ncol = 10, nest_line = T) + 
+   theme_pubr() +guides(color=guide_legend(nrow=5,byrow=TRUE))+
+  geom_smooth(aes(col = Pathway), alpha=0.3, span = 2) +
+  theme(strip.background = element_blank(), axis.title.x = element_text(size = 22),
+        title = element_text(size = 16), strip.text = element_text(size = 16), 
+        legend.text = element_text(size = 12), axis.text = element_text(size = 12), 
+        legend.position = 'left',legend.spacing.y = unit(0.15, 'cm')) + ylim(c(0.5,1))+
+  xlab(expression(alpha)) + ylab("Enrichment score") + 
+  ggtitle("GSEA of N pathways in the inferred GRNs") + 
+  scale_x_continuous(labels = prettyZero, breaks =c(0,0.5,  1));n_genes_gsea
+
+```
+
+## Regultors of NRT2.1
+
+
+```{r, fig.width=10}
+describe_node <- function(graph, node){
+  targets <- neighborhood(graph, nodes = node, mode = "out")[[1]]$name
+  regulators <- neighborhood(graph, nodes = node, mode = "in")[[1]]$name
+  return(list(targets = setdiff(targets, node), 
+              regulators = setdiff(regulators, node)))
+}
+
+NRT_regs <- function(edges_list, agi, nCores = 32){
+  registerDoParallel(cores = nCores)
+  message(paste("\nParallel network N validation Using", foreach::getDoParWorkers(), "cores."))
+  "%dopar%" <- foreach::"%dopar%"
+  tic()
+  suppressPackageStartupMessages(
+    result.validation <-
+      doRNG::"%dorng%"(foreach::foreach(network_name = names(edges_list), .combine = rbind),
+                       {
+                         net<- graph_from_data_frame(edges_list[[network_name]], directed = TRUE)
+                         nodes <- get_nodes_degree(net)
+                         if(agi %in% nodes$id){
+                           regs <- describe_node(net,agi)$regulators
+                           if(!is.null(regs)){
+                             infos <- get_gene_information(regs, organism = "Arabidopsis thaliana")
+                             res <- data.frame(regulators  = infos$label, 
+                                               knwon_pwm = colMeans(data.frame(pwm_imputed[,c(regs)]) != 0.5) )
+                             res$network_name <- network_name
+                             res
+                           }
+                         }
+                       })
+  )
+  toc()
+  attr(result.validation, "rng") <- NULL # It contains the whole sequence of RNG seeds
+  return(result.validation)
+}
+
+AT5G60770
+AT5G50200
+AT1G08090
+
+nrt2.1 <- NRT_regs(edges, "AT1G08090", nCores = 40)
+nrt2.1[,settings] <- str_split_fixed(nrt2.1$network_name,'_',length(settings))
+
+nrt2.1_plot <- nrt2.1 %>%
+  filter(regulators %in% c("HHO3", "HHO6", "NLP7", "NPL1", "LBD38", 
+                           "HHO1", "HRS1", "LBD39", "BT1", "BT2")) %>%
+  select(-network_name) %>%
+  filter(density > 0.01) %>%
+  mutate(alpha = as.numeric(alpha),
+         method = str_replace(method, "Biased Random Forests", "bRF"),
+         method = str_replace(method, "Differentially shrinked lasso SS", "LASSO-D3S"),
+         density = paste0("D=", density),
+         knwon_pwm = ifelse(knwon_pwm==1, " PWM in promoter", "No PWM")) %>%
+  ggplot(aes(fill = regulators, x = alpha, y = regulators)) +
+  ggh4x::facet_nested_wrap(vars(method, knwon_pwm, density),drop = F,ncol = 6, nest_line = T) + 
+  geom_tile(color = "grey", alpha = 0.4) + theme_pubr() +
+  theme(strip.background = element_blank(), axis.title.x = element_text(size = 22),
+        title = element_text(size = 16), strip.text = element_text(size = 16), 
+        legend.text = element_text(size = 15), axis.text = element_text(size = 12), 
+        legend.position = 'none') +
+  xlab(expression(alpha)) + ylab("") + 
+  ggtitle("Regulators of NRT2.1 in the inferred GRNs") + 
+  scale_x_continuous(labels = prettyZero, breaks =c(0,0.5,  1));nrt2.1_plot
+
+nrt2.1_plot <- nrt2.1 %>%
+  filter(regulators %in% get_gene_information(pwm_nrt2.1, organism = "Arabidopsis thaliana")$label) %>%
+  select(-network_name) %>%
+  mutate(alpha = as.numeric(alpha),
+         method = str_replace(method, "Biased Random Forests", "bRF"),
+         method = str_replace(method, "Differentially shrinked lasso SS", "LASSO-D3S"),
+         density = paste0("D=", density),
+         knwon_pwm = ifelse(knwon_pwm==1, " PWM in promoter", "No PWM")) %>%
+  ggplot(aes(fill = regulators, x = alpha, y = regulators)) +
+  ggh4x::facet_nested_wrap(vars(method, knwon_pwm, density),drop = F,ncol = 8, nest_line = T) + 
+  geom_tile(color = "grey", alpha = 0.4) + theme_pubr() +
+  theme(strip.background = element_blank(), axis.title.x = element_text(size = 22),
+        title = element_text(size = 16), strip.text = element_text(size = 16), 
+        legend.text = element_text(size = 15), axis.text = element_text(size = 12), 
+        legend.position = 'none') +
+  xlab(expression(alpha)) + ylab("") + 
+  ggtitle("Regulators of NRT2.1 in the inferred GRNs") + 
+  scale_x_continuous(labels = prettyZero, breaks =c(0,0.5,1));nrt2.1_plot
+
+fig <- n_genes_favored / (n_genes_gsea + nrt2.1_plot) + 
+  plot_annotation(tag_levels = 'a') + plot_layout(heights = c(1,1))
+
+ggexport(fig,  filename = "results/figure5.pdf", width = 18, height = 13)
+
+```
 
