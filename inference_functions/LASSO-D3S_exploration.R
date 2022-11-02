@@ -33,7 +33,7 @@ library(glmnet)
 #' @return list of regulatory interactions weighted by p-value
 LASSO.D3S_robutness <- function(counts, genes, tfs, alpha=0.25, 
                                 pwm_occurrence, int_pwm_noise = 0.1,
-                                nfolds.cv = 5, N = 100, 
+                                N = 100, 
                                 score = "freq", robustness = 0.7,
                                 nCores = ifelse(is.na(detectCores()),1,
                                                 max(detectCores() - 1, 1))){

@@ -423,8 +423,69 @@ pwm_support <- d %>%
   ggtitle("Density");pwm_support
 
 ```
+## Same parametric exploration on CO2 dataset
 
 
+```{r}
+load('rdata/CO2_degs_expression.rdata')
+genes <- CO2_responsive_genes$genes; length(genes)
+tfs <- CO2_responsive_genes$tfs; length(tfs)
+counts <- CO2_responsive_genes$counts; dim(counts)
+```
+
+### TFBS data
+
+Presence or absence of the TFs motifs in the targets promoter :
+
+```{r}
+load("rdata/pwm_occurrences_CO2_response.rdata")
+dim(pwm_occurrence)
+```
+
+# Robustness exploration
+
+```{r}
+edges_rob <- get_networks_rob(ALPHAS, ROBUSTNESSES, counts, genes, tfs, nrep = 2, nCores = 48)
+```
+```{r, fig.width=10}
+settings <- c("alpha", "score", "robustness", "rep")
+
+# number of edges per network
+nrows <- data.frame(alpha_rep = names(unlist(lapply(edges_rob, FUN = nrow))),
+                n_edges = unlist(lapply(edges_rob, FUN = nrow)))
+nrows[, settings] <- str_split_fixed(nrows$alpha_rep,'_', length(settings))
 
 
+edges_num <- lapply(edges_rob, function(df) df[sapply(df, is.numeric)])
+d <- data.frame(alpha_rep = names(unlist(lapply(edges_num, FUN = nrow))),
+                pwm = unlist(lapply(edges_num, FUN = colMeans)))
+d[, settings] <- str_split_fixed(d$alpha_rep,'_', length(settings))
+
+#color_palette = c("#88002D", "#C12131", "#EC5D2F", "#FE945C", "#FFC08E" )
+
+pwm_support <- d %>%
+  full_join(nrows, by = settings) %>%
+  mutate(alpha = as.numeric(alpha),
+         score = ifelse(score=="freq", 'Selection frequency', 'P-value')) %>%
+  ggplot(aes(color = robustness, x = alpha, y = pwm)) +
+  geom_point() + 
+  geom_smooth(aes(fill = robustness)) +
+  theme(strip.background = element_blank(), axis.title.x = element_text(size = 22),
+        title = element_text(size = 16), strip.text = element_text(size = 16), 
+        legend.text = element_text(size = 15), axis.text = element_text(size = 12)) +
+  xlab(expression(alpha)) + ylab("Mean of edges PWM presence scores") + 
+  ggtitle("Average PWM support of selected edges")+
+   d %>%
+  full_join(nrows, by = settings) %>%
+  mutate(alpha = as.numeric(alpha),
+         score = ifelse(score=="freq", 'Selection frequency', 'P-value')) %>%
+  ggplot(aes(color = robustness, x = alpha, y = n_edges/((length(genes)-1)*length(tfs)))) +
+  geom_point() + 
+  geom_smooth(aes(fill = robustness)) +
+  theme(strip.background = element_blank(), axis.title.x = element_text(size = 22),
+        title = element_text(size = 16), strip.text = element_text(size = 16), 
+        legend.text = element_text(size = 15), axis.text = element_text(size = 12)) +
+  xlab(expression(alpha)) + ylab("Density") + 
+  ggtitle("Density");pwm_support
+```
 
