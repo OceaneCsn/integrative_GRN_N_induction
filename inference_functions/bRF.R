@@ -8,9 +8,17 @@ library(foreach)
 library(doRNG)
 
 ###################### imports to use C++ code
-dyn.load("inference_functions/Cpp_dependencies/rfutils.so")
-dyn.load("inference_functions/Cpp_dependencies/regTree.so")
-dyn.load("inference_functions/Cpp_dependencies/regrf_mse.so")
+# compiled files depend on the OS ...
+if(.Platform$OS.type=="windows"){
+  dyn.load("inference_functions/Cpp_dependencies/rfutils.dll")
+  dyn.load("inference_functions/Cpp_dependencies/regTree.dll")
+  dyn.load("inference_functions/Cpp_dependencies/regrf_mse.dll")
+} else {
+  dyn.load("inference_functions/Cpp_dependencies/rfutils.so")
+  dyn.load("inference_functions/Cpp_dependencies/regTree.so")
+  dyn.load("inference_functions/Cpp_dependencies/regrf_mse.so")
+}
+
 
 
 ########## other imports
