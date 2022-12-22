@@ -184,6 +184,44 @@ val_conn[, settings] <-
   str_split_fixed(val_conn$network_name, '_', length(settings))
 ```
 
+
+
+### Computing baseline precision and MSE (random networks)
+
+
+
+```{r}
+N = 100000
+baseline <- data.frame("from" = sample(tfs, size = N, replace = T), 
+                       "to" = sample(genes, size = N, replace = T))
+base <- evaluate_network(
+    baseline,
+    validation = c("TARGET", "CHIPSeq", "DAPSeq"),
+    input_genes = genes,
+    input_tfs = tfs
+  )
+
+precision_baseline <- base$tpr
+mse_baseline <- get_MSE_baseline(counts, genes[1:1000]);mse_baseline
+
+```
+
+
+
+
+```{r, fig.width=15}
+val_conn <-
+  evaluate_networks(
+    edges,
+    validation = c("TARGET", "CHIPSeq", "DAPSeq"),
+    nCores = 45,
+    input_genes = genes,
+    input_tfs = tfs
+  )
+val_conn[, settings] <-
+  str_split_fixed(val_conn$network_name, '_', length(settings))
+```
+
 ### Plotting precision and recall analyses
 
 ```{r, fig.width=17}

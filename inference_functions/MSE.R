@@ -65,3 +65,24 @@ get_MSE <- function(net, method, nCores=ifelse(is.na(detectCores()),1,
   }
   return(mmmse)
 }
+
+get_MSE_baseline <- function(counts, genes, nCores=ifelse(is.na(detectCores()),1,
+                                               max(detectCores() - 1, 1))){
+  registerDoParallel(cores = nCores)
+  tic()
+  x <- t(counts[tfs,])
+  suppressPackageStartupMessages(mmse <-
+                                   doRNG::"%dorng%"(foreach::foreach(
+                                     target = genes,  
+                                     .inorder = TRUE),
+                                     {
+                                       sampled <- sample(1:ncol(counts), replace = T, size = ncol(counts))
+                                       oob <- setdiff(1:ncol(counts), sampled)
+                                       
+                                       mean((counts[target,oob] - mean(counts[target, sampled]))^2)
+                                       }
+                                     ))
+    attr(mmse, "rng") <- NULL
+    mmmse <- mean(log(unlist(mmse)))
+  return(mmmse)
+}

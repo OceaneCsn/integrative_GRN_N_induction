@@ -1,6 +1,3 @@
-source('inference_functions/iRafNet_utils.R')
-
-
 ######################## imports for parallel version
 library(doParallel)
 library(parallel)
@@ -20,6 +17,7 @@ if(.Platform$OS.type=="windows"){
 }
 
 
+source('inference_functions/iRafNet_utils.R')
 
 ########## other imports
 library(tictoc)
@@ -67,6 +65,7 @@ bRF_inference <- function(counts, genes, tfs, alpha=0.25, scale = FALSE,
   message(paste("\nbRF is running using", foreach::getDoParWorkers(), "cores."))
   "%dopar%" <- foreach::"%dopar%"
   tic()
+  force(irafnet_onetarget)
   suppressPackageStartupMessages(result.reg <-
                                    doRNG::"%dorng%"(foreach::foreach(target = genes, .combine = cbind, 
                                                                      .final = function(x) {colnames(x) <- genes; x}, 
@@ -76,7 +75,14 @@ bRF_inference <- function(counts, genes, tfs, alpha=0.25, scale = FALSE,
                                                       x_target <- x[, target_tfs]
                                                       p = length(target_tfs)
                                                       y <- as.numeric(t(counts[target, ]))
-                                                      weights <- 10^(prior_strength* pwm_imputed[target, target_tfs]*alpha)
+                                                      # first version for Phd manuscript
+                                                      #weights <- 10^(prior_strength* pwm_imputed[target, target_tfs]*alpha)
+                                                      
+                                                      # new version for a more similar behavior to the lasso for 
+                                                      # large alphas and no need for k
+                                                      weights <- ifelse(pwm_imputed[target, target_tfs] == 1, 1,
+                                                                        ifelse(pwm_imputed[target, target_tfs] == 0, 1-alpha,
+                                                                               sqrt(1-alpha^2)))
                                                       weights <- weights/sum(weights)
                                                       
                                                       
