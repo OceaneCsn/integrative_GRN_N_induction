@@ -21,7 +21,7 @@ source('inference_functions/iRafNet_utils.R')
 
 ########## other imports
 library(tictoc)
-library(GENIE3)
+library(reshape2)
 library(igraph)
 
 #' bRF GRN inference
@@ -81,22 +81,33 @@ bRF_inference <- function(counts, genes, tfs, alpha=0.25, scale = FALSE,
                                                       # new version for a more similar behavior to the lasso for 
                                                       # large alphas and no need for k
                                                       weights <- ifelse(pwm_imputed[target, target_tfs] == 1, 1,
-                                                                        ifelse(pwm_imputed[target, target_tfs] == 0, 1-alpha,
-                                                                               sqrt(1-alpha^2)))
-                                                      weights <- weights/sum(weights)
-                                                      
-                                                      
-                                                      rf_weighted <-irafnet_onetarget(x_target,y=y,importance=TRUE,
-                                                                                      mtry=round(sqrt(p)),
-                                                                                      ntree=nTrees,
-                                                                                      sw=weights)
-                                                      
-                                                      im <- rf_weighted$importance[,importance]
-                                                      # get relative increase in MSE instead of absolute increase
-                                                      if(importance == "%IncMSE"){
-                                                        im <- im/mean(rf_weighted$mse)
+                                                                        ifelse(pwm_imputed[target, target_tfs] == 0.5, 1-alpha,
+                                                                               -sqrt(1-(alpha-1)^2)+1))
+                                                      # sophie's version
+                                                      # weights <- ifelse(pwm_imputed[target, target_tfs] == 1, 1,
+                                                      #                   ifelse(pwm_imputed[target, target_tfs] == 0, 1-alpha,
+                                                      #                          sqrt(1-alpha^2)))
+                                                      # do not include genes in which no known PWMs are found
+                                                      # at alpha = 1
+                                                      if(sum(weights)>0){
+                                                        weights <- weights/sum(weights)
+                                                        
+                                                        
+                                                        rf_weighted <-irafnet_onetarget(x_target,y=y,importance=TRUE,
+                                                                                        mtry=round(sqrt(p)),
+                                                                                        ntree=nTrees,
+                                                                                        sw=weights)
+                                                        
+                                                        im <- rf_weighted$importance[,importance]
+                                                        # get relative increase in MSE instead of absolute increase
+                                                        if(importance == "%IncMSE"){
+                                                          im <- im/mean(rf_weighted$mse)
+                                                        }
+                                                        c(setNames(0, target), setNames(im, names(im)))[tfs]
+                                                      } else {
+                                                        setNames(rep(0, length(tfs)), tfs)
                                                       }
-                                                      c(setNames(0, target), setNames(im, names(im)))[tfs]
+                                                      
                                                     }))
   attr(result.reg, "rng") <- NULL # It contains the whole sequence of RNG seeds
   mat <- result.reg
@@ -136,3 +147,32 @@ bRF_network <- function(mat, density, pwm_occurrence, genes, tfs){
   return(edges[,c("from", "to", "pwm")])
 }
 
+
+
+getLinkList <- function (weightMatrix, reportMax = NULL, threshold = 0) 
+{
+  if (!is.numeric(threshold)) {
+    stop("threshold must be a number.")
+  }
+  regulatorsInTargets <- rownames(weightMatrix)[rownames(weightMatrix) %in% 
+                                                  colnames(weightMatrix)]
+  if (length(regulatorsInTargets) == 1) 
+    weightMatrix[regulatorsInTargets, regulatorsInTargets] <- NA
+  if (length(regulatorsInTargets) > 1) 
+    diag(weightMatrix[regulatorsInTargets, regulatorsInTargets]) <- NA
+  linkList <- reshape2::melt(weightMatrix, na.rm = TRUE)
+  colnames(linkList) <- c("regulatoryGene", "targetGene", "weight")
+  linkList <- linkList[linkList$weight >= threshold, ]
+  linkList <- linkList[order(linkList$weight, decreasing = TRUE), 
+  ]
+  if (!is.null(reportMax)) {
+    linkList <- linkList[1:min(nrow(linkList), reportMax), 
+    ]
+  }
+  rownames(linkList) <- NULL
+  uniquePairs <- nrow(unique(linkList[, c("regulatoryGene", 
+                                          "targetGene")]))
+  if (uniquePairs < nrow(linkList)) 
+    warning("There might be duplicated regulator-target (gene id/name) pairs.")
+  return(linkList)
+}

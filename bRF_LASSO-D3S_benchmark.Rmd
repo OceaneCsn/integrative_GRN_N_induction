@@ -6,9 +6,10 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-library(tidyverse)
+library(ggplot2)
+library(dplyr)
 library(ggpubr)
-library(clusterProfiler)
+#library(clusterProfiler)
 library(patchwork)
 library(visNetwork)
 library(igraph)
@@ -72,10 +73,10 @@ infer_networks <- function(alphas, densities,
                               nCores = nCores, 
                               importance = "%IncMSE")
       
-      mat_lasso <- LASSO.D3S_inference(counts, genes, tfs, 
+      mat_lasso <- LASSO.D3S_inference(counts, genes, tfs,
                                        alpha = alpha, N = 50,
                                        robustness = 0.1,int_pwm_noise = 0,
-                                       pwm_occurrence = pwm_occurrence, 
+                                       pwm_occurrence = pwm_occurrence,
                                        nCores = nCores)
       
       for(density in densities){ # exploring importance threshold stringency
@@ -83,7 +84,7 @@ infer_networks <- function(alphas, densities,
         edges[[paste0("bRF_", as.character(alpha),  '_', density, '_', rep)]] <- 
           bRF_network(mat_rf, density = density, pwm_occurrence, genes, tfs)
         
-        edges[[paste0("LASSO-D3S_", as.character(alpha),  '_', density, '_', rep)]] <- 
+        edges[[paste0("LASSO-D3S_", as.character(alpha),  '_', density, '_', rep)]] <-
           LASSO.D3S_network(mat_lasso, density = density, pwm_occurrence, genes, tfs)
       }
     }
@@ -96,13 +97,14 @@ infer_networks <- function(alphas, densities,
 
 ```{r}
 ALPHAS <- seq(0,1, by = 0.1)
-DENSITIES <- c(0.005, 0.01, 0.025, 0.05, 0.075)
+DENSITIES <- c(0.005, 0.01, 0.025, 0.05, 0.075) 
+
 set.seed(1213)
 edges <- infer_networks(alphas = ALPHAS, densities = DENSITIES, 
              counts = counts, genes = genes, tfs = tfs, 
-             nCores = 45, nrep = 3)
+             nCores = 11, nrep = 3)
 
-save(edges, file = "../PWM_models_data_article/networks_for_benchmark_alpha_density_oob_no_pert_rob_0.1.rdata")
+save(edges, file = "results/main_results.rdata")
 ```
 
 
@@ -163,6 +165,7 @@ pwm_support_plot <- pwm_support %>%
   scale_color_manual(name = "Network density", values = color_palette) +
   scale_fill_manual(name = "Network density", values = color_palette)
 pwm_support_plot
+
 ```
 
 
@@ -176,7 +179,7 @@ val_conn <-
   evaluate_networks(
     edges,
     validation = c("TARGET", "CHIPSeq", "DAPSeq"),
-    nCores = 45,
+    nCores = 10,
     input_genes = genes,
     input_tfs = tfs
   )
@@ -209,22 +212,9 @@ mse_baseline <- get_MSE_baseline(counts, genes[1:1000]);mse_baseline
 
 
 
-```{r, fig.width=15}
-val_conn <-
-  evaluate_networks(
-    edges,
-    validation = c("TARGET", "CHIPSeq", "DAPSeq"),
-    nCores = 45,
-    input_genes = genes,
-    input_tfs = tfs
-  )
-val_conn[, settings] <-
-  str_split_fixed(val_conn$network_name, '_', length(settings))
-```
-
 ### Plotting precision and recall analyses
 
-```{r, fig.width=17}
+```{r, fig.width=7, fig.height=8}
 val_connecTF <-  val_conn %>%
   select(-network_name) %>%
   left_join(nrows, by = settings) %>%
@@ -242,6 +232,7 @@ val_connecTF <-  val_conn %>%
     axis.text = element_text(size = 12),
     legend.position = 'none'
   ) +
+  
   xlab(expression(alpha)) + ylab("Precision") +
   ggtitle("Precision against ConnecTF") +
   scale_x_continuous(labels = prettyZero) +
@@ -354,7 +345,7 @@ hubs_shared <- hubs %>%
 
 ```{r, fig.width=17, fig.height=8}
 val_inter <- evaluate_networks(intersections, validation = c("TARGET", "CHIPSeq", "DAPSeq"), 
-                              nCores = 45, input_genes = genes, input_tfs = tfs)
+                              nCores = 10, input_genes = genes, input_tfs = tfs)
 val_inter[,settings_intersection] <- str_split_fixed(val_inter$network_name,'_',length(settings_intersection))
 val_inter_plot <- val_inter %>%
   mutate(alpha = as.numeric(alpha), 
@@ -397,7 +388,7 @@ val_inter_plot + val_inter_plot_recall + hubs_shared
 figure <- pwm_support_plot + val_connecTF + val_connecTF_recall + n_edges + 
   patchwork::plot_annotation(tag_levels = "a") + plot_layout(ncol=2, widths = c(1,1,1,0.9)); figure
 
-ggexport(figure, filename = "results/figure3_oob_no_perturbation_0.1rob.pdf", width = 14, height = 10)
+ggexport(figure, filename = "results/figure3.pdf", width = 14, height = 10)
 ```
 
 
@@ -406,19 +397,18 @@ ggexport(figure, filename = "results/figure3_oob_no_perturbation_0.1rob.pdf", wi
 ## Computing prediction error on test expression data
 
 ```{r}
-#load(file = "../PWM_models_data_article/networks_for_benchmark_alpha_density_oob_no_pert_rob_0.1.rdata")
 
 mses <- list()
 for(network in names(edges)){
-  mses[[network]] <- get_MSE(edges[[network]], method = str_split_fixed(network, '_', 2)[,1], nCores=52)
+  mses[[network]] <- get_MSE(edges[[network]], method = str_split_fixed(network, '_', 2)[,1], nCores=10)
 }
-save(mses, file = "../PWM_models_data_article/mse.rdata")
+save(mses, file = "results/mse.rdata")
 
 ```
 ## Plotting the results
 
 
-```{r}
+```{r, fig.width=10}
 settings <- c("method", "alpha", "density", "rep")
 mse <- data.frame(alpha_rep = names(unlist(mses)),
                 mmmse = unlist(mses))
@@ -508,7 +498,7 @@ nRegs <- topo %>%
 
 
 figure <- mse_plot+nTFs+nRegs + plot_layout(widths = c(1,1, 1)) + plot_annotation(tag_levels = 'a');figure
-ggexport(figure, filename = "results/figure4.pdf", width = 16, height = 5)
+#ggexport(figure, filename = "results/figure4.pdf", width = 16, height = 5)
 ```
 
 # Study of Nitrate-related genes in the inferred GRNs
@@ -523,8 +513,20 @@ n_genes_favorites <- c("LBD37", "LBD38", "LBD39", "TGA1", "TGA4",
 pwm_imputed <- pwm_occurrence
 pwm_imputed[is.na(pwm_imputed)] <- 0.5
 
-
-networks_N_genes <- function(edges_list, n_genes, nCores = 32){
+network_data <- function(graph){
+  data <- toVisNetworkData(graph)
+  degree <- igraph::degree(graph)
+  data$nodes$degree <- degree[match(data$nodes$id, names(degree))]
+  data$nodes$group <- ifelse(data$nodes$id %in% tfs, "Regulator", "Target Gene")
+  return(data$nodes)
+}
+get_nodes_degree <- function(graph){
+  data <- toVisNetworkData(graph)
+  degree <- igraph::degree(graph)
+  data$nodes$degree <- degree[match(data$nodes$id, names(degree))]
+  return(data$nodes)
+}
+networks_N_genes <- function(edges_list, n_genes, nCores = 11){
   
   registerDoParallel(cores = nCores)
   message(paste("\nParallel network N validation Using", foreach::getDoParWorkers(), "cores."))
@@ -560,7 +562,7 @@ networks_N_genes <- function(edges_list, n_genes, nCores = 32){
   return(result.validation)
 }
 
-N_rank_fav <- networks_N_genes(edges, n_genes_favorites, nCores = 40)
+N_rank_fav <- networks_N_genes(edges, n_genes_favorites, nCores = 11)
 N_rank_fav[,settings] <- str_split_fixed(N_rank_fav$network_name,'_',length(settings))
 
 n_genes_favored <- N_rank_fav %>%
@@ -597,12 +599,7 @@ n_genes_favored <- N_rank_fav %>%
 N_go <- c("GO:0006807", "GO:0051171", "GO:0051173", "GO:0022622")
 
 
-get_nodes_degree <- function(graph){
-  data <- toVisNetworkData(graph)
-  degree <- igraph::degree(graph)
-  data$nodes$degree <- degree[match(data$nodes$id, names(degree))]
-  return(data$nodes)
-}
+
 
 convert_from_agi <- function(ids){
   x <- org.At.tair.db::org.At.tairENTREZID
@@ -726,7 +723,7 @@ AT5G60770
 AT5G50200
 AT1G08090
 
-nrt2.1 <- NRT_regs(edges, "AT1G08090", nCores = 40)
+nrt2.1 <- NRT_regs(edges, "AT1G08090", nCores = 11)
 nrt2.1[,settings] <- str_split_fixed(nrt2.1$network_name,'_',length(settings))
 
 nrt2.1_plot <- nrt2.1 %>%

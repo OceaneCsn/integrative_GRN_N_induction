@@ -6,3 +6,4 @@ rdata/pwm_prom_jaspar_dap.rdata
 *.so
 *.o
 *.dll
+results/*.rdata

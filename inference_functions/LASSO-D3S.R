@@ -17,7 +17,6 @@ library(glmnet)
 #' TFs and genes
 #' @param int_pwm_noise value of noise added to differential shrinkage 
 #' during stability selection
-#' @param nfolds.cv number of folds during cross validation
 #' @param N Number of stability selection iterations
 #' @param score scoring of the interactions "pval" or "freq"
 #' @param robustness threshold of frequency selection required for a 
@@ -27,8 +26,8 @@ library(glmnet)
 #' @return list of regulatory interactions weighted by p-value
 LASSO.D3S_inference <- function(counts, genes, tfs, alpha=0.25, 
                                    pwm_occurrence, int_pwm_noise = 0.1,
-                                   nfolds.cv = 5, N = 100, 
-                                   score = "pval", robustness = 0.7,
+                                   N = 100, 
+                                   score = "pval", robustness = 0.1,
                                    nCores = ifelse(is.na(detectCores()),1,
                                                    max(detectCores() - 1, 1))){
   
