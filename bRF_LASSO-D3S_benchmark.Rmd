@@ -9,7 +9,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(ggplot2)
 library(dplyr)
 library(ggpubr)
-#library(clusterProfiler)
+library(clusterProfiler)
 library(patchwork)
 library(visNetwork)
 library(igraph)
@@ -507,6 +507,7 @@ figure <- mse_plot+nTFs+nRegs + plot_layout(widths = c(1,1, 1)) + plot_annotatio
 
 
 ```{r}
+load("rdata/arabidopsis_annotation.rdata")
 n_genes_favorites <- c("LBD37", "LBD38", "LBD39", "TGA1", "TGA4",
                        "HRS1", "HHO2", "HHO3", "HHO4", "DIV1" )
 
@@ -518,8 +519,11 @@ network_data <- function(graph){
   degree <- igraph::degree(graph)
   data$nodes$degree <- degree[match(data$nodes$id, names(degree))]
   data$nodes$group <- ifelse(data$nodes$id %in% tfs, "Regulator", "Target Gene")
+  data$nodes[, colnames(annot)] <- annot[match(data$nodes$id, 
+            rownames(annot)), ]
   return(data$nodes)
 }
+
 get_nodes_degree <- function(graph){
   data <- toVisNetworkData(graph)
   degree <- igraph::degree(graph)
@@ -537,9 +541,7 @@ networks_N_genes <- function(edges_list, n_genes, nCores = 11){
       doRNG::"%dorng%"(foreach::foreach(network_name = names(edges_list), .combine = rbind),
                        {
                          net<- graph_from_data_frame(edges_list[[network_name]], directed = TRUE)
-                         net_data <- network_data(net, regulators_per_organism[["Arabidopsis thaliana"]], 
-                                                  gene_annotations$`Arabidopsis thaliana`)
-                         nodes <- net_data$nodes
+                         nodes <- network_data(net)
                          nodes$pwm_status = ifelse(nodes$group != "Regulator", "target", NA)
                          nodes[is.na(nodes$pwm_status),]$pwm_status =ifelse(
                            colMeans(pwm_imputed[,nodes[is.na(nodes$pwm_status),]$id]) != 0.5, "known", "unknown" )
@@ -599,8 +601,6 @@ n_genes_favored <- N_rank_fav %>%
 N_go <- c("GO:0006807", "GO:0051171", "GO:0051173", "GO:0022622")
 
 
-
-
 convert_from_agi <- function(ids){
   x <- org.At.tair.db::org.At.tairENTREZID
   mapped_genes <- AnnotationDbi::mappedkeys(x)
@@ -653,7 +653,7 @@ networks_N_GSEA <- function(edges_list, N_go, nCores = 1){
 N_gsea <- networks_N_GSEA(edges, N_go, nCores = 1)
 N_gsea[,settings] <- str_split_fixed(N_gsea$network_name,'_',length(settings))
 
-save(N_gsea, file = "../PWM_models_data_article/N_gsea.rdata")
+#save(N_gsea, file = "../PWM_models_data_article/N_gsea.rdata")
 
 n_genes_gsea <- N_gsea %>%
   filter(density %in% c(0.005, 0.025, 0.05)) %>%
@@ -705,7 +705,9 @@ NRT_regs <- function(edges_list, agi, nCores = 32){
                          if(agi %in% nodes$id){
                            regs <- describe_node(net,agi)$regulators
                            if(!is.null(regs)){
-                             infos <- get_gene_information(regs, organism = "Arabidopsis thaliana")
+                             # <- get_gene_information(regs, organism = "Arabidopsis thaliana")
+                             
+                             infos <- annot[match(ids, rownames(annot),]
                              res <- data.frame(regulators  = infos$label, 
                                                knwon_pwm = colMeans(data.frame(pwm_imputed[,c(regs)]) != 0.5) )
                              res$network_name <- network_name
@@ -719,9 +721,9 @@ NRT_regs <- function(edges_list, agi, nCores = 32){
   return(result.validation)
 }
 
-AT5G60770
-AT5G50200
-AT1G08090
+# AT5G60770
+# AT5G50200
+# AT1G08090
 
 nrt2.1 <- NRT_regs(edges, "AT1G08090", nCores = 11)
 nrt2.1[,settings] <- str_split_fixed(nrt2.1$network_name,'_',length(settings))
