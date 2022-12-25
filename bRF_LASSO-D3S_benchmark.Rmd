@@ -165,6 +165,7 @@ pwm_support_plot <- pwm_support %>%
   ylab(expression(paste("mean(", pi[tr], ")"))) +
   scale_x_continuous(labels = prettyZero) +
   geom_hline(yintercept = pwm_support_baseline, color = "grey", linewidth=2) +
+  annotate("text", x=0.5, y=pwm_support_baseline+0.025, label="Baseline", color = "darkgrey", size=5)+
   scale_color_manual(name = "Network density", values = color_palette) +
   scale_fill_manual(name = "Network density", values = color_palette)
 pwm_support_plot
@@ -188,7 +189,7 @@ val_conn <-
   )
 val_conn[, settings] <-
   str_split_fixed(val_conn$network_name, '_', length(settings))
-load("results/val_conn.rdata")
+
 ```
 
 
@@ -219,6 +220,7 @@ pwm_support_baseline <- mean(pwm_imputed[cbind(baseline$to, baseline$from)])
 ### Plotting precision and recall analyses
 
 ```{r, fig.width=7, fig.height=8}
+load("results/val_conn.rdata")
 val_connecTF <-  val_conn %>%
   dplyr::select(-network_name) %>%
   left_join(nrows, by = settings) %>%
@@ -237,6 +239,7 @@ val_connecTF <-  val_conn %>%
     legend.position = 'none'
   ) +
   geom_hline(yintercept = precision_baseline, color = "grey", linewidth=2) +
+  annotate("text", x=0.5, y=precision_baseline+0.01, label="Baseline", color = "darkgrey", size=5)+
   xlab(expression(alpha)) + ylab("Precision") +
   ggtitle("Precision against ConnecTF") +
   scale_x_continuous(labels = prettyZero) +
@@ -246,7 +249,7 @@ val_connecTF
 
 
 val_connecTF_recall <-  val_conn %>%
-  select(-network_name) %>%
+  dplyr::select(-network_name) %>%
   left_join(nrows, by = settings) %>%
   mutate(alpha = as.numeric(alpha)) %>%
   mutate(density_label = paste(density, ':', n_edges, 'edges')) %>%
@@ -269,6 +272,66 @@ val_connecTF_recall <-  val_conn %>%
   scale_fill_manual(name = "Network density", values = color_palette)
 val_connecTF_recall
 ```
+
+
+
+# Prediction error 
+
+## Computing prediction error on test expression data
+
+```{r}
+
+mses <- list()
+for(network in names(edges)){
+  mses[[network]] <- get_MSE(edges[[network]], method = str_split_fixed(network, '_', 2)[,1], nCores=10)
+}
+save(mses, file = "results/mse.rdata")
+
+```
+
+```{r}
+load("results/mse.rdata")
+settings <- c("method", "alpha", "density", "rep")
+mse <- data.frame(alpha_rep = names(unlist(mses)),
+                mmmse = unlist(mses))
+mse[, settings] <- str_split_fixed(mse$alpha_rep,'_', length(settings))
+
+mse_plot <- mse %>%  
+  left_join(nrows, by = settings) %>%
+  mutate(alpha = as.numeric(alpha)) %>%
+  mutate(density_label = paste(density, ':', n_edges, 'edges')) %>%
+  ggplot(aes(color = density_label, x = alpha, y = mmmse)) +
+  ggh4x::facet_nested_wrap(vars(method), ncol = 8, nest_line = T) + geom_point() +
+  geom_smooth(aes(fill = density_label), alpha = 0.1) +
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'top'
+  ) +
+  geom_hline(yintercept = mse_baseline, color = "grey", linewidth=2) +
+  annotate("text", x=0.5, y=mse_baseline+0.2, label="Baseline", color = "darkgrey", size=5)+
+  scale_x_continuous(labels = prettyZero) +
+  xlab(expression(alpha))+ ylab("Log(mean(MSE))") + 
+                 ggtitle("Log of average MSE") +
+  scale_color_manual(name = "Network density", values = color_palette) +
+  scale_fill_manual(name = "Network density", values = color_palette)
+```
+
+
+## Main figure
+
+```{r, fig.width=14, fig.height=10}
+figure <- pwm_support_plot + mse_plot + val_connecTF + val_connecTF_recall + 
+  patchwork::plot_annotation(tag_levels = "a") + plot_layout(ncol=2, guides = "collect"); figure
+
+ggexport(figure, filename = "results/figure3.pdf", width = 14, height = 10)
+```
+
+
 
 ## Intersection of predicted edges between the two methods
 
@@ -317,128 +380,22 @@ n_edges <- nrows_int %>%
         title = element_text(size = 16), strip.text = element_text(size = 16), legend.position = 'none',
         legend.text = element_text(size = 15), axis.text = element_text(size = 12)) +
   xlab(expression(alpha)) + ylab("Fraction of common edges") + 
-  ggtitle("Fraction of edges shared by bRF and LASSO-3DS") + 
+  ggtitle("Fraction of edges shared \nby bRF and LASSO-3DS") + 
   scale_x_continuous(labels = prettyZero)+
   scale_color_manual(name = "Network density", values = color_palette) +
   scale_fill_manual(name = "Network density", values = color_palette)
 
 
 
-hubs <- data.frame(network_name = names(intersection_hubs),
-                   common_hubs = unlist(intersection_hubs))
-
-hubs[, settings_intersection] <- str_split_fixed(hubs$network_name,'_', length(settings_intersection))
-hubs_shared <- hubs %>%
-  mutate(alpha = as.numeric(alpha)) %>%
-  ggplot(aes(color = density, x = alpha, y = common_hubs)) +
-  geom_point() + 
-  geom_smooth(aes(fill = density), alpha = 0.1) +
-  theme(strip.background = element_blank(), axis.title.x = element_text(size = 22),
-        title = element_text(size = 16), strip.text = element_text(size = 16), legend.position = 'none',
-        legend.text = element_text(size = 15), axis.text = element_text(size = 12)) +
-  xlab(expression(alpha)) + ylab("Fraction of hubs") + 
-  ggtitle("Fraction of hubs (top 20) shared") + 
-  scale_x_continuous(labels = prettyZero)+
-  scale_color_manual(name = "Network density", values = color_palette) +
-  scale_fill_manual(name = "Network density", values = color_palette)
 ```
 
 
-### Biological validation of common edges between the two methods
 
-
-```{r, fig.width=17, fig.height=8}
-val_inter <- evaluate_networks(intersections, validation = c("TARGET", "CHIPSeq", "DAPSeq"), 
-                              nCores = 10, input_genes = genes, input_tfs = tfs)
-val_inter[,settings_intersection] <- str_split_fixed(val_inter$network_name,'_',length(settings_intersection))
-val_inter_plot <- val_inter %>%
-  mutate(alpha = as.numeric(alpha), 
-         total_edges = as.numeric(nrows$n_edges[seq_along(nrows$n_edges) %%2 == 0])) %>%
-  ggplot(aes(color = density, x = alpha, y = precision)) +
-  geom_point() + 
-  geom_smooth(aes(fill = density), alpha = 0.1) +
-  theme(strip.background = element_blank(), axis.title.x = element_text(size = 22),
-        title = element_text(size = 16), strip.text = element_text(size = 16), legend.position = 'top',
-        legend.text = element_text(size = 15), axis.text = element_text(size = 12)) +
-  xlab(expression(alpha)) + ylab("Precision") + 
-  ggtitle("Precision of edges shared") + 
-  scale_x_continuous(labels = prettyZero)+
-  scale_color_manual(name = "Network density", values = color_palette) +
-  scale_fill_manual(name = "Network density", values = color_palette)
-
-
-val_inter_plot_recall <- val_inter %>%
-  mutate(alpha = as.numeric(alpha), 
-         total_edges = as.numeric(nrows$n_edges[seq_along(nrows$n_edges) %%2 == 0])) %>%
-  ggplot(aes(color = density, x = alpha, y = recall)) +
-  geom_point() + 
-  geom_smooth(aes(fill = density), alpha = 0.1) +
-  theme(strip.background = element_blank(), axis.title.x = element_text(size = 22),
-        title = element_text(size = 16), strip.text = element_text(size = 16), legend.position = 'none',
-        legend.text = element_text(size = 15), axis.text = element_text(size = 12)) +
-  xlab(expression(alpha)) + ylab("Recall") + 
-  ggtitle("Recall of edges shared") + 
-  scale_x_continuous(labels = prettyZero)+
-  scale_color_manual(name = "Network density", values = color_palette) +
-  scale_fill_manual(name = "Network density", values = color_palette)
-
-val_inter_plot + val_inter_plot_recall + hubs_shared
-```
-
-
-## Main figure
-
-```{r, fig.width=14, fig.height=10}
-figure <- pwm_support_plot + val_connecTF + val_connecTF_recall + mse_plot + 
-  patchwork::plot_annotation(tag_levels = "a") + plot_layout(ncol=2, widths = c(1,1,1,0.9)); figure
-
-ggexport(figure, filename = "results/figure3.pdf", width = 14, height = 10)
-```
-
-
-# Prediction error and networks topology
-
-## Computing prediction error on test expression data
-
-```{r}
-
-mses <- list()
-for(network in names(edges)){
-  mses[[network]] <- get_MSE(edges[[network]], method = str_split_fixed(network, '_', 2)[,1], nCores=10)
-}
-save(mses, file = "results/mse.rdata")
-
-```
 ## Plotting the results
 
 
 ```{r, fig.width=10}
-settings <- c("method", "alpha", "density", "rep")
-mse <- data.frame(alpha_rep = names(unlist(mses)),
-                mmmse = unlist(mses))
-mse[, settings] <- str_split_fixed(mse$alpha_rep,'_', length(settings))
 
-mse_plot <- mse %>%  
-  left_join(nrows, by = settings) %>%
-  mutate(alpha = as.numeric(alpha)) %>%
-  mutate(density_label = paste(density, ':', n_edges, 'edges')) %>%
-  ggplot(aes(color = density_label, x = alpha, y = mmmse)) +
-  ggh4x::facet_nested_wrap(vars(method), ncol = 8, nest_line = T) + geom_point() +
-  geom_smooth(aes(fill = density_label), alpha = 0.1) +
-  theme(
-    strip.background = element_blank(),
-    axis.title.x = element_text(size = 22),
-    title = element_text(size = 16),
-    strip.text = element_text(size = 16),
-    legend.text = element_text(size = 15),
-    axis.text = element_text(size = 12),
-    legend.position = 'none'
-  ) +
-  scale_x_continuous(labels = prettyZero) +
-  xlab(expression(alpha))+ ylab("Log(mean(MSE))") + 
-                 ggtitle("Log of average MSE") +
-  scale_color_manual(name = "Network density", values = color_palette) +
-  scale_fill_manual(name = "Network density", values = color_palette)
 
 get_nTF <- function(net){
   return(mean(table(net$to)))
@@ -492,7 +449,7 @@ nRegs <- topo %>%
     strip.text = element_text(size = 16),
     legend.text = element_text(size = 15),
     axis.text = element_text(size = 12),
-    legend.position = 'none'
+    legend.position = 'top'
   ) +
   scale_x_continuous(labels = prettyZero) +
   xlab(expression(alpha))+ ylab("Number of distinct regulators") + 
@@ -501,8 +458,8 @@ nRegs <- topo %>%
   scale_fill_manual(name = "Network density", values = color_palette)
 
 
-figure <- n_edges+nTFs+nRegs + plot_layout(widths = c(1,1, 1)) + plot_annotation(tag_levels = 'a');figure
-#ggexport(figure, filename = "results/figure4.pdf", width = 16, height = 5)
+figure <- n_edges+nTFs+nRegs + plot_layout(widths = c(1,1, 1), guides = "collect") + plot_annotation(tag_levels = 'a');figure
+ggexport(figure, filename = "results/figure4.pdf", width = 16, height = 6)
 ```
 
 # Study of Nitrate-related genes in the inferred GRNs
@@ -761,3 +718,66 @@ ggexport(fig,  filename = "results/figure5.pdf", width = 18, height = 13)
 
 ```
 
+
+
+### Biological validation of common edges between the two methods
+
+
+```{r, fig.width=17, fig.height=8}
+
+
+hubs <- data.frame(network_name = names(intersection_hubs),
+                   common_hubs = unlist(intersection_hubs))
+
+hubs[, settings_intersection] <- str_split_fixed(hubs$network_name,'_', length(settings_intersection))
+hubs_shared <- hubs %>%
+  mutate(alpha = as.numeric(alpha)) %>%
+  ggplot(aes(color = density, x = alpha, y = common_hubs)) +
+  geom_point() + 
+  geom_smooth(aes(fill = density), alpha = 0.1) +
+  theme(strip.background = element_blank(), axis.title.x = element_text(size = 22),
+        title = element_text(size = 16), strip.text = element_text(size = 16), legend.position = 'none',
+        legend.text = element_text(size = 15), axis.text = element_text(size = 12)) +
+  xlab(expression(alpha)) + ylab("Fraction of hubs") + 
+  ggtitle("Fraction of hubs (top 20) shared") + 
+  scale_x_continuous(labels = prettyZero)+
+  scale_color_manual(name = "Network density", values = color_palette) +
+  scale_fill_manual(name = "Network density", values = color_palette)
+
+
+val_inter <- evaluate_networks(intersections, validation = c("TARGET", "CHIPSeq", "DAPSeq"), 
+                              nCores = 10, input_genes = genes, input_tfs = tfs)
+val_inter[,settings_intersection] <- str_split_fixed(val_inter$network_name,'_',length(settings_intersection))
+val_inter_plot <- val_inter %>%
+  mutate(alpha = as.numeric(alpha), 
+         total_edges = as.numeric(nrows$n_edges[seq_along(nrows$n_edges) %%2 == 0])) %>%
+  ggplot(aes(color = density, x = alpha, y = precision)) +
+  geom_point() + 
+  geom_smooth(aes(fill = density), alpha = 0.1) +
+  theme(strip.background = element_blank(), axis.title.x = element_text(size = 22),
+        title = element_text(size = 16), strip.text = element_text(size = 16), legend.position = 'top',
+        legend.text = element_text(size = 15), axis.text = element_text(size = 12)) +
+  xlab(expression(alpha)) + ylab("Precision") + 
+  ggtitle("Precision of edges shared") + 
+  scale_x_continuous(labels = prettyZero)+
+  scale_color_manual(name = "Network density", values = color_palette) +
+  scale_fill_manual(name = "Network density", values = color_palette)
+
+
+val_inter_plot_recall <- val_inter %>%
+  mutate(alpha = as.numeric(alpha), 
+         total_edges = as.numeric(nrows$n_edges[seq_along(nrows$n_edges) %%2 == 0])) %>%
+  ggplot(aes(color = density, x = alpha, y = recall)) +
+  geom_point() + 
+  geom_smooth(aes(fill = density), alpha = 0.1) +
+  theme(strip.background = element_blank(), axis.title.x = element_text(size = 22),
+        title = element_text(size = 16), strip.text = element_text(size = 16), legend.position = 'none',
+        legend.text = element_text(size = 15), axis.text = element_text(size = 12)) +
+  xlab(expression(alpha)) + ylab("Recall") + 
+  ggtitle("Recall of edges shared") + 
+  scale_x_continuous(labels = prettyZero)+
+  scale_color_manual(name = "Network density", values = color_palette) +
+  scale_fill_manual(name = "Network density", values = color_palette)
+
+val_inter_plot + val_inter_plot_recall + hubs_shared
+```
