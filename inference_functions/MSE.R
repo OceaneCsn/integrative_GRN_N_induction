@@ -59,10 +59,11 @@ get_MSE <- function(net, method, nCores=ifelse(is.na(detectCores()),1,
                                                   data = data.frame(t(round(counts,0))))$delta[2]
                                          }
                                        }))
-    toc()
+    
     attr(mmse, "rng") <- NULL
     mmmse <- mean(log(unlist(mmse)), na.rm=TRUE)
   }
+  toc()
   return(mmmse)
 }
 

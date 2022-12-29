@@ -62,14 +62,14 @@ dim(pwm_occurrence)
 ```{r}
 infer_networks <- function(alphas, densities, 
                          counts, genes, tfs, 
-                         nCores = 50, nrep = 3){
+                         nCores = 11, nrep = 3){
   edges <- list()
     
   for(alpha in alphas){ # exploring PWM integration strength
     for(rep in 1:nrep){ # exploring inherent variability
       
       mat_rf <- bRF_inference(counts, genes, tfs, nTrees = 1000,
-                              alpha = alpha, prior_strength = 2,
+                              alpha = alpha, 
                               pwm_occurrence = pwm_occurrence, 
                               nCores = nCores, 
                               importance = "%IncMSE")
@@ -94,6 +94,27 @@ infer_networks <- function(alphas, densities,
 }
 ```
 
+### Computing baseline metrics (naive or random networks)
+
+
+
+```{r}
+N = 100000
+baseline <- data.frame("from" = sample(tfs, size = N, replace = T), 
+                       "to" = sample(genes, size = N, replace = T))
+base <- evaluate_network(
+    baseline,
+    validation = c("TARGET", "CHIPSeq", "DAPSeq"),
+    input_genes = genes,
+    input_tfs = tfs
+  )
+pwm_imputed <- pwm_occurrence
+  pwm_imputed[is.na(pwm_imputed)] <- 0.5
+precision_baseline <- base$tpr
+mse_baseline <- get_MSE_baseline(counts, genes[1:1000]);mse_baseline
+pwm_support_baseline <- mean(pwm_imputed[cbind(baseline$to, baseline$from)])
+```
+
 ## Actual benchmark 
 
 ```{r}
@@ -105,16 +126,20 @@ edges <- infer_networks(alphas = ALPHAS, densities = DENSITIES,
              counts = counts, genes = genes, tfs = tfs, 
              nCores = 11, nrep = 3)
 
-save(edges, file = "results/main_results.rdata")
+save(edges, file = "results/main_results_.rdata")
 ```
+
+
+
 
 
 # Plotting results
 
 ## PWM Support
 
-```{r, fig.width=15}
-load("results/main_results.rdata")
+```{r, fig.width=7}
+load("results/main_results_.rdata")
+# load("results/bRF_function_oceane_2.rdata")
 color_palette = c("#88002D", "#C12131", "#EC5D2F", "#FE945C", "#FFC08E" )
 prettyZero <- function(l){
     max.decimals = max(nchar(str_extract(l, "\\.[0-9]+")), na.rm = T)-1
@@ -168,7 +193,6 @@ pwm_support_plot <- pwm_support %>%
   annotate("text", x=0.5, y=pwm_support_baseline+0.025, label="Baseline", color = "darkgrey", size=5)+
   scale_color_manual(name = "Network density", values = color_palette) +
   scale_fill_manual(name = "Network density", values = color_palette)
-pwm_support_plot
 
 ```
 
@@ -194,25 +218,7 @@ val_conn[, settings] <-
 
 
 
-### Computing baseline precision and MSE (random networks)
 
-
-
-```{r}
-N = 100000
-baseline <- data.frame("from" = sample(tfs, size = N, replace = T), 
-                       "to" = sample(genes, size = N, replace = T))
-base <- evaluate_network(
-    baseline,
-    validation = c("TARGET", "CHIPSeq", "DAPSeq"),
-    input_genes = genes,
-    input_tfs = tfs
-  )
-
-precision_baseline <- base$tpr
-mse_baseline <- get_MSE_baseline(counts, genes[1:1000]);mse_baseline
-pwm_support_baseline <- mean(pwm_imputed[cbind(baseline$to, baseline$from)])
-```
 
 
 
@@ -220,7 +226,7 @@ pwm_support_baseline <- mean(pwm_imputed[cbind(baseline$to, baseline$from)])
 ### Plotting precision and recall analyses
 
 ```{r, fig.width=7, fig.height=8}
-load("results/val_conn.rdata")
+# load("results/val_conn.rdata")
 val_connecTF <-  val_conn %>%
   dplyr::select(-network_name) %>%
   left_join(nrows, by = settings) %>%
@@ -282,15 +288,15 @@ val_connecTF_recall
 ```{r}
 
 mses <- list()
-for(network in names(edges)){
+for(network in names(edges)[!str_detect(names(edges), "_3")]){
   mses[[network]] <- get_MSE(edges[[network]], method = str_split_fixed(network, '_', 2)[,1], nCores=10)
 }
-save(mses, file = "results/mse.rdata")
+save(mses, file = "results/mse_.rdata")
 
 ```
 
 ```{r}
-load("results/mse.rdata")
+load("results/mse_.rdata")
 settings <- c("method", "alpha", "density", "rep")
 mse <- data.frame(alpha_rep = names(unlist(mses)),
                 mmmse = unlist(mses))

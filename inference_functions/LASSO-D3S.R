@@ -6,30 +6,13 @@ library(doRNG)
 library(glmnet)
 
 
-#' LASSO with Differential Shrinkage and Stability Selection for GRN inference
-#'
-#' @param counts expression matrix with gene IDs as rownames and conditions in columns
-#' @param genes list of genes used as inputs for GRN inference
-#' @param tfs list of TFs used as predictors for GRN inference
-#' @param alpha integration strength, value should be between 0 and 1.
-#' @param scale weather or not to scale expression data to z-scores.
-#' @param pwm_occurrence matrix of prior data Pi containing TFBS scores between
-#' TFs and genes
-#' @param int_pwm_noise value of noise added to differential shrinkage 
-#' during stability selection
-#' @param N Number of stability selection iterations
-#' @param score scoring of the interactions "pval" or "freq"
-#' @param robustness threshold of frequency selection required for a 
-#' TF to be included in unpenalized regressions
-#' @param nCores Number of cores for multithreading. (Not supported on Windows)
-#'
-#' @return list of regulatory interactions weighted by p-value
+
 LASSO.D3S_inference <- function(counts, genes, tfs, alpha=0.25, 
-                                   pwm_occurrence, int_pwm_noise = 0.1,
-                                   N = 100, 
-                                   score = "pval", robustness = 0.1,
-                                   nCores = ifelse(is.na(detectCores()),1,
-                                                   max(detectCores() - 1, 1))){
+                                pwm_occurrence, int_pwm_noise = 0.1,
+                                N = 100, 
+                                score = "pval", robustness = 0.1,
+                                nCores = ifelse(is.na(detectCores()),1,
+                                                max(detectCores() - 1, 1))){
   
   
   # to avoid convergence issues : "inner loop 3; cannot correct step size"
@@ -53,7 +36,9 @@ LASSO.D3S_inference <- function(counts, genes, tfs, alpha=0.25,
   "%dopar%" <- foreach::"%dopar%"
   tic()
   suppressPackageStartupMessages(result.reg <-
-                                   doRNG::"%dorng%"(foreach::foreach(target = genes, .combine = rbind, .inorder = T),
+                                   doRNG::"%dorng%"(foreach::foreach(target = genes, .combine = cbind, 
+                                                                     .final = function(x) {colnames(x) <- genes; x}, 
+                                                                     .inorder = TRUE),
                                                     {
                                                       # getting rid of the TF variable on which the regression is made
                                                       # if needed
@@ -121,14 +106,10 @@ LASSO.D3S_inference <- function(counts, genes, tfs, alpha=0.25,
                                                       
                                                       robust_tfs  = NULL
                                                       if(score=="freq")
-                                                        to_return <- data.frame(from =names(importances),
-                                                                                to = target,
-                                                                                importance = importances/n_actual)
+                                                        to_return <- importances/n_actual
                                                       ###### Unpenalized regression on robust TFs
                                                       if(score=="pval"){
-                                                        to_return <- data.frame(from =names(importances),
-                                                                                to = target,
-                                                                                importance = 1)
+                                                        to_return <- setNames(rep(1, length(tfs)), tfs)
                                                         tryCatch(
                                                           error = function(cnd) "a problem occurred in the unpenalized regressions for this gene.",
                                                           
@@ -149,14 +130,12 @@ LASSO.D3S_inference <- function(counts, genes, tfs, alpha=0.25,
                                                                          2:nrow(summary(lm_target)$coefficients),"Pr(>|z|)"], 
                                                                          robust_tfs))
                                                             #TF-target interactions are weighted by the TF pvalue in the glm
-                                                            to_return <- data.frame(from =names(pvals),
-                                                                                    to = target,
-                                                                                    importance = pvals)
+                                                            to_return <-  pvals
                                                           }
                                                           })
                                                       }
                                                       if(score=="freq" | score=="pval" & length(robust_tfs)>0)
-                                                        to_return
+                                                        to_return[tfs]
                                                       
                                                     }))
   attr(result.reg, "rng") <- NULL # It contains the whole sequence of RNG seeds
@@ -166,7 +145,10 @@ LASSO.D3S_inference <- function(counts, genes, tfs, alpha=0.25,
 }
 
 
-#' Threshold LASSO-D3S GRN to a desired density
+
+
+
+#' Threshold LASSO.D3S GRN to a desired density
 #'
 #' @param mat result of LASSO.D3S_inference function
 #' @param density desired network density
@@ -176,31 +158,53 @@ LASSO.D3S_inference <- function(counts, genes, tfs, alpha=0.25,
 #' @param tfs list of TFs used as predictors for GRN inference
 #'
 #' @return dataframe of oriented edges, and their prior value in pwm_occurrence
-LASSO.D3S_network <- function(mat, density, pwm_occurrence, genes, 
-                              tfs, freq=FALSE, with_score = FALSE){
-  edges_ <- mat[order(mat$importance, decreasing = freq),] 
-  
+LASSO.D3S_network <- function(mat, density, pwm_occurrence, genes, tfs, freq=FALSE){
+  # getting the number of genes for a desired density
   nEdges = round(density * (length(genes) - 1) * length(tfs), 0)
-  edges_ <- edges_[1:nEdges,]
   
-  if(!freq)
-    edges_ <- edges_[edges_$importance < 1,]
-  
-  if(nrow(edges_) < nEdges)
-    warning(paste("The desired density can not be reached : too few interactions 
-            were pre-selected by the robustness threshold. The actual density is",
-                  round(nrow(edges_)/((length(genes) - 1) * length(tfs)), 6), 
-                  ", which amounts to", nrow(edges_), "edges."))
+  # getting the ranked list of edges
+  links <- getLinkListLasso(mat, reportMax = nEdges, freq=freq)
+  network <- graph_from_data_frame(links, directed = T)
+  edges <- as_long_data_frame(network)[c(4,5)]
+  colnames(edges) <- c('from', 'to')
   
   pwm_imputed <- pwm_occurrence
   pwm_imputed[is.na(pwm_imputed)] <- 0.5
   
-  edges_$pwm <- pwm_imputed[cbind(edges_$to, edges_$from)]
-  if (!with_score)
-    return(edges_[,c("from", "to", "pwm")])
-  else
-    return(edges_[,c("from", "to", "pwm", "importance")])
-    
+  edges$pwm <- pwm_imputed[cbind(edges$to, edges$from)]
+  return(edges[,c("from", "to", "pwm")])
 }
+
+
+
+getLinkListLasso <- function (weightMatrix, reportMax = NULL, threshold = 0, freq=FALSE) 
+{
+  if (!is.numeric(threshold)) {
+    stop("threshold must be a number.")
+  }
+  regulatorsInTargets <- rownames(weightMatrix)[rownames(weightMatrix) %in% 
+                                                  colnames(weightMatrix)]
+  if (length(regulatorsInTargets) == 1) 
+    weightMatrix[regulatorsInTargets, regulatorsInTargets] <- NA
+  if (length(regulatorsInTargets) > 1) 
+    diag(weightMatrix[regulatorsInTargets, regulatorsInTargets]) <- NA
+  linkList <- reshape2::melt(weightMatrix, na.rm = TRUE)
+  colnames(linkList) <- c("regulatoryGene", "targetGene", "weight")
+  linkList <- linkList[order(linkList$weight, decreasing = freq), 
+  ]
+  if (!is.null(reportMax)) {
+    linkList <- linkList[1:min(nrow(linkList), reportMax), 
+    ]
+  }
+  rownames(linkList) <- NULL
+  uniquePairs <- nrow(unique(linkList[, c("regulatoryGene", 
+                                          "targetGene")]))
+  if (uniquePairs < nrow(linkList)) 
+    warning("There might be duplicated regulator-target (gene id/name) pairs.")
+  return(linkList)
+}
+
+
+
 
 

@@ -31,7 +31,6 @@ library(igraph)
 #' @param tfs list of TFs used as predictors for GRN inference
 #' @param alpha integration strength, value should be between 0 and 1.
 #' @param scale weather or not to scale expression data to z-scores.
-#' @param prior_strength value of k in the link function
 #' @param pwm_occurrence matrix of prior data Pi containing TFBS scores between
 #' TFs and genes
 #' @param nTrees Number of trees in Random Forests
@@ -41,7 +40,6 @@ library(igraph)
 #'
 #' @return The weighted list of regulatory interactions between genes and TFs
 bRF_inference <- function(counts, genes, tfs, alpha=0.25, scale = FALSE,
-                          prior_strength = 2,
                           pwm_occurrence, nTrees=500, importance="%IncMSE",
                           nCores = ifelse(is.na(detectCores()),1,
                                           max(detectCores() - 1, 1))){
@@ -62,10 +60,9 @@ bRF_inference <- function(counts, genes, tfs, alpha=0.25, scale = FALSE,
   
   # the regressions for each genes are done in parallel
   registerDoParallel(cores = nCores)
-  message(paste("\nbRF is running using", foreach::getDoParWorkers(), "cores."))
+  message(paste("\nbRF is running using", foreach::getDoParWorkers(), "cores. alpha =", alpha))
   "%dopar%" <- foreach::"%dopar%"
   tic()
-  force(irafnet_onetarget)
   suppressPackageStartupMessages(result.reg <-
                                    doRNG::"%dorng%"(foreach::foreach(target = genes, .combine = cbind, 
                                                                      .final = function(x) {colnames(x) <- genes; x}, 
@@ -75,20 +72,33 @@ bRF_inference <- function(counts, genes, tfs, alpha=0.25, scale = FALSE,
                                                       x_target <- x[, target_tfs]
                                                       p = length(target_tfs)
                                                       y <- as.numeric(t(counts[target, ]))
+                                                      
                                                       # first version for Phd manuscript
                                                       #weights <- 10^(prior_strength* pwm_imputed[target, target_tfs]*alpha)
                                                       
-                                                      # new version for a more similar behavior to the lasso for 
-                                                      # large alphas and no need for k
-                                                      weights <- ifelse(pwm_imputed[target, target_tfs] == 1, 1,
-                                                                        ifelse(pwm_imputed[target, target_tfs] == 0.5, 1-alpha,
-                                                                               -sqrt(1-(alpha-1)^2)+1))
-                                                      # sophie's version
+                                                      # do not include genes in which no known PWMs are found
+                                                      # at alpha = 1
+                                                      
+                                                      # sophie's version : not strong enough
                                                       # weights <- ifelse(pwm_imputed[target, target_tfs] == 1, 1,
                                                       #                   ifelse(pwm_imputed[target, target_tfs] == 0, 1-alpha,
                                                       #                          sqrt(1-alpha^2)))
-                                                      # do not include genes in which no known PWMs are found
-                                                      # at alpha = 1
+                                                      
+                                                      # new version for a more similar behavior to the lasso for 
+                                                      # large alphas and no need for k
+                                                      # ok but not linear enough
+                                                      # weights <- ifelse(pwm_imputed[target, target_tfs] == 1, 1,
+                                                      #                   ifelse(pwm_imputed[target, target_tfs] == 0.5, 1-alpha,
+                                                      #                          -sqrt(1-(alpha-1)^2)+1))
+                                                      
+                                                      # stronger version
+                                                      weights <- ifelse(pwm_imputed[target, target_tfs] == 1, sqrt(1-(alpha-1)^2)+1,
+                                                                        ifelse(pwm_imputed[target, target_tfs] == 0.5, 1-alpha,
+                                                                               -sqrt(1-(alpha-1)^2)+1))
+                                                      
+                                                      
+                                                      
+                                                     
                                                       if(sum(weights)>0){
                                                         weights <- weights/sum(weights)
                                                         
