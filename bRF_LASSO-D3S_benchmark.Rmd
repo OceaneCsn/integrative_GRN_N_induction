@@ -283,6 +283,46 @@ val_connecTF_recall
 
 # Prediction error 
 
+
+## Computing baselines for MSE for each density and alpha
+
+```{r}
+load("results/main_results_.rdata")
+mses_baselines<- list()
+n_genes<- list()
+for(alpha in ALPHAS){ # exploring PWM integration strength
+  for(rep in 1:2){ # exploring inherent variability
+    for(density in DENSITIES){ # exploring importance threshold stringency
+      for(method in c("bRF", "LASSO-D3S")){
+        net <- edges[[paste0(method, "_", as.character(alpha),  '_', density, '_', rep)]]
+        #mses_baselines[[paste0(method, '_', as.character(alpha), '_', density, '_', rep)]] <- 
+        #get_MSE_baseline(counts, unique(c(net$from, net$to)), nCores = 6)
+        n_genes[[paste0(method, '_', as.character(alpha), '_', density, '_', rep)]] <-
+          length(unique(c(net$from, net$to)))
+      }
+    }
+  }
+}
+
+mses_base <- data.frame(unlist(mses_baselines))
+mses_base$alpha_rep <- rownames(mses_base)
+colnames(mses_base)[1] <- "mmmse"
+settings <- c("method", "alpha", "density", "rep")
+mses_base[, settings] <- str_split_fixed(mses_base$alpha_rep,'_', length(settings))
+
+
+n_genes <- data.frame(unlist(n_genes))
+n_genes$alpha_rep <- rownames(n_genes)
+colnames(n_genes)[1] <- "n_genes"
+settings <- c("method", "alpha", "density", "rep")
+n_genes[, settings] <- str_split_fixed(n_genes$alpha_rep,'_', length(settings))
+
+mses_base$type = "baseline"
+
+
+
+```
+
 ## Computing prediction error on test expression data
 
 ```{r}
@@ -301,6 +341,12 @@ settings <- c("method", "alpha", "density", "rep")
 mse <- data.frame(alpha_rep = names(unlist(mses)),
                 mmmse = unlist(mses))
 mse[, settings] <- str_split_fixed(mse$alpha_rep,'_', length(settings))
+mse$type <- " inferred GRN"
+
+mse_complete <- rbind.data.frame(mses_base, mse) %>%
+  full_join(n_genes, by = settings) %>%
+  mutate(n_genes = ifelse(type==" inferred GRN", NA,
+                          ifelse(rep==2, NA, n_genes)))
 
 mse_plot <- mse %>%  
   left_join(nrows, by = settings) %>%
@@ -324,7 +370,37 @@ mse_plot <- mse %>%
   xlab(expression(alpha))+ ylab("Log(mean(MSE))") + 
                  ggtitle("Log of average MSE") +
   scale_color_manual(name = "Network density", values = color_palette) +
-  scale_fill_manual(name = "Network density", values = color_palette)
+  scale_fill_manual(name = "Network density", values = color_palette); mse_plot
+
+
+
+
+mse_plot <- mse_complete %>%  
+  left_join(nrows, by = settings) %>%
+  mutate(alpha = as.numeric(alpha)) %>%
+  mutate(density_label = paste(density, ':', n_edges, 'edges')) %>%
+  ggplot(aes(color = density_label, x = alpha, y = mmmse, label = n_genes)) +
+  ggh4x::facet_nested_wrap(vars(method, density_label), ncol = 5, nest_line = T) + geom_point() +
+  geom_smooth(aes(fill = density_label, linetype = type), alpha = 0.1) +
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'top'
+  ) +
+  guides(color=guide_legend(nrow=2,byrow=TRUE),
+         fill=guide_legend(nrow=2,byrow=TRUE))+
+  scale_x_continuous(labels = prettyZero) +
+  xlab(expression(alpha))+ ylab("Log(mean(MSE))") + 
+                 ggtitle("Log of average MSE") +
+  scale_color_manual(name = "Network density", values = color_palette) +
+  scale_fill_manual(name = "Network density", values = color_palette)+
+  geom_text(nudge_y = 0.25, size=2, color = "black"); mse_plot
+
+ggexport(mse_plot, filename = "results/figure3_mse.pdf", width = 14, height = 8)
 ```
 
 

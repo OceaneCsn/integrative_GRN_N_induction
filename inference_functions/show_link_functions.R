@@ -8,18 +8,18 @@ ALPHAS <- seq(0,1, by = 0.1)
 weights_rf <- function(pi, alpha){
   if (pi == 1)
     return(sqrt(1-(alpha-1)^2)+1)
-  if(pi==0)
+  if(pi==0.5)
     return(1-alpha)
-  if(pi == 0.5)
+  if(pi == 0)
     return(-sqrt(1-(alpha-1)^2)+1)
 }
 
 weights_sophie <- function(pi, alpha){
   if (pi == 1)
     return(1)
-  if(pi==0.5)
+  if(pi==0)
     return(1-alpha)
-  if(pi == 0)
+  if(pi == 0.5)
     return(sqrt(1-(alpha)^2))
 }
 
