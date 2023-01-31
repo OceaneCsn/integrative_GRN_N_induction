@@ -36,13 +36,14 @@ get_MSE <- function(net, method, nCores=ifelse(is.na(detectCores()),1,
   }
   if(method == "LASSO-D3S" ){
     x <- round(t(counts[tfs,]),0)
+    
     suppressPackageStartupMessages(mmse <-
                                      doRNG::"%dorng%"(foreach::foreach(
                                        target = genes,  
                                        .inorder = TRUE),
                                        {
                                          target_tfs <- net[net$to == target,"from"]
-                                         
+                                         x_ <- round(t(counts[c(tfs, target),]),0)
                                          if(length(target_tfs) > 0){
                                            x_target <- x[, target_tfs]
                                            y <- as.numeric(t(counts[target, ]))
@@ -52,7 +53,7 @@ get_MSE <- function(net, method, nCores=ifelse(is.na(detectCores()),1,
                                              formula = paste(paste0("`", target, "`"), '~', 
                                                              paste(paste0("`", target_tfs, "`"), 
                                                                    collapse = '+')), 
-                                             data = data.frame(t(round(counts,0))), 
+                                             data = data.frame(x_), 
                                              family = "poisson")
                                            
                                            cv.glm(glmfit = lm_target, K=length(y), 
@@ -71,7 +72,6 @@ get_MSE_baseline <- function(counts, genes, nCores=ifelse(is.na(detectCores()),1
                                                max(detectCores() - 1, 1))){
   registerDoParallel(cores = nCores)
   tic()
-  x <- t(counts[tfs,])
   suppressPackageStartupMessages(mmse <-
                                    doRNG::"%dorng%"(foreach::foreach(
                                      target = genes,  

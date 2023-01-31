@@ -68,25 +68,26 @@ infer_networks <- function(alphas, densities,
   for(alpha in alphas){ # exploring PWM integration strength
     for(rep in 1:nrep){ # exploring inherent variability
       
-      mat_rf <- bRF_inference(counts, genes, tfs, nTrees = 1000,
-                              alpha = alpha, 
-                              pwm_occurrence = pwm_occurrence, 
-                              nCores = nCores, 
-                              importance = "%IncMSE")
+      # mat_rf <- bRF_inference(counts, genes, tfs, nTrees = 1000,
+      #                         alpha = alpha, 
+      #                         pwm_occurrence = pwm_occurrence, 
+      #                         nCores = nCores, 
+      #                         importance = "%IncMSE")
       
-      mat_lasso <- LASSO.D3S_inference(counts, genes, tfs,
+      mat_lasso <- LASSO.D3S_inferenceMDA(counts, genes, tfs,
                                        alpha = alpha, N = 50,
-                                       robustness = 0.1,int_pwm_noise = 0,
+                                       int_pwm_noise = 0, mda_type = "zero",
                                        pwm_occurrence = pwm_occurrence,
                                        nCores = nCores)
       
       for(density in densities){ # exploring importance threshold stringency
         
-        edges[[paste0("bRF_", as.character(alpha),  '_', density, '_', rep)]] <- 
-          bRF_network(mat_rf, density = density, pwm_occurrence, genes, tfs)
+        # edges[[paste0("bRF_", as.character(alpha),  '_', density, '_', rep)]] <- 
+        #   bRF_network(mat_rf, density = density, pwm_occurrence, genes, tfs)
         
         edges[[paste0("LASSO-D3S_", as.character(alpha),  '_', density, '_', rep)]] <-
-          LASSO.D3S_network(mat_lasso, density = density, pwm_occurrence, genes, tfs)
+          LASSO.D3S_network(mat_lasso, density = density, pwm_occurrence, genes, 
+                            tfs, decreasing = T)
       }
     }
   }
@@ -124,9 +125,9 @@ DENSITIES <- c(0.005, 0.01, 0.025, 0.05, 0.075)
 set.seed(1213)
 edges <- infer_networks(alphas = ALPHAS, densities = DENSITIES, 
              counts = counts, genes = genes, tfs = tfs, 
-             nCores = 11, nrep = 3)
+             nCores = 11, nrep = 2)
 
-save(edges, file = "results/main_results_.rdata")
+save(edges, file = "results/lasso_mda_0.rdata")
 ```
 
 
@@ -138,7 +139,7 @@ save(edges, file = "results/main_results_.rdata")
 ## PWM Support
 
 ```{r, fig.width=7}
-load("results/main_results_.rdata")
+# load("results/lasso_mda.rdata")
 # load("results/bRF_function_oceane_2.rdata")
 color_palette = c("#88002D", "#C12131", "#EC5D2F", "#FE945C", "#FFC08E" )
 prettyZero <- function(l){
@@ -287,16 +288,16 @@ val_connecTF_recall
 ## Computing baselines for MSE for each density and alpha
 
 ```{r}
-load("results/main_results_.rdata")
+# load("results/main_results_.rdata")
 mses_baselines<- list()
 n_genes<- list()
 for(alpha in ALPHAS){ # exploring PWM integration strength
   for(rep in 1:2){ # exploring inherent variability
     for(density in DENSITIES){ # exploring importance threshold stringency
-      for(method in c("bRF", "LASSO-D3S")){
+      for(method in c("LASSO-D3S")){
         net <- edges[[paste0(method, "_", as.character(alpha),  '_', density, '_', rep)]]
-        #mses_baselines[[paste0(method, '_', as.character(alpha), '_', density, '_', rep)]] <- 
-        #get_MSE_baseline(counts, unique(c(net$from, net$to)), nCores = 6)
+        mses_baselines[[paste0(method, '_', as.character(alpha), '_', density, '_', rep)]] <- 
+        get_MSE_baseline(counts, unique(c(net$from, net$to)), nCores = 6)
         n_genes[[paste0(method, '_', as.character(alpha), '_', density, '_', rep)]] <-
           length(unique(c(net$from, net$to)))
       }
@@ -331,12 +332,12 @@ mses <- list()
 for(network in names(edges)[!str_detect(names(edges), "_3")]){
   mses[[network]] <- get_MSE(edges[[network]], method = str_split_fixed(network, '_', 2)[,1], nCores=10)
 }
-save(mses, file = "results/mse_.rdata")
+save(mses, file = "results/mse_lasso_mda_0.rdata")
 
 ```
 
 ```{r}
-load("results/mse_.rdata")
+# load("results/mse_lasso_mda.rdata")
 settings <- c("method", "alpha", "density", "rep")
 mse <- data.frame(alpha_rep = names(unlist(mses)),
                 mmmse = unlist(mses))
@@ -400,7 +401,7 @@ mse_plot <- mse_complete %>%
   scale_fill_manual(name = "Network density", values = color_palette)+
   geom_text(nudge_y = 0.25, size=2, color = "black"); mse_plot
 
-ggexport(mse_plot, filename = "results/figure3_mse.pdf", width = 14, height = 8)
+# ggexport(mse_plot, filename = "results/figure3_mse.pdf", width = 14, height = 8)
 ```
 
 
@@ -410,7 +411,7 @@ ggexport(mse_plot, filename = "results/figure3_mse.pdf", width = 14, height = 8)
 figure <- pwm_support_plot + mse_plot + val_connecTF + val_connecTF_recall + 
   patchwork::plot_annotation(tag_levels = "a") + plot_layout(ncol=2, guides = "collect"); figure
 
-ggexport(figure, filename = "results/figure3.pdf", width = 14, height = 10)
+ggexport(figure, filename = "results/figure3_lasso_mda_0.pdf", width = 14, height = 10)
 ```
 
 
@@ -863,3 +864,127 @@ val_inter_plot_recall <- val_inter %>%
 
 val_inter_plot + val_inter_plot_recall + hubs_shared
 ```
+
+# Links between p-values and variability
+
+
+```{r, fig.width=10}
+pvalues <- LASSO.D3S_inference(counts, genes, tfs, alpha = 0.5, N = 50,
+                               pwm_occurrence = pwm_occurrence, nCores = 10)
+
+hist(pvalues)
+pvalues[pvalues==1] <- NA
+hist(pvalues)
+lasso_imp[lasso_imp==0] <- NA
+
+
+gene_vari <- data.frame(target = rownames(counts), sd = matrixStats::rowSds(counts),
+                        mean = matrixStats::rowMeans2(counts), 
+                        cv = matrixStats::rowSds(counts)/matrixStats::rowMeans2(counts))
+
+
+# reshape2::melt(data.frame(pvalues)) %>%
+#   tidyr::drop_na() %>%
+#   dplyr::rename(target = variable, pvalue = value) %>%
+#   full_join(gene_vari, by = "target") %>%
+#   group_by(target) %>%
+#   summarise(pvalue = median(pvalue, na.rm=T), 
+#             mean = median(cv, na.rm=T),
+#             cv = median(cv, na.rm=T),
+#             sd = median(sd, na.rm=T)) %>%
+#   ggplot(aes(x=cv, y=pvalue)) +
+#   geom_point(size=1) + stat_cor(color = 'black', method = "spearman") + 
+#   theme(legend.position = "none") 
+
+
+imp <- bRF_inference(counts, genes, tfs, alpha = 0.5,
+                               pwm_occurrence = pwm_occurrence, nCores = 10)
+
+reshape2::melt(data.frame(lasso_imp)) %>%
+  tidyr::drop_na() %>%
+  dplyr::rename(target = variable, pvalue = value) %>%
+  full_join(gene_vari, by = "target") %>%
+  ggplot(aes(x=sd, y=pvalue, color = target)) +
+  geom_point(alpha = 0.1, size=1) + stat_cor(color = 'black', method = "spearman") + 
+  theme(legend.position = "none")+
+  ggtitle("P-value en fonction du SD")+
+reshape2::melt(data.frame(lasso_imp)) %>%
+  tidyr::drop_na() %>%
+  dplyr::rename(target = variable, pvalue = value) %>%
+  full_join(gene_vari, by = "target") %>%
+  ggplot(aes(x=cv, y=pvalue, color = target)) +
+  geom_point(alpha = 0.1, size=1) + stat_cor(color = 'black', method = "spearman") + 
+  theme(legend.position = "none") +
+  ggtitle("P-value en fonction du CV") + ylim(c(0,20))+
+reshape2::melt(data.frame(imp)) %>%
+  tidyr::drop_na() %>%
+  dplyr::rename(target = variable, mda = value) %>%
+  full_join(gene_vari, by = "target") %>%
+  ggplot(aes(x=sd, y=mda, color = target)) +
+  geom_point(alpha = 0.1, size=1) + stat_cor(color = 'black', method = "spearman") + 
+  theme(legend.position = "none")+
+  ggtitle("MDA en fonction du SD")+
+reshape2::melt(data.frame(imp)) %>%
+  tidyr::drop_na() %>%
+  dplyr::rename(target = variable, mda = value) %>%
+  full_join(gene_vari, by = "target") %>%
+  ggplot(aes(x=cv, y=mda, color = target)) +
+  geom_point(alpha = 0.1, size=1) + stat_cor(color = 'black', method = "spearman") + 
+  theme(legend.position = "none") +
+  ggtitle("MDA en fonction du CV") + plot_layout(ncol=2)
+
+
+grn_lasso.d3s %>%
+  mutate(importance = lasso_imp[cbind(grn_lasso.d3s$from, grn_lasso.d3s$to)]) %>%
+  dplyr::rename(target = to) %>%
+  group_by(target) %>%
+  full_join(gene_vari, by = "target") %>%
+  summarise(importance = median(importance), cv = mean(cv), mean = mean(mean)) %>%
+  ggplot(aes(x=cv, y=importance, color = target)) +
+  geom_point(alpha = 1, size=1) + stat_cor(color = 'black', method = "spearman") + 
+  theme(legend.position = "none") +
+  ggtitle("MDA en fonction du CV") + ylim(c(0,20))
+```
+# Links between number of motifs and variability
+
+```{r}
+load("rdata/pwm_prom_jaspar_dap.rdata")
+hist(table(pwm_prom$target))
+nb_motifs <- data.frame(target = names(table(pwm_prom$target)), 
+                        nb_motifs = table(pwm_prom$target))
+
+nb_motifs %>%
+  full_join(gene_vari, by = "target") %>%
+  tidyr::drop_na()%>%
+  ggplot(aes(y=nb_motifs.Freq, x=cv, color = target))+
+  geom_point() + 
+  theme(legend.position = "none") + 
+  stat_cor(color = "black")+
+  ylab("Number of motifs in promoter")
+
+nb_motifs %>%
+  full_join(gene_vari, by = "target") %>%
+  tidyr::drop_na()%>%
+  ggplot(aes(y=nb_motifs.Freq, x=cv, color = target))+
+  geom_point() + 
+  theme(legend.position = "none") + 
+  stat_cor(color = "black")+
+  ylab("Number of motifs in promoter")+
+  ggtitle("Number of PWMs in promoter depending on gene CV")
+```
+
+# MSE tests
+
+
+```{r}
+pvalues <- LASSO.D3S_inference(counts, genes, tfs, alpha = 0.5, N = 50,
+                               pwm_occurrence = pwm_occurrence, nCores = 10)
+grn_lasso.d3s <- LASSO.D3S_network(pvalues, density = 0.005, pwm_occurrence, genes, tfs)
+
+mse_debiased <- get_MSE(grn_lasso.d3s, method = "LASSO-D3S", nCores = 10) 
+mse_raw <- get_MSE(grn_lasso.d3s, method = "LASSO-D3S", nCores = 10) 
+get_MSE_baseline(counts, unique(c(grn_lasso.d3s$from, grn_lasso.d3s$to)), nCores = 10)
+head(grn_lasso.d3s); dim(grn_lasso.d3s)
+mean(grn_lasso.d3s$pwm)
+```
+
