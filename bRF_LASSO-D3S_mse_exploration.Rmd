@@ -1,0 +1,172 @@
+---
+title: "Integrative GRN inference : model exploration"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+source('inference_functions/bRF.R')
+source('inference_functions/LASSO-D3S.R')
+source('inference_functions/evaluateNetwork.R')
+source('inference_functions/MSE.R')
+library(ComplexHeatmap)
+library(ggplot2)
+
+
+```
+
+This document demonstrates the use of the bRF and LASSO-D3S functions for integrative GRN inference.
+
+Those functions infer the regulatory pathways of *Arabidopsis thaliana*'s roots in response to nitrate (N) induction from [Varala et al., 2018](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE97500).
+
+They use as inputs the expression profiles of N-responsive genes and TFBS information. 
+Prior TFBS information was built by searching in the promoters of the N-responsive genes the PWM of the N-responsive regulators. 
+
+## Data import
+
+### Expression data
+
+Import of the expression data and the N-responsive genes and regulators :
+
+```{r}
+load('rdata/inference_input_N_response_varala.rdata')
+genes <- input_data$grouped_genes; length(genes)
+tfs <- input_data$grouped_regressors; length(tfs)
+counts <- input_data$counts; dim(counts)
+```
+
+### TFBS data
+
+
+```{r}
+load("rdata/pwm_occurrences_N_response_varala.rdata")
+dim(pwm_occurrence)
+```
+
+## GRN inference
+
+How does the individual MSE of genes varies with $\alpha$ for model estimation in GRN inferences?
+
+### bRf : biased Random Forests
+
+```{r, eval=FALSE}
+ALPHAS <- seq(0,1, by = 0.1)
+lmses <- data.frame(row.names = genes)
+
+for(alpha in ALPHAS){
+  set.seed(121314)
+  lmses[,as.character(alpha)] <- bRF_inference_MSE(counts, genes, tfs, alpha = alpha, nTrees = 1000,
+                             pwm_occurrence = pwm_occurrence, nCores = 18)
+}
+
+save(lmses, file = "results/logMSES_RFs_per_genes.rdata")
+
+```
+
+Clustering the genes :
+
+
+```{r}
+load(file = "results/logMSES_RFs_per_genes.rdata")
+
+mse <- (lmses-rowMeans(lmses)) / matrixStats::rowSds(as.matrix(lmses))
+
+ha = HeatmapAnnotation(
+    alpha = anno_simple(as.numeric(rep(colnames(mse),1))),
+    annotation_name_side = "left")
+
+
+
+heatmap_rf <- Heatmap(mse, row_km = 3, cluster_columns = F, show_row_names = F, 
+        name = "scaled logMSE (z-score)", top_annotation = ha,
+        row_title = "Genes", column_title = "alpha"); heatmap_rf
+```
+
+## LASSO-D3S
+
+```{r, eval=FALSE}
+
+lmses_lasso <- data.frame(row.names = genes)
+
+for(alpha in ALPHAS){
+  set.seed(121314)
+  lmses_lasso[,as.character(alpha)] <- LASSO.D3S_inference_MSE(counts, genes, tfs,
+                                                               normalized = TRUE, 
+                                                               alpha = alpha, N = 50,
+                               pwm_occurrence = pwm_occurrence, nCores = 15)
+}
+
+save(lmses_lasso, file = "results/logMSES_Lasso_per_genes_normalized.rdata")
+
+```
+
+
+
+```{r}
+load(file = "results/logMSES_Lasso_per_genes.rdata")
+mse_lasso <- (lmses_lasso-rowMeans(lmses_lasso)) / matrixStats::rowSds(as.matrix(lmses_lasso))
+
+ha = HeatmapAnnotation(
+    alpha = anno_simple(as.numeric(rep(colnames(mse),1))),
+    annotation_name_side = "left")
+
+
+heatmap_lasso <- Heatmap(mse_lasso, row_km = 3, cluster_columns = F, show_row_names = F, 
+        name = "scaled logMSE (z-score)", top_annotation = ha,
+        row_title = "Genes", column_title = "alpha"); heatmap_lasso
+```
+
+## Y-a-til des gènes qu'on n'arrive pas à bien prédire, dans aucun cas?
+
+En fait les gènes sur lesquels on se trompe le plus sont aussi les gènes les plus exprimés...
+
+```{r}
+min_mses <- matrixStats::rowMins(as.matrix(lmses_lasso))
+hist(min_mses)
+mean_expr <- rowMeans(counts)
+df <- data.frame(mean_expr)
+df$bad <- rownames(df) %in% bad_genes
+
+hist(min_mses/mean_expr[rownames(lmses)], breaks = 100)
+bad_genes <- genes[which(min_mses > 12)]
+
+df$min_lmse <- min_mses
+
+ggplot(df, aes(x=bad, y=mean_expr)) + geom_boxplot()
+ggplot(df, aes(x=log(mean_expr), y=min_lmse)) + geom_point()
+```
+
+## Clustering global des gènes suivant alpha et les deux méthodes
+
+Il semblerait que les gènes dont la MSE diminue ne soient pas les mêmes suivant bRF et LASSO, seul un petit sous ensemble est commun:
+
+```{r, fig.height=10, fig.width=6}
+
+ha = HeatmapAnnotation(
+  method = c(rep("bRF", 11), rep("lasso", 11)),
+    alpha = anno_simple(as.numeric(rep(colnames(mse),2))),
+    annotation_name_side = "left")
+
+Heatmap(cbind(mse, mse_lasso), row_km = 6, cluster_columns = F, show_row_names = F, 
+        name = "scaled logMSE", top_annotation = ha, clustering_distance_rows = "spearman",
+        row_title = "Genes")
+
+all_mses <- cbind(lmses, lmses_lasso)
+all_mses_scaled <- (all_mses-rowMeans(all_mses)) / matrixStats::rowSds(as.matrix(all_mses))
+
+Heatmap(all_mses_scaled, row_km = 7, cluster_columns = F, show_row_names = F, 
+        name = "scaled logMSE", top_annotation = ha, clustering_distance_rows = "spearman",
+        row_title = "Genes")
+
+
+Heatmap(cbind(mse, mse_lasso), row_km = 6, cluster_columns = F, show_row_names = F, 
+        name = "scaled logMSE", top_annotation = ha, clustering_distance_rows = "spearman",
+        row_title = "Genes")
+```
+
+
+## Quelles sont les caractéristiques des clusters de gènes
+
+Nombre de motifs dans le promoteur, niveau d'expression, ontologies, sont-ils des TFs? leur taille?
