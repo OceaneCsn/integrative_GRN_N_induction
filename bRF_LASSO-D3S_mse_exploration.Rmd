@@ -162,7 +162,13 @@ hist(min_mses_rf, breaks = 100)
 
 hist(min_mses, breaks = 100)
 # df <- data.frame(mean_expr)
-bad_genes <- min_mses > 0.3
+bad_genes_lasso <- genes[which(min_mses_lasso > 0.3)]
+bad_genes_rf <- genes[which(min_mses_rf > 0.3)]
+
+
+bad_genes_lasso <- min_mses_lasso > 0.3
+bad_genes_rf <- min_mses_rf > 0.3
+
 # df$bad <- rownames(df) %in% bad_genes
 # df$min_lmse <- min_mses
 # ggplot(df, aes(x=bad, y=mean_expr)) + geom_boxplot()
@@ -170,6 +176,11 @@ bad_genes <- min_mses > 0.3
 # 
 mse_lasso_scaled <- exp(lmses_lasso)/var_expr
 mse_rf_scaled <- exp(lmses)/var_expr
+
+
+# mse_lasso_scaled[bad_genes_lasso>0.3,]<-NA
+# mse_rf_scaled[bad_genes_rf>0.3,]<-NA
+# 
 
 # 
 # ha = HeatmapAnnotation(
@@ -188,8 +199,7 @@ mse_rf_scaled <- exp(lmses)/var_expr
 
 ```
 
-Sans normaliser par la MSE moyenne par gène, on ne voit plus les variations de MSE liées à alpha, on voit uniquement les gènes qui sont globalement bien ou mal prédits.
-Deux méthodes simultanément :
+Sans normaliser par la MSE moyenne par gène, on ne voit plus les variations de MSE liées à alpha, on voit uniquement les gènes qui sont globalement bien ou mal prédits. Deux méthodes simultanément :
 
 ```{r, fig.height=8, fig.width=6}
 Heatmap(all_mses_scaled, row_km = 0, cluster_columns = F, show_row_names = F, 
@@ -206,13 +216,12 @@ Heatmap((all_mses_scaled-rowMeans(all_mses_scaled))/matrixStats::rowSds(as.matri
         name = "MSE/Var", top_annotation = hall, col = rev(hcl.colors(5, palette = "Reds 2")),
         row_title = "Genes")+ rowAnnotation(
     scaled_min_mse = min_mses)
-
 ```
 
 En fait, comme le z-score est calculé sur les deux méthodes, on a encore une grosse contribution à la couleur de la différence de MSE inhérente aux deux méthodes, et non à l'effet de l'intégration. Je calcule donc un z-score par méthodes pour faire la représentation:
 
 ```{r, fig.height=8, fig.width=6}
-mse_lasso_scaled_zscore <- (mse_lasso_scaled-rowMeans(mse_lasso_scaled))/matrixStats::rowSds(as.matrix(mse_lasso_scaled))
+mse_lasso_scaled_zscore <- (mse_lasso_scaled-rowMeans(mse_lasso_scaled, na.rm = T))/matrixStats::rowSds(as.matrix(mse_lasso_scaled, na.rm=T))
 mse_rf_scaled_zscore <- (mse_rf_scaled-rowMeans(mse_rf_scaled))/matrixStats::rowSds(as.matrix(mse_rf_scaled))
 
 col_fun = circlize::colorRamp2(c(-0.8, 0, 0.3), c("blue", "white", "red"))
@@ -220,13 +229,25 @@ col_fun = circlize::colorRamp2(c(-0.8, 0, 0.3), c("blue", "white", "red"))
 
 Heatmap(cbind(mse_rf_scaled_zscore, mse_lasso_scaled_zscore), 
         row_km = 0, cluster_columns = F, show_row_names = F, 
-        name = "MSE/Var", top_annotation = hall, col = rev(hcl.colors(5, palette = "Reds 2")),
-        row_title = "Genes")+ rowAnnotation(
-    scaled_min_mse = min_mses_lasso-min_mses_rf, col = list(scaled_min_mse = col_fun))+
-  Heatmap(log(all_mses_scaled), row_km = 0, cluster_columns = F, show_row_names = F, 
-        name = "MSE/Var", top_annotation = hall, col = rev(hcl.colors(5, palette = "Reds 2")),
+        name = "MSE/Var", top_annotation = hall, 
         row_title = "Genes")+ rowAnnotation(
     scaled_min_mse = min_mses_lasso-min_mses_rf, col = list(scaled_min_mse = col_fun))
+
+
+Heatmap(cbind(mse_rf_scaled_zscore, mse_lasso_scaled_zscore), 
+        row_km = 0, cluster_columns = F, show_row_names = F, 
+        name = "MSE/Var", top_annotation = hall, 
+        row_title = "Genes")+ rowAnnotation(
+    bad_for_lasso = bad_genes_lasso,
+    bad_for_rf = bad_genes_rf)
+
+
+
+# 
+#   Heatmap(log(all_mses_scaled), row_km = 0, cluster_columns = F, show_row_names = F, 
+#         name = "MSE/Var", top_annotation = hall, col = rev(hcl.colors(5, palette = "Reds 2")),
+#         row_title = "Genes")+ rowAnnotation(
+#     scaled_min_mse = min_mses_lasso-min_mses_rf, col = list(scaled_min_mse = col_fun))
 ```
 
 
