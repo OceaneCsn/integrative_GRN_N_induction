@@ -107,7 +107,7 @@ get_MSE_baseline <- function(counts, genes, nCores=ifelse(is.na(detectCores()),1
 #' @return The weighted list of regulatory interactions between genes and TFs
 bRF_inference_MSE <- function(counts, genes, tfs, alpha=0.25, scale = FALSE,
                           pwm_occurrence, nTrees=500, importance="%IncMSE",
-                          nCores = ifelse(is.na(detectCores()),1, normalized = F,
+                          nCores = ifelse(is.na(detectCores()),1,
                                           max(detectCores() - 1, 1))){
   
   # counts must be normalized so that genes have comparable node purities
@@ -260,13 +260,13 @@ LASSO.D3S_inference_MSE <- function(counts, genes, tfs, alpha=0.25,
                                                             }
                                                             iLambdaMin = which(mses_oob == min(mses_oob))
                                                             
-                                                            y_hat_norm <- (y_hat[,iLambdaMin] - mean(y_hat[,iLambdaMin]))/
-                                                              sd(y_hat[,iLambdaMin])
-                                                            
-                                                            if(normalized)
-                                                              mse_gene <- mse_gene + mean((y_norm[oob] - y_hat_norm[,iLambdaMin])^2)
-                                                            else
-                                                              mse_gene <- mse_gene + min(mses_oob)
+                                                            # y_hat_norm <- (y_hat[,iLambdaMin] - mean(y_hat[,iLambdaMin]))/
+                                                            #   sd(y_hat[,iLambdaMin])
+                                                            # 
+                                                            # if(normalized)
+                                                            #   mse_gene <- mse_gene + mean((y_norm[oob] - y_hat_norm[,iLambdaMin])^2)
+                                                            # else
+                                                            mse_gene <- mse_gene + min(mses_oob)
                                                             
                                                             # selection frequency
                                                             n_actual = n_actual+1

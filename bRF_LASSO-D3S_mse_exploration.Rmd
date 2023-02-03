@@ -5,7 +5,7 @@ output: html_document
 
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, warning = F)
 
 source('inference_functions/bRF.R')
 source('inference_functions/LASSO-D3S.R')
@@ -98,7 +98,7 @@ for(alpha in ALPHAS){
                                pwm_occurrence = pwm_occurrence, nCores = 15)
 }
 
-save(lmses_lasso, file = "results/logMSES_Lasso_per_genes_normalized.rdata")
+save(lmses_lasso, file = "results/logMSES_Lasso_per_genes.rdata")
 
 ```
 
@@ -118,25 +118,6 @@ heatmap_lasso <- Heatmap(mse_lasso, row_km = 3, cluster_columns = F, show_row_na
         row_title = "Genes", column_title = "alpha"); heatmap_lasso
 ```
 
-## Y-a-til des gènes qu'on n'arrive pas à bien prédire, dans aucun cas?
-
-En fait les gènes sur lesquels on se trompe le plus sont aussi les gènes les plus exprimés...
-
-```{r}
-min_mses <- matrixStats::rowMins(as.matrix(lmses_lasso))
-hist(min_mses)
-mean_expr <- rowMeans(counts)
-df <- data.frame(mean_expr)
-df$bad <- rownames(df) %in% bad_genes
-
-hist(min_mses/mean_expr[rownames(lmses)], breaks = 100)
-bad_genes <- genes[which(min_mses > 12)]
-
-df$min_lmse <- min_mses
-
-ggplot(df, aes(x=bad, y=mean_expr)) + geom_boxplot()
-ggplot(df, aes(x=log(mean_expr), y=min_lmse)) + geom_point()
-```
 
 ## Clustering global des gènes suivant alpha et les deux méthodes
 
@@ -144,29 +125,126 @@ Il semblerait que les gènes dont la MSE diminue ne soient pas les mêmes suivan
 
 ```{r, fig.height=10, fig.width=6}
 
-ha = HeatmapAnnotation(
+hall = HeatmapAnnotation(
   method = c(rep("bRF", 11), rep("lasso", 11)),
     alpha = anno_simple(as.numeric(rep(colnames(mse),2))),
     annotation_name_side = "left")
 
 Heatmap(cbind(mse, mse_lasso), row_km = 6, cluster_columns = F, show_row_names = F, 
-        name = "scaled logMSE", top_annotation = ha, clustering_distance_rows = "spearman",
-        row_title = "Genes")
-
-all_mses <- cbind(lmses, lmses_lasso)
-all_mses_scaled <- (all_mses-rowMeans(all_mses)) / matrixStats::rowSds(as.matrix(all_mses))
-
-Heatmap(all_mses_scaled, row_km = 7, cluster_columns = F, show_row_names = F, 
-        name = "scaled logMSE", top_annotation = ha, clustering_distance_rows = "spearman",
+        name = "scaled logMSE", top_annotation = hall, clustering_distance_rows = "spearman",
         row_title = "Genes")
 
 
-Heatmap(cbind(mse, mse_lasso), row_km = 6, cluster_columns = F, show_row_names = F, 
-        name = "scaled logMSE", top_annotation = ha, clustering_distance_rows = "spearman",
-        row_title = "Genes")
 ```
 
+
+## Y-a-til des gènes qu'on n'arrive pas à bien prédire, dans aucun cas?
+
+On aimerait exclure ou en tout cas identifier dans ces graphiques s'il y a des gènes que l'on prédit mal quel que soit alpha.
+
+En fait les gènes sur lesquels on se trompe le plus sont aussi les gènes les plus exprimés... Donc on va normaliser la MSE par la variance du gène cible pour avoir des MSE comparables entre gènes.
+
+```{r, fig.height=8, fig.width=6}
+mean_expr <- rowMeans(counts)
+var_expr <- matrixStats::rowSds(counts)*matrixStats::rowSds(counts)
+
+all_mses <- cbind(lmses, lmses_lasso)
+#all_mses_scaled <- (all_mses-rowMeans(all_mses)) / matrixStats::rowSds(as.matrix(all_mses))
+all_mses_scaled <- exp(all_mses) / var_expr
+
+min_mses <- matrixStats::rowMins(as.matrix(all_mses_scaled))
+
+min_mses_lasso <- matrixStats::rowMins(as.matrix(exp(lmses_lasso)/var_expr))
+min_mses_rf <- matrixStats::rowMins(as.matrix(exp(lmses)/var_expr))
+
+hist(min_mses_lasso, breaks = 100)
+hist(min_mses_rf, breaks = 100)
+
+hist(min_mses, breaks = 100)
+# df <- data.frame(mean_expr)
+bad_genes <- min_mses > 0.3
+# df$bad <- rownames(df) %in% bad_genes
+# df$min_lmse <- min_mses
+# ggplot(df, aes(x=bad, y=mean_expr)) + geom_boxplot()
+# ggplot(df, aes(x=log(mean_expr), y=min_lmse)) + geom_point()
+# 
+mse_lasso_scaled <- exp(lmses_lasso)/var_expr
+mse_rf_scaled <- exp(lmses)/var_expr
+
+# 
+# ha = HeatmapAnnotation(
+#     alpha = anno_simple(as.numeric(rep(colnames(mse),1))),
+#     annotation_name_side = "left")
+# 
+# Heatmap(mse_lasso_scaled, row_km = 0, cluster_columns = F, show_row_names = F, 
+#         name = "scaled logMSE (z-score)", top_annotation = ha, 
+#         row_title = "Genes", column_title = "alpha") + rowAnnotation(
+#     scaled_min_mse = min_mses_lasso)
+# 
+# Heatmap(mse_rf_scaled, row_km = 0, cluster_columns = F, show_row_names = F, 
+#         name = "scaled logMSE (z-score)", top_annotation = ha,
+#         row_title = "Genes", column_title = "alpha")+ rowAnnotation(
+#     scaled_min_mse = min_mses_rf)
+
+```
+
+Sans normaliser par la MSE moyenne par gène, on ne voit plus les variations de MSE liées à alpha, on voit uniquement les gènes qui sont globalement bien ou mal prédits.
+Deux méthodes simultanément :
+
+```{r, fig.height=8, fig.width=6}
+Heatmap(all_mses_scaled, row_km = 0, cluster_columns = F, show_row_names = F, 
+        name = "MSE/Var", top_annotation = hall, col = rev(hcl.colors(5, palette = "Reds 2")),
+        row_title = "Genes")+ rowAnnotation(
+    scaled_min_mse = min_mses)
+```
+
+Je remets donc un z-score sur la MSE normalisée par gène englobant les deux méthodes, pour visualiser plus précisément les variations de MSE suivant alpha:
+
+```{r, fig.height=8, fig.width=6}
+Heatmap((all_mses_scaled-rowMeans(all_mses_scaled))/matrixStats::rowSds(as.matrix(all_mses_scaled)), 
+        row_km = 0, cluster_columns = F, show_row_names = F, 
+        name = "MSE/Var", top_annotation = hall, col = rev(hcl.colors(5, palette = "Reds 2")),
+        row_title = "Genes")+ rowAnnotation(
+    scaled_min_mse = min_mses)
+
+```
+
+En fait, comme le z-score est calculé sur les deux méthodes, on a encore une grosse contribution à la couleur de la différence de MSE inhérente aux deux méthodes, et non à l'effet de l'intégration. Je calcule donc un z-score par méthodes pour faire la représentation:
+
+```{r, fig.height=8, fig.width=6}
+mse_lasso_scaled_zscore <- (mse_lasso_scaled-rowMeans(mse_lasso_scaled))/matrixStats::rowSds(as.matrix(mse_lasso_scaled))
+mse_rf_scaled_zscore <- (mse_rf_scaled-rowMeans(mse_rf_scaled))/matrixStats::rowSds(as.matrix(mse_rf_scaled))
+
+col_fun = circlize::colorRamp2(c(-0.8, 0, 0.3), c("blue", "white", "red"))
+
+
+Heatmap(cbind(mse_rf_scaled_zscore, mse_lasso_scaled_zscore), 
+        row_km = 0, cluster_columns = F, show_row_names = F, 
+        name = "MSE/Var", top_annotation = hall, col = rev(hcl.colors(5, palette = "Reds 2")),
+        row_title = "Genes")+ rowAnnotation(
+    scaled_min_mse = min_mses_lasso-min_mses_rf, col = list(scaled_min_mse = col_fun))+
+  Heatmap(log(all_mses_scaled), row_km = 0, cluster_columns = F, show_row_names = F, 
+        name = "MSE/Var", top_annotation = hall, col = rev(hcl.colors(5, palette = "Reds 2")),
+        row_title = "Genes")+ rowAnnotation(
+    scaled_min_mse = min_mses_lasso-min_mses_rf, col = list(scaled_min_mse = col_fun))
+```
+
+
+> c'est informatif : certains gènes bénéficient de l'intégration de données et d'autres non, et ce n'est pas spécialement lié à si on les prédit bien globalement. Par contre celà dépend visiblement de la méthode utilisée et nous n'avons pas encore d'explication pour ça...
+
+## Faire des clusters informatifs et clairs pour notre question
+
+Définir des groupes suivant l'optimum : 
+
++ alpha = 0
++ alpha entre 0.1 et 0.4
++ alpha entre 0.4 et 0.9
++ 1
 
 ## Quelles sont les caractéristiques des clusters de gènes
 
 Nombre de motifs dans le promoteur, niveau d'expression, ontologies, sont-ils des TFs? leur taille?
+
+Quelle est la précision rappel des sous réseaux concernant ces gènes.
+
+
