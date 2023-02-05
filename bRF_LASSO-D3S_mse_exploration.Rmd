@@ -202,7 +202,7 @@ mse_rf_scaled <- exp(lmses)/var_expr
 Sans normaliser par la MSE moyenne par gène, on ne voit plus les variations de MSE liées à alpha, on voit uniquement les gènes qui sont globalement bien ou mal prédits. Deux méthodes simultanément :
 
 ```{r, fig.height=8, fig.width=6}
-Heatmap(all_mses_scaled, row_km = 0, cluster_columns = F, show_row_names = F, 
+Heatmap(log(all_mses_scaled), row_km = 0, cluster_columns = F, show_row_names = F, 
         name = "MSE/Var", top_annotation = hall, col = rev(hcl.colors(5, palette = "Reds 2")),
         row_title = "Genes")+ rowAnnotation(
     scaled_min_mse = min_mses)
@@ -213,7 +213,7 @@ Je remets donc un z-score sur la MSE normalisée par gène englobant les deux m�
 ```{r, fig.height=8, fig.width=6}
 Heatmap((all_mses_scaled-rowMeans(all_mses_scaled))/matrixStats::rowSds(as.matrix(all_mses_scaled)), 
         row_km = 0, cluster_columns = F, show_row_names = F, 
-        name = "MSE/Var", top_annotation = hall, col = rev(hcl.colors(5, palette = "Reds 2")),
+        name = "MSE/Var", top_annotation = hall,
         row_title = "Genes")+ rowAnnotation(
     scaled_min_mse = min_mses)
 ```
@@ -242,7 +242,6 @@ Heatmap(cbind(mse_rf_scaled_zscore, mse_lasso_scaled_zscore),
     bad_for_rf = bad_genes_rf)
 
 
-
 # 
 #   Heatmap(log(all_mses_scaled), row_km = 0, cluster_columns = F, show_row_names = F, 
 #         name = "MSE/Var", top_annotation = hall, col = rev(hcl.colors(5, palette = "Reds 2")),
@@ -255,12 +254,56 @@ Heatmap(cbind(mse_rf_scaled_zscore, mse_lasso_scaled_zscore),
 
 ## Faire des clusters informatifs et clairs pour notre question
 
-Définir des groupes suivant l'optimum : 
+Définir des groupes suivant l'optimum comme par exemple: 
 
 + alpha = 0
 + alpha entre 0.1 et 0.4
-+ alpha entre 0.4 et 0.9
-+ 1
++ alpha entre 0.4 et 0.8
++ entre 0.8 et 1
+
+```{r}
+get_optimum <- function(gene, method = "rf"){
+  if(method=="rf")
+    return(as.numeric(names(which.min(mse_rf_scaled_zscore[gene,]))))
+  if(method=="lasso")
+    return(as.numeric(names(which.min(mse_lasso_scaled_zscore[gene,]))))
+}
+
+assign_cluster <- function(opt){
+  if(opt == 0)
+    return("0")
+  if(opt>0 & opt <=0.4){
+    return("0.1-0.4")
+  }
+  if(opt>0.4 & opt <=0.7){
+    return("0.4-0.7")
+  }
+  if(opt>0.7 & opt <=1){
+    return("0.8-1")
+  }
+}
+clusters_rf <- sapply(sapply(genes, get_optimum, method = "rf"), assign_cluster)
+clusters_lasso <- sapply(sapply(genes, get_optimum, method = "lasso"), assign_cluster)
+table(clusters_lasso)
+table(clusters_rf)
+```
+
+```{r}
+Heatmap(cbind(mse_rf_scaled_zscore, mse_lasso_scaled_zscore), 
+        row_km = 0, cluster_columns = F, show_row_names = F, 
+        name = "MSE/Var", top_annotation = hall, 
+        row_title = "Genes")+ rowAnnotation(
+    clusters_rf = clusters_rf,
+    clusters_lasso = clusters_lasso, 
+    col=list(clusters_lasso = setNames(c("red","orange", "yellow", "green"), 
+                                       nm = names(table(clusters_lasso))),
+             clusters_rf= setNames(c("red","orange", "yellow", "green"), 
+                                       nm = names(table(clusters_lasso))) ))
+
+```
+
+
+
 
 ## Quelles sont les caractéristiques des clusters de gènes
 
