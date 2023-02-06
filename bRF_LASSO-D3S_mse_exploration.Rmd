@@ -13,7 +13,7 @@ source('inference_functions/evaluateNetwork.R')
 source('inference_functions/MSE.R')
 library(ComplexHeatmap)
 library(ggplot2)
-
+library(tidyverse)
 
 ```
 
@@ -28,7 +28,7 @@ Prior TFBS information was built by searching in the promoters of the N-responsi
 
 ### Expression data
 
-Import of the expression data and the N-responsive genes and regulators :
+<!-- Import of the expression data and the N-responsive genes and regulators : -->
 
 ```{r}
 load('rdata/inference_input_N_response_varala.rdata')
@@ -52,16 +52,16 @@ How does the individual MSE of genes varies with $\alpha$ for model estimation i
 ### bRf : biased Random Forests
 
 ```{r, eval=FALSE}
-ALPHAS <- seq(0,1, by = 0.1)
-lmses <- data.frame(row.names = genes)
-
-for(alpha in ALPHAS){
-  set.seed(121314)
-  lmses[,as.character(alpha)] <- bRF_inference_MSE(counts, genes, tfs, alpha = alpha, nTrees = 1000,
-                             pwm_occurrence = pwm_occurrence, nCores = 18)
-}
-
-save(lmses, file = "results/logMSES_RFs_per_genes.rdata")
+# ALPHAS <- seq(0,1, by = 0.1)
+# lmses <- data.frame(row.names = genes)
+# 
+# for(alpha in ALPHAS){
+#   set.seed(121314)
+#   lmses[,as.character(alpha)] <- bRF_inference_MSE(counts, genes, tfs, alpha = alpha, nTrees = 1000,
+#                              pwm_occurrence = pwm_occurrence, nCores = 18)
+# }
+# 
+# save(lmses, file = "results/logMSES_RFs_per_genes.rdata")
 
 ```
 
@@ -88,17 +88,17 @@ heatmap_rf <- Heatmap(mse, row_km = 3, cluster_columns = F, show_row_names = F,
 
 ```{r, eval=FALSE}
 
-lmses_lasso <- data.frame(row.names = genes)
-
-for(alpha in ALPHAS){
-  set.seed(121314)
-  lmses_lasso[,as.character(alpha)] <- LASSO.D3S_inference_MSE(counts, genes, tfs,
-                                                               normalized = TRUE, 
-                                                               alpha = alpha, N = 50,
-                               pwm_occurrence = pwm_occurrence, nCores = 15)
-}
-
-save(lmses_lasso, file = "results/logMSES_Lasso_per_genes.rdata")
+# lmses_lasso <- data.frame(row.names = genes)
+# 
+# for(alpha in ALPHAS){
+#   set.seed(121314)
+#   lmses_lasso[,as.character(alpha)] <- LASSO.D3S_inference_MSE(counts, genes, tfs,
+#                                                                normalized = TRUE, 
+#                                                                alpha = alpha, N = 50,
+#                                pwm_occurrence = pwm_occurrence, nCores = 15)
+# }
+# 
+# save(lmses_lasso, file = "results/logMSES_Lasso_per_genes.rdata")
 
 ```
 
@@ -276,7 +276,7 @@ assign_cluster <- function(opt){
     return("0.1-0.4")
   }
   if(opt>0.4 & opt <=0.7){
-    return("0.4-0.7")
+    return("0.5-0.7")
   }
   if(opt>0.7 & opt <=1){
     return("0.8-1")
@@ -288,7 +288,7 @@ table(clusters_lasso)
 table(clusters_rf)
 ```
 
-```{r}
+```{r, fig.height=8, fig.width=6}
 Heatmap(cbind(mse_rf_scaled_zscore, mse_lasso_scaled_zscore), 
         row_km = 0, cluster_columns = F, show_row_names = F, 
         name = "MSE/Var", top_annotation = hall, 
@@ -303,9 +303,71 @@ Heatmap(cbind(mse_rf_scaled_zscore, mse_lasso_scaled_zscore),
 ```
 
 
+```{r}
+draw_specific_genes <- function(genes){
+  Heatmap(cbind(mse_rf_scaled_zscore, mse_lasso_scaled_zscore)[genes,], 
+        row_km = 0, cluster_columns = F, show_row_names = F, 
+        name = "MSE/Var", top_annotation = hall, 
+        row_title = "Genes")+ rowAnnotation(
+    clusters_rf = clusters_rf[genes],
+    clusters_lasso = clusters_lasso[genes], 
+    col=list(clusters_lasso = setNames(c("red","orange", "yellow", "green"), 
+                                       nm = names(table(clusters_lasso))),
+             clusters_rf= setNames(c("red","orange", "yellow", "green"), 
+                                       nm = names(table(clusters_lasso))) ))
+}
+all_pwm_pos <- names(which(clusters_lasso == "0.8-1" & clusters_rf == "0.8-1"))
+lasso_bad_rf_good <- names(which(clusters_lasso == "0" & clusters_rf == "0.8-1"))
+lasso_good_rf_bad <- names(which(clusters_lasso == "0.8-1" & clusters_rf == "0"))
+
+all_yellow <-  names(which(clusters_lasso == "0.5-0.7" & clusters_rf == "0.5-0.7"))
+all_orange <-  names(which(clusters_lasso == "0.1-0.4" & clusters_rf == "0.1-0.4"))
+all_red <-  names(which(clusters_lasso == "0" & clusters_rf == "0"))
+
+different <- names(which(clusters_lasso != clusters_rf))
+draw_specific_genes(all_pwm_pos)
+draw_specific_genes(c(lasso_bad_rf_good, lasso_good_rf_bad))
+draw_specific_genes(all_yellow)
+draw_specific_genes(all_orange)
+draw_specific_genes(all_red)
+draw_specific_genes(different)
+
+```
+
 
 
 ## Quelles sont les caractéristiques des clusters de gènes
+
+### Sont-ils des régulateurs?
+
+```{r, fig.width=10}
+
+genes_info <- data.frame(genes = genes, 
+                         cluster_lasso = clusters_lasso[genes], 
+                         cluster_rf = clusters_rf[genes])
+genes_info$is_tf <- genes %in% tfs
+
+load("rdata/pwm_prom_jaspar_dap.rdata")
+genes_info$nb_motifs <- table(pwm_prom$target)[genes]
+
+
+ggplot(genes_info, aes(x=cluster_rf, y=nb_motifs, fill = cluster_rf==cluster_lasso)) + 
+  geom_violin()+geom_jitter(width=0.1)+geom_boxplot(width=0.1, fill = "white")+
+  facet_wrap(~cluster_lasso )+ xlab("cluster RF")
+
+clusters_info <- genes_info %>%
+  group_by(cluster_lasso, cluster_rf) %>%
+  summarise(n=n(), 
+            tf_frac=sum(is_tf)/n())
+
+ggplot(clusters_info, aes(x=cluster_rf, y=tf_frac, label = paste("n=",n))) + 
+  geom_bar(stat = "identity")+
+  facet_wrap(~cluster_lasso )+
+  geom_hline(yintercept = length(tfs)/length(genes)) + 
+  geom_text(y=0.22) + xlab("cluster RF") +
+  ggtitle("Fraction of TFs in each groups")
+```
+
 
 Nombre de motifs dans le promoteur, niveau d'expression, ontologies, sont-ils des TFs? leur taille?
 
