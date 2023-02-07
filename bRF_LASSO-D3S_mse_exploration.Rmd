@@ -14,7 +14,7 @@ source('inference_functions/MSE.R')
 library(ComplexHeatmap)
 library(ggplot2)
 library(tidyverse)
-
+library(ggpubr)
 ```
 
 This document demonstrates the use of the bRF and LASSO-D3S functions for integrative GRN inference.
@@ -242,11 +242,6 @@ Heatmap(cbind(mse_rf_scaled_zscore, mse_lasso_scaled_zscore),
     bad_for_rf = bad_genes_rf)
 
 
-# 
-#   Heatmap(log(all_mses_scaled), row_km = 0, cluster_columns = F, show_row_names = F, 
-#         name = "MSE/Var", top_annotation = hall, col = rev(hcl.colors(5, palette = "Reds 2")),
-#         row_title = "Genes")+ rowAnnotation(
-#     scaled_min_mse = min_mses_lasso-min_mses_rf, col = list(scaled_min_mse = col_fun))
 ```
 
 
@@ -331,46 +326,145 @@ draw_specific_genes(all_yellow)
 draw_specific_genes(all_orange)
 draw_specific_genes(all_red)
 draw_specific_genes(different)
-
 ```
 
 
 
 ## Quelles sont les caractéristiques des clusters de gènes
 
-### Sont-ils des régulateurs?
+
+Nombre de motifs dans le promoteur, niveau d'expression, ontologies, sont-ils des TFs? leur taille?
+
+Quelle est la précision rappel des sous réseaux concernant ces gènes.
+
+
 
 ```{r, fig.width=10}
+load("rdata/pwm_prom_jaspar_dap.rdata")
 
 genes_info <- data.frame(genes = genes, 
                          cluster_lasso = clusters_lasso[genes], 
                          cluster_rf = clusters_rf[genes])
 genes_info$is_tf <- genes %in% tfs
-
-load("rdata/pwm_prom_jaspar_dap.rdata")
+genes_info$var <- var_expr
+genes_info$expr <- mean_expr
 genes_info$nb_motifs <- table(pwm_prom$target)[genes]
 
+genes_info%>%
+  mutate(cluster_lasso_label=paste("lasso :", cluster_lasso))%>%
+ggplot(aes(x=cluster_rf, y=nb_motifs, 
+                       fill = cluster_rf==cluster_lasso)) + 
+  geom_violin()+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  facet_wrap(~cluster_lasso_label )+ xlab("cluster RF") +
+  ggtitle(("Number of motifs in promoter"))
 
-ggplot(genes_info, aes(x=cluster_rf, y=nb_motifs, fill = cluster_rf==cluster_lasso)) + 
-  geom_violin()+geom_jitter(width=0.1)+geom_boxplot(width=0.1, fill = "white")+
-  facet_wrap(~cluster_lasso )+ xlab("cluster RF")
+
+genes_info%>%
+  mutate(cluster_lasso_label=paste("lasso :", cluster_lasso))%>%
+  ggplot(aes(x=cluster_rf, y=var, 
+                       fill = cluster_rf==cluster_lasso)) + 
+  geom_violin()+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  facet_wrap(~cluster_lasso_label )+ xlab("cluster RF") +
+  ggtitle(("Gene variance for all groups")) + scale_y_log10()
+
+
+genes_info%>%
+  ggplot(aes(x=cluster_rf, y=var)) + 
+  geom_violin()+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  ggtitle(("Gene variance for RF groups")) + scale_y_log10()+
+  stat_compare_means()
+
+
+genes_info%>%
+  ggplot(aes(x=cluster_lasso, y=var)) + 
+  geom_violin()+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  ggtitle(("Gene variance for LASSO groups")) + scale_y_log10()+
+  stat_compare_means()
+
+genes_info%>%
+  mutate(cluster_lasso_label=paste("lasso :", cluster_lasso))%>%
+  ggplot(aes(x=cluster_rf, y=expr, 
+             fill = cluster_rf==cluster_lasso)) + 
+  geom_violin()+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  facet_wrap(~cluster_lasso_label )+ xlab("cluster RF") +
+  ggtitle(("Gene expression for all groups")) + scale_y_log10()
+
+
+genes_info%>%
+  mutate(cluster_lasso_label=paste("lasso :", cluster_lasso))%>%
+  mutate(agree_on_beneficial_pwms = cluster_lasso == "0.8-1" & cluster_lasso==cluster_rf) %>%
+  ggplot(aes(x=agree_on_beneficial_pwms, y=expr, 
+             fill = agree_on_beneficial_pwms)) + 
+  geom_violin()+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  xlab("cluster RF") +
+  ggtitle(("Gene expression : PWM beneficial for both methods vs other groups")) + scale_y_log10()
+
+
+genes_info%>%
+  ggplot(aes(x=cluster_rf, y=expr)) + 
+  geom_violin()+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  ggtitle(("Gene expression for RF groups")) + scale_y_log10()+
+  stat_compare_means()
+
+
+genes_info%>%
+  ggplot(aes(x=cluster_lasso, y=var)) + 
+  geom_violin()+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  ggtitle(("Gene expression for LASSO groups")) + scale_y_log10()+
+  stat_compare_means()
+
+
+
 
 clusters_info <- genes_info %>%
   group_by(cluster_lasso, cluster_rf) %>%
   summarise(n=n(), 
             tf_frac=sum(is_tf)/n())
 
-ggplot(clusters_info, aes(x=cluster_rf, y=tf_frac, label = paste("n=",n))) + 
+ggplot(clusters_info, aes(x=cluster_rf, y=tf_frac, 
+                          label = paste("n=",n),
+                          fill = cluster_rf==cluster_lasso)) + 
   geom_bar(stat = "identity")+
   facet_wrap(~cluster_lasso )+
   geom_hline(yintercept = length(tfs)/length(genes)) + 
   geom_text(y=0.22) + xlab("cluster RF") +
-  ggtitle("Fraction of TFs in each groups")
+  ggtitle("Fraction of TFs in all groups")
+
+genes_info %>%
+  group_by(cluster_lasso) %>%
+  summarise(n=n(), 
+            tf_frac=sum(is_tf)/n()) %>%
+  ggplot(aes(x=cluster_lasso, y=tf_frac, 
+                          label = paste("n=",n))) + 
+  geom_bar(stat = "identity")+
+  geom_hline(yintercept = length(tfs)/length(genes)) + 
+  geom_text(y=0.16) + xlab("cluster RF") +
+  ggtitle("Fraction of TFs in LASSO groups")
+
+genes_info %>%
+  group_by(cluster_rf) %>%
+  summarise(n=n(), 
+            tf_frac=sum(is_tf)/n()) %>%
+  ggplot(aes(x=cluster_rf, y=tf_frac, 
+                          label = paste("n=",n))) + 
+  geom_bar(stat = "identity")+
+  geom_hline(yintercept = length(tfs)/length(genes)) + 
+  geom_text(y=0.15) + xlab("cluster RF") +
+  ggtitle("Fraction of TFs in RF groups")
+
 ```
+Est-ce qu'on a significativement plus de TFs dans les genes qui sont bien prédits avec les PWM chez le lasso?
 
-
-Nombre de motifs dans le promoteur, niveau d'expression, ontologies, sont-ils des TFs? leur taille?
-
-Quelle est la précision rappel des sous réseaux concernant ces gènes.
-
+```{r}
+fisher.test(matrix(c(length(genes), length(tfs), 120, 120*0.175), 
+                   nrow = 2), alternative = "greater")
+```
 
