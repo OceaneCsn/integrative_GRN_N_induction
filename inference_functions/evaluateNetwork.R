@@ -26,6 +26,20 @@ evaluate_network <-
   function(net, input_genes = NULL, input_tfs = NULL,
            validation = c("CHIPSeq", "DAPSeq", "TARGET"),
            subset_validated_edges = NULL, tf_validation_subset = NULL) {
+    
+    if (nrow(net) == 0) {
+      warning("Empty dataframe of edges \n")
+      return(list(
+        tp = NA,
+        fp = NA,
+        tpr = NA,
+        fpr = NA,
+        fn = NA,
+        recall = NA
+      ))
+    }
+    
+    
     if (!is.null(subset_validated_edges))
       validated_edges <- subset_validated_edges
     

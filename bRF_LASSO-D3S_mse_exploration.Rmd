@@ -62,14 +62,13 @@ How does the individual MSE of genes varies with $\alpha$ for model estimation i
 # }
 # 
 # save(lmses, file = "results/logMSES_RFs_per_genes.rdata")
-
 ```
 
 Clustering the genes :
 
 
 ```{r}
-load(file = "results/logMSES_RFs_per_genes.rdata")
+load(file = "results/logMSES_RFs_per_genes_400trees.rdata")
 
 mse <- (lmses-rowMeans(lmses)) / matrixStats::rowSds(as.matrix(lmses))
 
@@ -77,11 +76,9 @@ ha = HeatmapAnnotation(
     alpha = anno_simple(as.numeric(rep(colnames(mse),1))),
     annotation_name_side = "left")
 
-
-
-heatmap_rf <- Heatmap(mse, row_km = 3, cluster_columns = F, show_row_names = F, 
+heatmap_rf_4000 <- Heatmap(mse, row_km = 3, cluster_columns = F, show_row_names = F, 
         name = "scaled logMSE (z-score)", top_annotation = ha,
-        row_title = "Genes", column_title = "alpha"); heatmap_rf
+        row_title = "Genes", column_title = "alpha");heatmap_rf_4000
 ```
 
 ## LASSO-D3S
@@ -415,7 +412,7 @@ genes_info%>%
 
 
 genes_info%>%
-  ggplot(aes(x=cluster_lasso, y=var)) + 
+  ggplot(aes(x=cluster_lasso, y=expr)) + 
   geom_violin()+geom_jitter(width=0.1)+
   geom_boxplot(width=0.1, fill = "white")+
   ggtitle(("Gene expression for LASSO groups")) + scale_y_log10()+
@@ -467,4 +464,109 @@ Est-ce qu'on a significativement plus de TFs dans les genes qui sont bien prédi
 fisher.test(matrix(c(length(genes), length(tfs), 120, 120*0.175), 
                    nrow = 2), alternative = "greater")
 ```
+## Precision and recall of inferred GRNs subsets for different groups
+
+
+```{r}
+load("results/networks_bRF_lasso.rdata")
+prettyZero <- function(l){
+    max.decimals = max(nchar(str_extract(l, "\\.[0-9]+")), na.rm = T)-1
+    lnew = formatC(l, replace.zero = T, zero.print = "0",
+        digits = max.decimals, format = "f", preserve.width=T)
+    return(lnew)}
+    
+all_pwm_pos
+
+
+draw_precision_recall <- function(genes){
+  subset <- lapply(edges, function(net){net[net$to %in% genes,]})
+
+
+color_palette = c("#88002D", "#C12131", "#EC5D2F", "#FE945C", "#FFC08E" )
+
+    
+settings <- c("method", "alpha", "density", "rep")
+
+# number of edges per network
+nrows <-
+  data.frame(alpha_rep = names(unlist(lapply(edges, FUN = nrow))),
+             n_edges = unlist(lapply(subset, FUN = nrow)))
+nrows[, settings] <-
+  str_split_fixed(nrows$alpha_rep, '_', length(settings))
+
+
+subset$`LASSO-D3S_0_0.005_1`
+
+val_conn <-
+  evaluate_networks(
+    subset,
+    validation = c("TARGET", "CHIPSeq", "DAPSeq"),
+    nCores = 10,
+    input_genes = genes,
+    input_tfs = tfs
+  )
+val_conn[, settings] <-
+  str_split_fixed(val_conn$network_name, '_', length(settings))
+
+val_connecTF <-  val_conn %>%
+  dplyr::select(-network_name) %>%
+  mutate(alpha = as.numeric(alpha)) %>%
+  ggplot(aes(color = density, x = alpha, y = precision)) +
+  ggh4x::facet_nested_wrap(vars(method), ncol = 8, nest_line = T) + geom_point() +
+  geom_smooth(aes(fill = density), alpha = 0.1) +
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'none'
+  ) +
+  xlab(expression(alpha)) + ylab("Precision") +
+  ggtitle("Precision against ConnecTF") +
+  scale_x_continuous(labels = prettyZero) +
+  scale_color_manual(name = "Network density", values = color_palette) +
+  scale_fill_manual(name = "Network density", values = color_palette)
+val_connecTF
+}
+
+for(group in unique(clusters_lasso)){
+  print(draw_precision_recall(names(which(clusters_lasso == group)))+
+          ggtitle(paste("LASSO, group", group)))
+  print(draw_precision_recall(names(which(clusters_rf == group)))+
+          ggtitle(paste("RF, group", group)))
+}
+
+```
+
+```{r}
+library(DIANE)
+# background <- rownames(gene_annotations$`Arabidopsis thaliana`)
+background <- convert_from_agi(genes)
+
+for(group in unique(clusters_lasso)){
+  
+  genes_i <- names(which(clusters_lasso == group))
+  
+  print(paste("LASSO", length(genes_i), "genes,", group))
+  genes_i <- convert_from_agi(genes_i)
+  go_lasso <- enrich_go(genes_i, background)
+  print(DIANE::draw_enrich_go(go_lasso))
+  
+  genes_i <- names(which(clusters_rf == group))
+  print(paste("RF", length(genes_i), "genes, min mse at", group))
+  genes_i <- convert_from_agi(genes_i)
+  go_rf <- enrich_go(genes_i, background)
+  print(DIANE::draw_enrich_go(go_rf))
+  
+  common_go <- intersect(go_lasso$ID, go_rf$ID)
+  #print(go_lasso[common_go,])
+}
+
+go_all <- enrich_go(convert_from_agi(genes), convert_from_agi(rownames(gene_annotations$`Arabidopsis thaliana`)))
+draw_enrich_go(go)
+```
+
+Rien de spécial n'est trouvé en lien avec les ontologies enrichies dans certains groupes, la liste de base est enrichie en ribosomal functions, et ça se retrouve dans des sous groupes comparés à l'ensemble du génome. comparés à la liste de base, les sous groups ne sont quasiment pas enrichis...
 
