@@ -1,0 +1,426 @@
+---
+title: "Integrative GRN inference : model exploration"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F)
+
+source('inference_functions/bRF.R')
+source('inference_functions/LASSO-D3S.R')
+source('inference_functions/evaluateNetwork.R')
+source('inference_functions/MSE.R')
+library(ComplexHeatmap)
+library(ggplot2)
+library(tidyverse)
+library(ggpubr)
+```
+
+This document demonstrates the use of the bRF and LASSO-D3S functions for integrative GRN inference.
+
+Those functions infer the regulatory pathways of *Arabidopsis thaliana*'s roots in response to nitrate (N) induction from [Varala et al., 2018](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE97500).
+
+They use as inputs the expression profiles of N-responsive genes and TFBS information. 
+Prior TFBS information was built by searching in the promoters of the N-responsive genes the PWM of the N-responsive regulators. 
+
+## Data import
+
+### Expression data
+
+<!-- Import of the expression data and the N-responsive genes and regulators : -->
+
+```{r}
+load('rdata/inference_input_N_response_varala.rdata')
+genes <- input_data$grouped_genes; length(genes)
+tfs <- input_data$grouped_regressors; length(tfs)
+counts <- input_data$counts; dim(counts)
+```
+
+### TFBS data
+
+
+```{r}
+load("rdata/pwm_occurrences_N_response_varala.rdata")
+dim(pwm_occurrence)
+```
+
+## Getting mean expression and variances per genes
+
+```{r}
+mean_expr <- rowMeans(counts)
+var_expr <- matrixStats::rowSds(counts)*matrixStats::rowSds(counts)
+```
+
+## GRN inference
+
+How does the individual MSE of genes varies with $\alpha$ for model estimation in GRN inferences?
+
+### bRf : biased Random Forests
+
+```{r, eval=FALSE}
+# ALPHAS <- seq(0,1, by = 0.1)
+# lmses <- data.frame(row.names = genes)
+# 
+# for(alpha in ALPHAS){
+#   set.seed(121314)
+#   lmses[,as.character(alpha)] <- bRF_inference_MSE(counts, genes, tfs, alpha = alpha, nTrees = 4000,
+#                              pwm_occurrence = pwm_occurrence, nCores = 18)
+# }
+# 
+# save(lmses, file = "results/logMSES_RFs_per_genes.rdata")
+```
+
+Clustering the genes :
+
+```{r}
+load(file = "results/logMSES_RFs_per_genes_400trees.rdata")
+
+mse_rf <- (lmses-rowMeans(lmses)) / matrixStats::rowSds(as.matrix(lmses))
+
+ha = HeatmapAnnotation(
+    alpha = anno_simple(as.numeric(rep(colnames(mse_rf),1))),
+    annotation_name_side = "left")
+
+heatmap_rf_4000 <- Heatmap(mse_rf, row_km = 3, cluster_columns = F, show_row_names = F, 
+        name = "scaled logMSE (z-score)", top_annotation = ha,
+        row_title = "Genes", column_title = "alpha");heatmap_rf_4000
+```
+
+## LASSO-D3S
+
+```{r, eval=FALSE}
+
+# lmses_lasso <- data.frame(row.names = genes)
+# 
+# for(alpha in ALPHAS){
+#   set.seed(121314)
+#   lmses_lasso[,as.character(alpha)] <- LASSO.D3S_inference_MSE(counts, genes, tfs,
+#                                                                normalized = TRUE, 
+#                                                                alpha = alpha, N = 50,
+#                                pwm_occurrence = pwm_occurrence, nCores = 15)
+# }
+# 
+# save(lmses_lasso, file = "results/logMSES_Lasso_per_genes.rdata")
+
+```
+
+
+
+```{r}
+load(file = "results/logMSES_Lasso_per_genes.rdata")
+mse_lasso <- (lmses_lasso-rowMeans(lmses_lasso)) / matrixStats::rowSds(as.matrix(lmses_lasso))
+
+heatmap_lasso <- Heatmap(mse_lasso, row_km = 4, cluster_columns = F, show_row_names = F, 
+        name = "scaled logMSE (z-score)", top_annotation = ha,
+        row_title = "Genes", column_title = "alpha"); heatmap_lasso
+```
+
+
+# Clustering des gènes suivant la plage de alphas sur laquelle ils atteignent leur minimum
+
+```{r}
+average_genes <- function(mse){
+  new_mse <- mse
+  new_mse[,"0-0.2"] <- rowMeans(new_mse[c("0", "0.1", "0.2")])
+  new_mse[,"0.3-0.6"] <- rowMeans(new_mse[c("0.3", "0.4", "0.5", "0.6")])
+  new_mse[,"0.7-1"] <- rowMeans(new_mse[c("0.7", "0.8", "0.9", "1")])
+  return(new_mse[c("0-0.2", "0.3-0.6", "0.7-1")])
+}
+
+smooth_rf <- average_genes(lmses)
+smooth_lasso <- average_genes(lmses_lasso)
+
+
+get_optimum <- function(gene, method = "rf"){
+  if(method=="rf")
+    return(names(which.min(smooth_rf[gene,])))
+  if(method=="lasso")
+    return(names(which.min(smooth_lasso[gene,])))
+}
+gene <- rownames(smooth_rf)[1]
+
+clusters_rf <- sapply(genes, get_optimum, method = "rf")
+clusters_lasso <- sapply(genes, get_optimum, method = "lasso")
+table(clusters_rf); table(clusters_lasso)
+```
+
+## Représentation de ces groupes sur les heatmap initiales
+
+```{r}
+Heatmap(mse_rf, 
+        row_km = 3, cluster_columns = F, show_row_names = F, 
+        name = "MSE/Var", top_annotation = ha, 
+        row_title = "Genes")+ rowAnnotation(
+    clusters_rf = clusters_rf,
+    col=list(clusters_rf= setNames(c("darkorange", "yellow", "green"), 
+                                       nm = names(table(clusters_rf))) ))
+
+Heatmap(mse_lasso, 
+        row_km = 3, cluster_columns = F, show_row_names = F, 
+        name = "MSE/Var", top_annotation = ha, 
+        row_title = "Genes")+ rowAnnotation(
+    clusters_lasso = clusters_lasso,
+    col=list(clusters_lasso= setNames(c("darkorange", "yellow", "green"), 
+                                       nm = names(table(clusters_lasso))) ))
+```
+
+
+
+
+
+## Quelles sont les caractéristiques des clusters de gènes
+
+
+Nombre de motifs dans le promoteur, niveau d'expression, ontologies, sont-ils des TFs? leur taille?
+
+Quelle est la précision rappel des sous réseaux concernant ces gènes.
+
+
+
+```{r, fig.width=10}
+load("rdata/pwm_prom_jaspar_dap.rdata")
+library(patchwork)
+
+genes_info <- data.frame(genes = genes, 
+                         cluster_lasso = clusters_lasso[genes], 
+                         cluster_rf = clusters_rf[genes])
+genes_info$is_tf <- genes %in% tfs
+genes_info$var <- var_expr
+genes_info$expr <- mean_expr
+genes_info$nb_motifs <- table(pwm_prom$target)[genes]
+
+genes_info%>%
+  ggplot(aes(x=cluster_rf, y=nb_motifs)) + 
+  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  ggtitle(("Number of motifs in promoter for RF groups")) + 
+  stat_compare_means() + genes_info%>%
+  ggplot(aes(x=cluster_lasso, y=nb_motifs)) + 
+  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  ggtitle(("Number of motifs in promoter for LASSO groups")) +
+  stat_compare_means() 
+
+genes_info%>%
+  ggplot(aes(x=cluster_rf, y=var)) + 
+  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  ggtitle(("Gene variance for RF groups")) + scale_y_log10()+
+  stat_compare_means()+
+genes_info%>%
+  ggplot(aes(x=cluster_lasso, y=var)) + 
+  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  ggtitle(("Gene variance for LASSO groups")) + scale_y_log10()+
+  stat_compare_means()
+
+
+genes_info%>%
+  ggplot(aes(x=cluster_rf, y=expr)) + 
+  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  ggtitle(("Gene expression for RF groups")) + scale_y_log10()+
+  stat_compare_means()+
+genes_info%>%
+  ggplot(aes(x=cluster_lasso, y=expr)) + 
+  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  ggtitle(("Gene expression for LASSO groups")) + scale_y_log10()+
+  stat_compare_means()
+
+genes_info %>%
+  group_by(cluster_rf) %>%
+  summarise(n=n(), 
+            tf_frac=sum(is_tf)/n()) %>%
+  ggplot(aes(x=cluster_rf, y=tf_frac, 
+                          label = paste("n=",n))) + 
+  geom_bar(stat = "identity", aes(fill=tf_frac), alpha = 1)+
+  geom_hline(yintercept = length(tfs)/length(genes)) + 
+  geom_text(y=0.2) + xlab("cluster RF") +
+  ggtitle("Fraction of TFs in RF groups")+ylim(c(0,0.2))+
+genes_info %>%
+  group_by(cluster_lasso) %>%
+  summarise(n=n(), 
+            tf_frac=sum(is_tf)/n()) %>%
+  ggplot(aes(x=cluster_lasso, y=tf_frac, 
+                          label = paste("n=",n))) + 
+  geom_bar(stat = "identity",  aes(fill=tf_frac), alpha = 1)+
+  geom_hline(yintercept = length(tfs)/length(genes)) + 
+  geom_text(y=0.2) + xlab("cluster LASSO") +ylim(c(0,0.2))+
+  ggtitle("Fraction of TFs in LASSO groups")
+
+```
+Est-ce qu'on a significativement plus de TFs dans les genes qui sont bien prédits avec les PWM chez le lasso?
+
+```{r}
+fisher.test(matrix(c(length(genes), length(tfs), 157, 157*0.1910828), 
+                   nrow = 2), alternative = "greater")
+```
+## Precision and recall of inferred GRNs subsets for different groups
+
+
+```{r, fig.width=10, fig.height=10}
+load("results/networks_bRF_lasso.rdata")
+edges <- edges[str_detect(names(edges), "0.075|0.05|0.01")]
+color_palette = c( "#EC5D2F","#FE945C", "#FFC08E" )
+settings <- c("method", "alpha", "density", "rep")
+prettyZero <- function(l){
+    max.decimals = max(nchar(str_extract(l, "\\.[0-9]+")), na.rm = T)-1
+    lnew = formatC(l, replace.zero = T, zero.print = "0",
+        digits = max.decimals, format = "f", preserve.width=T)
+    return(lnew)}
+
+get_precision <- function(group, method){
+  if(method == "lasso")
+    genes <- names(which(clusters_lasso == group))
+  if(method == "rf")
+    genes <- names(which(clusters_rf == group))
+  
+  subset <- lapply(edges, function(net){net[net$to %in% genes,]})
+
+  val_conn <-
+    evaluate_networks(
+      subset,
+      validation = c("TARGET", "CHIPSeq", "DAPSeq"),
+      nCores = 10,
+      input_genes = genes,
+      input_tfs = tfs
+    )
+  val_conn[, settings] <-
+    str_split_fixed(val_conn$network_name, '_', length(settings))
+  val_conn$group <- group
+  val_conn$method_mse <- method
+  
+  if(method == "rf")
+    val_conn<-val_conn[val_conn$method != "LASSO-D3S",]
+  if(method == "lasso")
+    val_conn<-val_conn[val_conn$method == "LASSO-D3S",]
+  return(val_conn)
+}
+
+precision <- data.frame()
+for(group in unique(clusters_lasso)){
+  for(method in c("rf", "lasso")){
+    if(nrow(precision)==0)
+      precision<- get_precision(group, method)
+    else
+      precision <- rbind.data.frame(precision, get_precision(group, method))
+  }
+}
+
+(precision %>%
+  dplyr::select(-network_name) %>%
+  mutate(alpha = as.numeric(alpha)) %>%
+  ggplot(aes(color = density, x = alpha, y = precision)) +
+  ggh4x::facet_nested_wrap(vars(method, group), ncol = 8, nest_line = T) + geom_point() +
+  geom_smooth(aes(fill = density), alpha = 0.1) +
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'top'
+  ) +
+  xlab(expression(alpha)) + ylab("Precision") +
+  ggtitle("Precision against ConnecTF") +
+  scale_x_continuous(labels = prettyZero) +
+  scale_color_manual(name = "Network density", values = color_palette) +
+  scale_fill_manual(name = "Network density", values = color_palette))/(
+  precision %>%
+  dplyr::select(-network_name) %>%
+  mutate(alpha = as.numeric(alpha)) %>%
+  ggplot(aes(color = density, x = alpha, y = recall)) +
+  ggh4x::facet_nested_wrap(vars(method, group), ncol = 8, nest_line = T) + geom_point() +
+  geom_smooth(aes(fill = density), alpha = 0.1) +
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'none'
+  ) +
+  xlab(expression(alpha)) + ylab("Recall") +
+  ggtitle("Recall against ConnecTF") +
+  scale_x_continuous(labels = prettyZero) +
+  scale_color_manual(name = "Network density", values = color_palette) +
+  scale_fill_manual(name = "Network density", values = color_palette))
+```
+
+```{r}
+library(DIANE)
+background <- convert_from_agi(genes)
+
+for(group in unique(clusters_lasso)){
+  
+  genes_i <- names(which(clusters_lasso == group))
+  
+  print(paste("LASSO", length(genes_i), "genes,", group, "\n"))
+  genes_i <- convert_from_agi(genes_i)
+  go_lasso <- enrich_go(genes_i, background)
+  DIANE::draw_enrich_go(go_lasso)
+  print(go_lasso)
+  genes_i <- names(which(clusters_rf == group))
+  print(paste("RF", length(genes_i), "genes, min mse at", group))
+  genes_i <- convert_from_agi(genes_i)
+  go_rf <- enrich_go(genes_i, background)
+  DIANE::draw_enrich_go(go_rf)
+  print(go_rf)
+  
+  # common_go <- intersect(go_lasso$ID, go_rf$ID)
+  # print(go_lasso[common_go,])
+}
+
+go_all <- enrich_go(convert_from_agi(genes), convert_from_agi(rownames(gene_annotations$`Arabidopsis thaliana`)))
+draw_enrich_go(go_all)
+```
+
+Rien de spécial n'est trouvé en lien avec les ontologies enrichies dans certains groupes, la liste de base est enrichie en ribosomal functions, et ça se retrouve dans des sous groupes comparés à l'ensemble du génome. comparés à la liste de base, les sous groups ne sont quasiment pas enrichis...
+
+# Profils d'expression
+
+```{r, fig.width=10, fig.height=5}
+expression <- data.frame(counts)
+expression <- (expression-rowMeans(expression)) / matrixStats::rowSds(as.matrix(expression))
+
+
+Heatmap(expression, cluster_columns = F, show_row_names = F)+ rowAnnotation(
+    clusters_lasso = clusters_lasso, clusters_rf = clusters_rf,
+    col=list(clusters_lasso= setNames(c("darkorange", "yellow", "green"), 
+                                       nm = names(table(clusters_lasso))),
+             clusters_rf= setNames(c("darkorange", "yellow", "green"), 
+                                       nm = names(table(clusters_rf)))))
+
+expression$genes <- rownames(expression)
+
+reshape2::melt(expression) %>%
+  mutate(time = extract_numeric(str_split_fixed(variable, '_', 2)[,1]),
+         rep = str_split_fixed(variable, '_', 2)[,2],
+         trt = substr(variable,1,1),
+         group_lasso = clusters_lasso[genes],
+         group_rf = clusters_rf[genes]) %>%
+  filter(trt!="T")%>%
+  ggplot(aes(x=time, y=value, col = group_lasso, group =genes))+
+  geom_line(alpha = 0.1) + 
+  facet_wrap(group_lasso~ trt, nrow = 1) 
+
+
+reshape2::melt(expression) %>%
+  mutate(time = extract_numeric(str_split_fixed(variable, '_', 2)[,1]),
+         rep = str_split_fixed(variable, '_', 2)[,2],
+         trt = substr(variable,1,1),
+         group_lasso = clusters_lasso[genes],
+         group_rf = clusters_rf[genes]) %>%
+  filter(trt!="T")%>%
+  ggplot(aes(x=time, y=value, col = group_rf, group =genes))+
+  geom_line(alpha = 0.1) + 
+  facet_wrap(group_rf~ trt, nrow = 1) 
+
+
+```
+
+
