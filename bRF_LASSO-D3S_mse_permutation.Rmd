@@ -1,0 +1,157 @@
+---
+title: "Integrative GRN inference : model exploration"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F)
+
+source('inference_functions/bRF.R')
+source('inference_functions/LASSO-D3S.R')
+source('inference_functions/evaluateNetwork.R')
+source('inference_functions/MSE.R')
+library(ComplexHeatmap)
+library(ggplot2)
+library(tidyverse)
+library(ggpubr)
+```
+
+This document demonstrates the use of the bRF and LASSO-D3S functions for integrative GRN inference.
+
+Those functions infer the regulatory pathways of *Arabidopsis thaliana*'s roots in response to nitrate (N) induction from [Varala et al., 2018](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE97500).
+
+They use as inputs the expression profiles of N-responsive genes and TFBS information. 
+Prior TFBS information was built by searching in the promoters of the N-responsive genes the PWM of the N-responsive regulators. 
+
+## Data import
+
+### Expression data and TFBS data
+
+Import of the expression data and the N-responsive genes and regulators :
+
+```{r}
+load('rdata/inference_input_N_response_varala.rdata')
+genes <- input_data$grouped_genes; length(genes)
+tfs <- input_data$grouped_regressors; length(tfs)
+counts <- input_data$counts; dim(counts)
+load("rdata/pwm_occurrences_N_response_varala.rdata")
+dim(pwm_occurrence)
+```
+
+
+
+# Is the mse variation worsened by unmapping prior values and expression profiles of TFs?
+
+```{r}
+ALPHAS <- seq(0,1, by = 0.1)
+
+subset <- sample(genes, replace = F, size = 20)
+lmses <- data.frame(row.names = subset)
+lmses_perm<- data.frame(row.names = subset)
+lmses_perm2<- data.frame(row.names = subset)
+
+for(alpha in ALPHAS){
+  set.seed(121314)
+  lmses[,as.character(alpha)] <- bRF_inference_MSE(counts, subset, tfs, alpha = alpha, nTrees = 4000,
+                             pwm_occurrence = pwm_occurrence, nCores = 15)
+  lmses_perm[,as.character(alpha)] <- bRF_inference_MSE(counts, subset, tfs, alpha = alpha, nTrees = 4000,
+                           pwm_occurrence = pwm_occurrence, nCores = 15, tf_expression_permutation = T)
+  lmses_perm2[,as.character(alpha)] <- bRF_inference_MSE(counts, subset, tfs, alpha = alpha, nTrees = 4000,
+                           pwm_occurrence = pwm_occurrence, nCores = 15, tf_expression_permutation = T)
+}
+
+ha = HeatmapAnnotation(
+    permutation = c(rep(F, ncol(lmses)), rep(T, ncol(lmses))),
+    alpha = anno_simple(as.numeric(rep(colnames(mse_rf),2))),
+    annotation_name_side = "left")
+heatmap_rf_4000 <- Heatmap(cbind(lmses, lmses_perm), row_km = 3, cluster_columns = F, show_row_names = F, 
+        name = "scaled logMSE (z-score)", top_annotation = ha,
+        row_title = "Genes", column_title = "alpha");heatmap_rf_4000
+
+draw_gene <- function(gene){
+  df <- data.frame("mse"=as.numeric(lmses[gene,]), 
+                   "mse_perm"=as.numeric(lmses_perm[gene,]),
+                   "mse_perm2"=as.numeric(lmses_perm2[gene,]), alpha = ALPHAS)
+  gather(df, mse, mse_perm, mse_perm2, key = "permutation", value = "mse") %>%
+    ggplot(aes(x=alpha, y=mse, group =permutation, color = permutation))+
+             geom_line()
+}
+for(gene in subset){
+    print(draw_gene(gene))
+}
+
+# save(lmses, file = "results/logMSES_RFs_per_genes.rdata")
+```
+
+```{r}
+lmses <- data.frame(row.names = subset)
+lmses_perm<- data.frame(row.names = subset)
+lmses_perm2<- data.frame(row.names = subset)
+
+
+for(alpha in ALPHAS){
+  # set.seed(121314)
+  lmses[,as.character(alpha)] <- LASSO.D3S_inference_MSE(counts, subset, tfs, alpha = alpha, N=50,
+                             pwm_occurrence = pwm_occurrence, nCores = 15)
+  lmses_perm[,as.character(alpha)] <- LASSO.D3S_inference_MSE(counts, subset, tfs, alpha = alpha, N=50,
+                           pwm_occurrence = pwm_occurrence, nCores = 15, tf_expression_permutation = T)
+  lmses_perm2[,as.character(alpha)] <- LASSO.D3S_inference_MSE(counts, subset, tfs, alpha = alpha, N=50,
+                           pwm_occurrence = pwm_occurrence, nCores = 15, tf_expression_permutation = T)
+
+}
+
+
+
+
+ha = HeatmapAnnotation(
+    permutation = c(rep(F, ncol(lmses)), rep(T, ncol(lmses))),
+    alpha = anno_simple(as.numeric(rep(colnames(mse_rf),2))),
+    annotation_name_side = "left")
+heatmap_rf_4000 <- Heatmap(cbind(lmses, lmses_perm), row_km = 3, cluster_columns = F, show_row_names = F, 
+        name = "scaled logMSE (z-score)", top_annotation = ha,
+        row_title = "Genes", column_title = "alpha");heatmap_rf_4000
+
+draw_gene <- function(gene){
+  df <- data.frame("mse"=as.numeric(lmses[gene,]), 
+                   "mse_perm"=as.numeric(lmses_perm[gene,]),
+                   "mse_perm2"=as.numeric(lmses_perm2[gene,]), alpha = ALPHAS)
+  gather(df, mse, mse_perm, mse_perm2, key = "permutation", value = "mse") %>%
+    ggplot(aes(x=alpha, y=mse, group =permutation, color = permutation))+
+             geom_line()
+}
+for(gene in subset){
+    print(draw_gene(gene))
+}
+```
+
+# how reproducible is one gene?
+
+```{r}
+lmses <- data.frame(row.names = genes[10])
+
+for(alpha in ALPHAS){
+  for(i in 1:5){
+    set.seed(i)
+    lmses[,paste0(i,"-", alpha)] <- LASSO.D3S_inference_MSE(counts, genes[20], tfs, alpha = alpha, N=50,
+                             pwm_occurrence = pwm_occurrence, nCores = 15)
+  }
+}
+lmses%>%
+  gather() %>%
+  separate(key, c("rep", "alpha"), sep = '-') %>%
+  ggplot(aes(x=alpha, y=value)) + geom_point(aes(col=rep))
+
+for(alpha in ALPHAS){
+  for(i in 1:5){
+    lmses[,paste0(i,"-", alpha)] <- LASSO.D3S_inference_MSE(counts, genes[210], tfs, alpha = alpha, N=50,
+                             pwm_occurrence = pwm_occurrence, nCores = 15)
+  }
+}
+lmses%>%
+  gather() %>%
+  separate(key, c("rep", "alpha"), sep = '-') %>%
+  ggplot(aes(x=alpha, y=value)) + geom_point(aes(col=rep))
+```
+
+

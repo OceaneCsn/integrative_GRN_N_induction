@@ -107,6 +107,7 @@ get_MSE_baseline <- function(counts, genes, nCores=ifelse(is.na(detectCores()),1
 #' @return The weighted list of regulatory interactions between genes and TFs
 bRF_inference_MSE <- function(counts, genes, tfs, alpha=0.25, scale = FALSE,
                           pwm_occurrence, nTrees=500, importance="%IncMSE",
+                          tf_expression_permutation = FALSE,
                           nCores = ifelse(is.na(detectCores()),1,
                                           max(detectCores() - 1, 1))){
   
@@ -136,6 +137,13 @@ bRF_inference_MSE <- function(counts, genes, tfs, alpha=0.25, scale = FALSE,
                                                     {
                                                       target_tfs <- setdiff(tfs, target)
                                                       x_target <- x[, target_tfs]
+                                                      if(tf_expression_permutation){
+                                                        # randomises the expression rows of TFs but not their ID
+                                                        x_target <- x_target[,sample(target_tfs, replace = F, 
+                                                                                     size = length(target_tfs))]
+                                                        colnames(x_target) <- target_tfs
+                                                      }
+                                                        
                                                       p = length(target_tfs)
                                                       y <- as.numeric(t(counts[target, ]))
                                                       
@@ -155,14 +163,14 @@ bRF_inference_MSE <- function(counts, genes, tfs, alpha=0.25, scale = FALSE,
                                                                                         ntree=nTrees,
                                                                                         sw=weights)
 
-                                                        log(mean(rf_weighted$mse))
+                                                        mean(rf_weighted$mse)/var(y)
                                                       }
                                                       else{
                                                         # case when all weights are equal to 0 (no pwm found and alpha = 1)
                                                         # the mse is the error from predicting the gene mean
                                                         sampled <- sample(1:ncol(counts), replace = T, size = ncol(counts))
                                                         oob <- setdiff(1:ncol(counts), sampled)
-                                                        log(mean((counts[target,oob] - mean(counts[target, sampled]))^2))
+                                                        mean((counts[target,oob] - mean(counts[target, sampled]))^2)/var(y)
                                                       }
                                                       
                                                     }))
@@ -178,7 +186,8 @@ bRF_inference_MSE <- function(counts, genes, tfs, alpha=0.25, scale = FALSE,
 
 LASSO.D3S_inference_MSE <- function(counts, genes, tfs, alpha=0.25, 
                                    pwm_occurrence, int_pwm_noise = 0,
-                                   N = 100, mda_type= "shuffle", normalized=F,
+                                   N = 100, mda_type= "shuffle", 
+                                   tf_expression_permutation = FALSE,
                                    nCores = ifelse(is.na(detectCores()),1,
                                                    max(detectCores() - 1, 1))){
   
@@ -211,8 +220,14 @@ LASSO.D3S_inference_MSE <- function(counts, genes, tfs, alpha=0.25,
                                                       # if needed
                                                       target_tfs <- setdiff(tfs, target)
                                                       x_target <- x[, target_tfs]
+                                                      if(tf_expression_permutation){
+                                                        # randomises the expression rows of TFs but not their ID
+                                                        x_target <- x_target[,sample(target_tfs, replace = F, 
+                                                                                     size = length(target_tfs))]
+                                                        colnames(x_target) <- target_tfs
+                                                      }
                                                       y <- t(counts[target, ])
-                                                      y_norm = (y-mean(y))/sd(y)
+                                                      # y_norm = (y-mean(y))/sd(y)
                                                       
                                                       # weights for differential shrinkage
                                                       penalty_factor <- 1 - pwm_imputed[target, target_tfs] * alpha
@@ -274,10 +289,11 @@ LASSO.D3S_inference_MSE <- function(counts, genes, tfs, alpha=0.25,
                                                           )
                                                         }
                                                       }
-                                                      log(mse_gene/n_actual)
+                                                      mse_gene/(n_actual*sd(y)^2)
                                                     }))
   attr(result.reg, "rng") <- NULL # It contains the whole sequence of RNG seeds
   edges <- result.reg
   toc()
   return(edges)
 }
+
