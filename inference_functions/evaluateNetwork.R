@@ -39,7 +39,6 @@ evaluate_network <-
       ))
     }
     
-    
     if (!is.null(subset_validated_edges))
       validated_edges <- subset_validated_edges
     

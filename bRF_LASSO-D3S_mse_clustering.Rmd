@@ -250,6 +250,12 @@ genes_info %>%
   geom_text(y=0.2) + xlab("cluster LASSO") +ylim(c(0,0.2))+
   ggtitle("Fraction of TFs in LASSO groups")
 
+
+
+common_pwm_pos <- intersect(names(which(clusters_lasso == "0.7-1")), names(which(clusters_rf == "0.7-1")))
+DIANE::get_gene_information(common_pwm_pos, organism = "Arabidopsis thaliana")
+length(intersect(common_pwm_pos, tfs))/length(common_pwm_pos)
+
 ```
 Est-ce qu'on a significativement plus de TFs dans les genes qui sont bien prédits avec les PWM chez le lasso?
 
@@ -271,7 +277,7 @@ prettyZero <- function(l){
         digits = max.decimals, format = "f", preserve.width=T)
     return(lnew)}
 
-get_precision <- function(group, method){
+get_precision <- function(group, method, validation = c("TARGET", "CHIPSeq", "DAPSeq")){
   if(method == "lasso")
     genes <- names(which(clusters_lasso == group))
   if(method == "rf")
@@ -282,7 +288,7 @@ get_precision <- function(group, method){
   val_conn <-
     evaluate_networks(
       subset,
-      validation = c("TARGET", "CHIPSeq", "DAPSeq"),
+      validation = validation,
       nCores = 10,
       input_genes = genes,
       input_tfs = tfs
@@ -299,56 +305,68 @@ get_precision <- function(group, method){
   return(val_conn)
 }
 
-precision <- data.frame()
-for(group in unique(clusters_lasso)){
-  for(method in c("rf", "lasso")){
-    if(nrow(precision)==0)
-      precision<- get_precision(group, method)
-    else
-      precision <- rbind.data.frame(precision, get_precision(group, method))
-  }
-}
 
-(precision %>%
-  dplyr::select(-network_name) %>%
-  mutate(alpha = as.numeric(alpha)) %>%
-  ggplot(aes(color = density, x = alpha, y = precision)) +
-  ggh4x::facet_nested_wrap(vars(method, group), ncol = 8, nest_line = T) + geom_point() +
-  geom_smooth(aes(fill = density), alpha = 0.1) +
-  theme(
-    strip.background = element_blank(),
-    axis.title.x = element_text(size = 22),
-    title = element_text(size = 16),
-    strip.text = element_text(size = 16),
-    legend.text = element_text(size = 15),
-    axis.text = element_text(size = 12),
-    legend.position = 'top'
-  ) +
-  xlab(expression(alpha)) + ylab("Precision") +
-  ggtitle("Precision against ConnecTF") +
-  scale_x_continuous(labels = prettyZero) +
-  scale_color_manual(name = "Network density", values = color_palette) +
-  scale_fill_manual(name = "Network density", values = color_palette))/(
-  precision %>%
-  dplyr::select(-network_name) %>%
-  mutate(alpha = as.numeric(alpha)) %>%
-  ggplot(aes(color = density, x = alpha, y = recall)) +
-  ggh4x::facet_nested_wrap(vars(method, group), ncol = 8, nest_line = T) + geom_point() +
-  geom_smooth(aes(fill = density), alpha = 0.1) +
-  theme(
-    strip.background = element_blank(),
-    axis.title.x = element_text(size = 22),
-    title = element_text(size = 16),
-    strip.text = element_text(size = 16),
-    legend.text = element_text(size = 15),
-    axis.text = element_text(size = 12),
-    legend.position = 'none'
-  ) +
-  xlab(expression(alpha)) + ylab("Recall") +
-  ggtitle("Recall against ConnecTF") +
-  scale_x_continuous(labels = prettyZero) +
-  scale_color_manual(name = "Network density", values = color_palette) +
-  scale_fill_manual(name = "Network density", values = color_palette))
+draw_precision <- function(validation){
+  precision <- data.frame()
+  for(group in unique(clusters_lasso)){
+    for(method in c("rf", "lasso")){
+      if(nrow(precision)==0)
+        precision<- get_precision(group, method, validation = validation)
+      else
+        precision <- rbind.data.frame(precision, get_precision(group, method, validation = validation))
+    }
+  }
+
+  (precision %>%
+    dplyr::select(-network_name) %>%
+    mutate(alpha = as.numeric(alpha)) %>%
+    ggplot(aes(color = density, x = alpha, y = precision)) +
+    ggh4x::facet_nested_wrap(vars(method, group), ncol = 8, nest_line = T) + geom_point() +
+    geom_smooth(aes(fill = density), alpha = 0.1) +
+    theme(
+      strip.background = element_blank(),
+      axis.title.x = element_text(size = 22),
+      title = element_text(size = 16),
+      strip.text = element_text(size = 16),
+      legend.text = element_text(size = 15),
+      axis.text = element_text(size = 12),
+      legend.position = 'top'
+    ) +
+    xlab(expression(alpha)) + ylab("Precision") +
+    ggtitle("Precision against ConnecTF") +
+    scale_x_continuous(labels = prettyZero) +
+    scale_color_manual(name = "Network density", values = color_palette) +
+    scale_fill_manual(name = "Network density", values = color_palette))/(
+    precision %>%
+    dplyr::select(-network_name) %>%
+    mutate(alpha = as.numeric(alpha)) %>%
+    ggplot(aes(color = density, x = alpha, y = recall)) +
+    ggh4x::facet_nested_wrap(vars(method, group), ncol = 8, nest_line = T) + geom_point() +
+    geom_smooth(aes(fill = density), alpha = 0.1) +
+    theme(
+      strip.background = element_blank(),
+      axis.title.x = element_text(size = 22),
+      title = element_text(size = 16),
+      strip.text = element_text(size = 16),
+      legend.text = element_text(size = 15),
+      axis.text = element_text(size = 12),
+      legend.position = 'none'
+    ) +
+    xlab(expression(alpha)) + ylab("Recall") +
+    ggtitle("Recall against ConnecTF") +
+    scale_x_continuous(labels = prettyZero) +
+    scale_color_manual(name = "Network density", values = color_palette) +
+    scale_fill_manual(name = "Network density", values = color_palette))
+  
+  }
+draw_precision(validation = "TARGET")
+draw_precision(validation = c( "CHIPSeq"))
+draw_precision(validation = c( "DAPSeq"))
+# draw_precision(validation = c("TARGET", "CHIPSeq"))
+draw_precision(validation = c("TARGET", "CHIPSeq", "DAPSeq"))
+
+
+
 ```
 
 ```{r}
@@ -374,6 +392,12 @@ for(group in unique(clusters_lasso)){
   # common_go <- intersect(go_lasso$ID, go_rf$ID)
   # print(go_lasso[common_go,])
 }
+
+
+# go_common <- enrich_go(convert_from_agi(common_pwm_pos), background)
+# draw_enrich_go(go_common)
+
+
 
 go_all <- enrich_go(convert_from_agi(genes), convert_from_agi(rownames(gene_annotations$`Arabidopsis thaliana`)))
 draw_enrich_go(go_all)
