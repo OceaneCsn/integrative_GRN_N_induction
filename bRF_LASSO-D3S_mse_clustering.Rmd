@@ -59,22 +59,22 @@ How does the individual MSE of genes varies with $\alpha$ for model estimation i
 ### bRf : biased Random Forests
 
 ```{r, eval=FALSE}
-ALPHAS <- seq(0,1, by = 0.1)
-lmses <- data.frame(row.names = genes)
-
-for(alpha in ALPHAS){
-  set.seed(12131)
-  lmses[,as.character(alpha)] <- bRF_inference_MSE(counts, genes, tfs, alpha = alpha, nTrees = 4000,
-                             pwm_occurrence = pwm_occurrence, nCores = 18)
-}
-
-save(lmses, file = "results/logMSES_RFs_per_genes_other_seed.rdata")
+# ALPHAS <- seq(0,1, by = 0.1)
+# lmses <- data.frame(row.names = genes)
+# 
+# for(alpha in ALPHAS){
+#   set.seed(12131)
+#   lmses[,as.character(alpha)] <- bRF_inference_MSE(counts, genes, tfs, alpha = alpha, nTrees = 4000,
+#                              pwm_occurrence = pwm_occurrence, nCores = 18)
+# }
+# 
+# save(lmses, file = "results/logMSES_RFs_per_genes_other_seed.rdata")
 ```
 
 Clustering the genes :
 
 ```{r}
-# load(file = "results/logMSES_RFs_per_genes_400trees.rdata")
+load(file = "results/logMSES_RFs_per_genes_400trees.rdata")
 
 mse_rf <- (lmses-rowMeans(lmses)) / matrixStats::rowSds(as.matrix(lmses))
 
@@ -90,16 +90,16 @@ heatmap_rf_4000 <- Heatmap(lmses, row_km = 3, cluster_columns = F, show_row_name
 
 ```{r, eval=FALSE}
 
-lmses_lasso <- data.frame(row.names = genes)
+# lmses_lasso <- data.frame(row.names = genes)
+# 
+# for(alpha in ALPHAS){
+#   set.seed(12131)
+#   lmses_lasso[,as.character(alpha)] <- LASSO.D3S_inference_MSE(counts, genes, tfs,
+#                                                                alpha = alpha, N = 50,
+#                                pwm_occurrence = pwm_occurrence, nCores = 15)
+# }
 
-for(alpha in ALPHAS){
-  set.seed(12131)
-  lmses_lasso[,as.character(alpha)] <- LASSO.D3S_inference_MSE(counts, genes, tfs,
-                                                               alpha = alpha, N = 50,
-                               pwm_occurrence = pwm_occurrence, nCores = 15)
-}
-
-save(lmses_lasso, file = "results/logMSES_Lasso_per_genes_other_seed.rdata")
+# save(lmses_lasso, file = "results/logMSES_Lasso_per_genes_other_seed.rdata")
 
 ```
 
@@ -140,7 +140,7 @@ gene <- rownames(smooth_rf)[1]
 
 clusters_rf <- sapply(genes, get_optimum, method = "rf")
 clusters_lasso <- sapply(genes, get_optimum, method = "lasso")
-sum(clusters_lasso==clusters_lasso_other_seed)
+# sum(clusters_lasso==clusters_lasso_other_seed)
 table(clusters_rf); table(clusters_lasso)
 ```
 
@@ -181,12 +181,16 @@ Quelle est la précision rappel des sous réseaux concernant ces gènes.
 load("rdata/pwm_prom_jaspar_dap.rdata")
 library(patchwork)
 
+# to comment for new version where mse is already normalized per genes
+norm_mse <- exp(as.matrix(cbind(lmses, lmses_lasso)))/var_expr
+
 genes_info <- data.frame(genes = genes, 
                          cluster_lasso = clusters_lasso[genes], 
                          cluster_rf = clusters_rf[genes])
 genes_info$is_tf <- genes %in% tfs
 genes_info$var <- var_expr
 genes_info$expr <- mean_expr
+genes_info$min_mse <- matrixStats::rowMins(norm_mse)
 genes_info$nb_motifs <- table(pwm_prom$target)[genes]
 
 genes_info%>%
@@ -200,6 +204,19 @@ genes_info%>%
   geom_boxplot(width=0.1, fill = "white")+
   ggtitle(("Number of motifs in promoter for LASSO groups")) +
   stat_compare_means() 
+
+genes_info%>%
+  ggplot(aes(x=cluster_rf, y=min_mse)) + 
+  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  ggtitle(("Min mse for RF groups")) + 
+  stat_compare_means() + genes_info%>%
+  ggplot(aes(x=cluster_lasso, y=min_mse)) + 
+  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  ggtitle(("Min mse for LASSO groups")) +
+  stat_compare_means() 
+
 
 genes_info%>%
   ggplot(aes(x=cluster_rf, y=var)) + 
@@ -249,7 +266,26 @@ genes_info %>%
   geom_text(y=0.2) + xlab("cluster LASSO") +ylim(c(0,0.2))+
   ggtitle("Fraction of TFs in LASSO groups")
 
+# promoteurs enrichis en certains motifs de TFs?
+known_tfs <- tfs[which(tfs %in% pwm_prom$TF)]
 
+get_number_of_motifs_per_tfs <- function(genes){
+  table(pwm_prom[pwm_prom$target %in% genes & pwm_prom$TF %in% tfs,"TF"])[known_tfs]
+}
+
+targets_per_pwm <- data.frame(row.names = known_tfs)
+for(group in unique(clusters_lasso)){
+  targets_per_pwm[paste("lasso", group)] <- get_number_of_motifs_per_tfs(names(
+    which(clusters_lasso == group)))/sum(clusters_lasso == group)
+  targets_per_pwm[paste("rf", group)] <- get_number_of_motifs_per_tfs(names(
+    which(clusters_rf == group)))/sum(clusters_rf == group)
+
+}
+Heatmap((as.matrix(targets_per_pwm)-rowMeans(as.matrix(targets_per_pwm)))/matrixStats::rowSds(as.matrix(targets_per_pwm)))
+
+Heatmap((as.matrix(targets_per_pwm)/rowMeans(as.matrix(targets_per_pwm))))
+
+as.matrix(targets_per_pwm)/rowMeans(as.matrix(targets_per_pwm))==matrixStats::rowMaxs(as.matrix(targets_per_pwm)/rowMeans(as.matrix(targets_per_pwm)))
 
 common_pwm_pos <- intersect(names(which(clusters_lasso == "0.7-1")), names(which(clusters_rf == "0.7-1")))
 DIANE::get_gene_information(common_pwm_pos, organism = "Arabidopsis thaliana")
