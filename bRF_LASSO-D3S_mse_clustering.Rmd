@@ -1,6 +1,11 @@
 ---
 title: "Integrative GRN inference : model exploration"
-output: html_document
+output: 
+  html_document:
+    df_print: paged
+    toc: true
+    toc_float: true
+    toc_depth: 2
 ---
 
 
@@ -76,6 +81,8 @@ Clustering the genes :
 ```{r}
 load(file = "results/logMSES_RFs_per_genes_400trees.rdata")
 
+plot(colMeans(exp(lmses)/var_expr))
+
 mse_rf <- (lmses-rowMeans(lmses)) / matrixStats::rowSds(as.matrix(lmses))
 
 ha = HeatmapAnnotation(
@@ -108,7 +115,7 @@ heatmap_rf_4000 <- Heatmap(lmses, row_km = 3, cluster_columns = F, show_row_name
 ```{r}
 load(file = "results/logMSES_Lasso_per_genes.rdata")
 mse_lasso <- (lmses_lasso-rowMeans(lmses_lasso)) / matrixStats::rowSds(as.matrix(lmses_lasso))
-
+plot(colMeans(exp(lmses_lasso)/var_expr))
 heatmap_lasso <- Heatmap(mse_lasso, row_km = 4, cluster_columns = F, show_row_names = F, 
         name = "scaled logMSE (z-score)", top_annotation = ha,
         row_title = "Genes", column_title = "alpha"); heatmap_lasso
@@ -128,7 +135,6 @@ average_genes <- function(mse){
 
 smooth_rf <- average_genes(lmses)
 smooth_lasso <- average_genes(lmses_lasso)
-
 
 get_optimum <- function(gene, method = "rf"){
   if(method=="rf")
@@ -266,6 +272,27 @@ genes_info %>%
   geom_text(y=0.2) + xlab("cluster LASSO") +ylim(c(0,0.2))+
   ggtitle("Fraction of TFs in LASSO groups")
 
+# Heatmap((as.matrix(targets_per_pwm)-rowMeans(as.matrix(targets_per_pwm)))/matrixStats::rowSds(as.matrix(targets_per_pwm)))
+# 
+# Heatmap((as.matrix(targets_per_pwm)/rowMeans(as.matrix(targets_per_pwm))))
+# 
+# as.matrix(targets_per_pwm)/rowMeans(as.matrix(targets_per_pwm))==matrixStats::rowMaxs(as.matrix(targets_per_pwm)/rowMeans(as.matrix(targets_per_pwm)))
+
+common_pwm_pos <- intersect(names(which(clusters_lasso == "0.7-1")), names(which(clusters_rf == "0.7-1")))
+DIANE::get_gene_information(common_pwm_pos, organism = "Arabidopsis thaliana")
+length(intersect(common_pwm_pos, tfs))/length(common_pwm_pos)
+
+```
+Est-ce qu'on a significativement plus de TFs dans les genes qui sont bien prédits avec les PWM chez le lasso?
+
+```{r}
+fisher.test(matrix(c(length(genes), length(tfs), 157, 157*0.1910828), 
+                   nrow = 2), alternative = "greater")
+```
+
+## ENrichissement de certains motifs dans les groupes de gènes
+
+```{r}
 # promoteurs enrichis en certains motifs de TFs?
 known_tfs <- tfs[which(tfs %in% pwm_prom$TF)]
 
@@ -281,23 +308,97 @@ for(group in unique(clusters_lasso)){
     which(clusters_rf == group)))/sum(clusters_rf == group)
 
 }
-Heatmap((as.matrix(targets_per_pwm)-rowMeans(as.matrix(targets_per_pwm)))/matrixStats::rowSds(as.matrix(targets_per_pwm)))
 
-Heatmap((as.matrix(targets_per_pwm)/rowMeans(as.matrix(targets_per_pwm))))
+enrichments_per_pwm <- data.frame(row.names = known_tfs)
+n_genes <- length(genes)
+for(group in unique(clusters_lasso)){
+  # number of motifs in all the genes
+  n_targets_lasso_in_all <- get_number_of_motifs_per_tfs(genes)
+  
+  n_targets_lasso_in_group <- get_number_of_motifs_per_tfs(names(
+    which(clusters_lasso == group)))
+  n_group_lasso <- length(names(which(clusters_lasso == group)))
+  
+  n_targets_rf_in_group <- get_number_of_motifs_per_tfs(names(
+    which(clusters_rf == group)))
+  n_group_rf <- length(names(which(clusters_rf == group)))
+  
+  for(tf in known_tfs){
+    
+    # number of genes with that motif in all genes
+    n_targets_in_all_tf <- n_targets_lasso_in_all[tf]
+    
+    # number of genes with that motif in the lasso group
+    n_targets_lasso_in_group_tf <- n_targets_lasso_in_group[tf]
+    p_lasso <- phyper(q=n_targets_lasso_in_group_tf-1,
+           m=n_targets_in_all_tf, #white balls
+           n=n_genes-n_targets_in_all_tf, # black balls
+           k=n_group_lasso, lower.tail = FALSE)
+    
+     # number of genes with that motif in the rf group
+    n_targets_rf_in_group_tf <- n_targets_rf_in_group[tf]
+    p_rf <- phyper(q=n_targets_rf_in_group_tf-1,
+           m=n_targets_in_all_tf, 
+           n=n_genes-n_targets_in_all_tf,
+           k=n_group_rf, lower.tail = FALSE)
+    
+    enrichments_per_pwm[tf, paste0(group, "lasso")]<- p_lasso
+    enrichments_per_pwm[tf, paste0(group, "rf")]<- p_rf
+  }
+}
 
-as.matrix(targets_per_pwm)/rowMeans(as.matrix(targets_per_pwm))==matrixStats::rowMaxs(as.matrix(targets_per_pwm)/rowMeans(as.matrix(targets_per_pwm)))
+enrichments_per_pwm[enrichments_per_pwm<0.05] <- 0
+enrichments_per_pwm[enrichments_per_pwm>=0.05] <- 1
+Heatmap(enrichments_per_pwm)
 
-common_pwm_pos <- intersect(names(which(clusters_lasso == "0.7-1")), names(which(clusters_rf == "0.7-1")))
-DIANE::get_gene_information(common_pwm_pos, organism = "Arabidopsis thaliana")
-length(intersect(common_pwm_pos, tfs))/length(common_pwm_pos)
+
+tfs_rf_pwm_pos <- rownames(enrichments_per_pwm[enrichments_per_pwm$`0.7-1rf`==0,])
+tfs_lasso_pwm_pos <- rownames(enrichments_per_pwm[enrichments_per_pwm$`0.7-1lasso`==0,])
+DIANE::get_gene_information(tfs_rf_pwm_pos, organism = "Arabidopsis thaliana")
+DIANE::get_gene_information(tfs_lasso_pwm_pos, organism = "Arabidopsis thaliana")
+DIANE::get_gene_information(intersect(tfs_rf_pwm_pos, tfs_lasso_pwm_pos ), organism = "Arabidopsis thaliana")
+
+
+tfs_rf_pwm_bad <- rownames(enrichments_per_pwm[enrichments_per_pwm$`0-0.2rf`==0,])
+tfs_lasso_pwm_bad <- rownames(enrichments_per_pwm[enrichments_per_pwm$`0-0.2lasso`==0,])
+DIANE::get_gene_information(tfs_rf_pwm_bad, organism = "Arabidopsis thaliana")
+DIANE::get_gene_information(tfs_lasso_pwm_bad, organism = "Arabidopsis thaliana")
 
 ```
-Est-ce qu'on a significativement plus de TFs dans les genes qui sont bien prédits avec les PWM chez le lasso?
+
+
+bZIP3 et TGA1 sont dans les motifs qui permettent de réduire l'erreur des cibles pour les deux méthodes. AT3G11280 est dans gaudinier.
+On n'a que des BZIPs. Plus spécifiquement aux méthodes, on a aussi des HHO qui sortent, DIV1, VRN1. 
+
+Ces TFs ont le point commun de se fixer dans les G-box : https://academic.oup.com/plphys/article/175/2/628/6116702
+"Many TF family members bind to similar or identical sequence motifs, such as G-boxes (CACGTG), so it is difficult to predict regulatory relationships. We determined that the flanking sequences near G-boxes help determine in vitro specificity but that this is insufficient to predict the transcription pattern of genes near G-boxes. Therefore, we constructed a gene regulatory network that identifies the set of bZIPs and bHLHs that are most predictive of the expression of genes downstream of perfect G-boxes. This network accurately predicts transcriptional patterns and reconstructs known regulatory subnetworks." 
+
+"Since these families are much larger in plants than in the other organisms studied, it is unclear whether these mechanisms are sufficient to explain TF-to-binding site interactions in Arabidopsis. This has been a hindrance to the plant research community, as there have been many cases where a G-box has been identified as critical for the regulation of a gene of interest but researchers were unable to distinguish between the many possible candidate TFs that might regulate that gene"
+
+
+> Les gènes pour lesquels la MSE diminue en utilisant l'information des PWMs ont des enrichissements en motifs pour certains TFs. Ces TFs (et plus précisément ceux dont les motifs sont enrichis dans les groupes bénéficiant de l'intégration pour les deux méthodes) sont annotés comme étant des master regulators de la réponse au nitrate. Cela veut dire qu'on a effectivement constitué des groupes de gènes pour lesquels l'expression dans la réponse à l'induction nitrate peut être mieux prédite avec l'information de la séquence, et qu'ils sont probablement les cibles directes de gènes clés de la réponse au nitrate.
+
+
+Est-ce que les TFs dont les motifs sont enrichis sont effectivement sélectionnés comme régulateurs dans les réseaux inférés pour les sous groups de gènes pertinents pour l'intégration?
+
 
 ```{r}
-fisher.test(matrix(c(length(genes), length(tfs), 157, 157*0.1910828), 
-                   nrow = 2), alternative = "greater")
+load("results/networks_bRF_lasso.rdata")
+get_degree <- function(group, method, TFS){
+  if(method == "lasso")
+    genes <- names(which(clusters_lasso == group))
+  if(method == "rf")
+    genes <- names(which(clusters_rf == group))
+  subset <- lapply(edges, function(net){net[net$to %in% genes,]})
+  net <- subset$bRF_1_0.05_1
+  table(net$from)["AT3G18990"]
+  hist(table(net$from), breaks = 100)
+  max(table(net$to))
+}
 ```
+Oui par exemple VNR1, le plus connecté pour le groupe des RFs, est trouvé dans les motifs enrichis de ce groupe. Ce qui est normal, mais une bonne confirmation quand même.
+
+
 ## Precision and recall of inferred GRNs subsets for different groups
 
 
@@ -416,13 +517,13 @@ for(group in unique(clusters_lasso)){
   genes_i <- convert_from_agi(genes_i)
   go_lasso <- enrich_go(genes_i, background)
   DIANE::draw_enrich_go(go_lasso)
-  print(go_lasso)
+  go_lasso
   genes_i <- names(which(clusters_rf == group))
   print(paste("RF", length(genes_i), "genes, min mse at", group))
   genes_i <- convert_from_agi(genes_i)
   go_rf <- enrich_go(genes_i, background)
   DIANE::draw_enrich_go(go_rf)
-  print(go_rf)
+  go_rf
   
   # common_go <- intersect(go_lasso$ID, go_rf$ID)
   # print(go_lasso[common_go,])

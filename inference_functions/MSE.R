@@ -108,6 +108,7 @@ get_MSE_baseline <- function(counts, genes, nCores=ifelse(is.na(detectCores()),1
 bRF_inference_MSE <- function(counts, genes, tfs, alpha=0.25, scale = FALSE,
                           pwm_occurrence, nTrees=500, importance="%IncMSE",
                           tf_expression_permutation = FALSE,
+                          seed =sample(1:10000, 1),
                           nCores = ifelse(is.na(detectCores()),1,
                                           max(detectCores() - 1, 1))){
   
@@ -139,6 +140,7 @@ bRF_inference_MSE <- function(counts, genes, tfs, alpha=0.25, scale = FALSE,
                                                       x_target <- x[, target_tfs]
                                                       if(tf_expression_permutation){
                                                         # randomises the expression rows of TFs but not their ID
+                                                        set.seed(sample(1:10000, 1))
                                                         x_target <- x_target[,sample(target_tfs, replace = F, 
                                                                                      size = length(target_tfs))]
                                                         colnames(x_target) <- target_tfs
@@ -157,7 +159,7 @@ bRF_inference_MSE <- function(counts, genes, tfs, alpha=0.25, scale = FALSE,
                                                       if(sum(weights)>0){ 
                                                         weights <- weights/sum(weights)
                                                         
-                                                        
+                                                        set.seed(seed)
                                                         rf_weighted <-irafnet_onetarget(x_target,y=y,importance=TRUE,
                                                                                         mtry=round(sqrt(p)),
                                                                                         ntree=nTrees,
@@ -187,6 +189,7 @@ bRF_inference_MSE <- function(counts, genes, tfs, alpha=0.25, scale = FALSE,
 LASSO.D3S_inference_MSE <- function(counts, genes, tfs, alpha=0.25, 
                                    pwm_occurrence, int_pwm_noise = 0,
                                    N = 100, mda_type= "shuffle", 
+                                   seed =sample(1:10000, 1),
                                    tf_expression_permutation = FALSE,
                                    nCores = ifelse(is.na(detectCores()),1,
                                                    max(detectCores() - 1, 1))){
@@ -221,6 +224,7 @@ LASSO.D3S_inference_MSE <- function(counts, genes, tfs, alpha=0.25,
                                                       target_tfs <- setdiff(tfs, target)
                                                       x_target <- x[, target_tfs]
                                                       if(tf_expression_permutation){
+                                                        set.seed(sample(1:10000, 1))
                                                         # randomises the expression rows of TFs but not their ID
                                                         x_target <- x_target[,sample(target_tfs, replace = F, 
                                                                                      size = length(target_tfs))]
@@ -237,6 +241,7 @@ LASSO.D3S_inference_MSE <- function(counts, genes, tfs, alpha=0.25,
                                                       ######### Stability Selection
                                                       mse_gene = 0
                                                       n_actual = 0
+                                                      set.seed(seed)
                                                       for(n in 1:N) {
                                                         # bootstrapping observations
                                                         sampled <- sample(1:nrow(x), replace = T, size = nrow(x))
