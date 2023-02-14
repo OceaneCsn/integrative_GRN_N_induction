@@ -56,7 +56,7 @@ Without setting any seed, mse profiles are quite similar.
 ```{r}
 ALPHAS <- seq(0,1, by = 0.1)
 
-subset <- sample(genes, replace = F, size = 20)
+subset <- sample(genes, replace = F, size = 10)
 lmses <- data.frame(row.names = subset)
 lmses_perm<- data.frame(row.names = subset)
 
@@ -111,70 +111,62 @@ for(gene in subset){
 
 ```{r}
 lmses <- data.frame(row.names = subset)
-lmses_perm<- data.frame(row.names = subset)
-
+N <-100
 for(alpha in ALPHAS){
-  lmses[,as.character(alpha)] <- bRF_inference_MSE(counts, subset, tfs, alpha = alpha, nTrees = 4000,seed =121314,
-                             pwm_occurrence = pwm_occurrence, nCores = 15, tf_expression_permutation = F)
   
-  for(perm in 1:10){
-    lmses_perm[,paste(as.character(alpha), perm)] <- bRF_inference_MSE(counts, subset, tfs, alpha = alpha, nTrees = 4000,
-                           pwm_occurrence = pwm_occurrence, nCores = 15, tf_expression_permutation = T, seed = 121314)
+  for(perm in 1:N){
+    lmses[,paste(as.character(alpha), perm, "true_data")] <- bRF_inference_MSE(counts, subset, tfs, alpha = alpha, nTrees = 4000,
+                             pwm_occurrence = pwm_occurrence, nCores = 15, tf_expression_permutation = F)
+  }
+  
+  for(perm in 1:N){
+    lmses[,paste(as.character(alpha), perm, "shuffled")] <- bRF_inference_MSE(counts, subset, tfs, alpha = alpha, nTrees = 4000,
+                           pwm_occurrence = pwm_occurrence, nCores = 15, tf_expression_permutation = T)
   }
 }
 
 draw_gene <- function(gene){
-  
-  cbind.data.frame(lmses[gene,], lmses_perm[gene,]) %>%
+  lmses[gene,] %>%
     gather() %>%
-    separate(key, into = c("alpha", "rep"), sep = " ") %>%
-    mutate(permutated = !is.na(rep))%>%
-    ggplot(aes(x=alpha, y=value, group =rep, 
-               color = permutated))+
+    separate(key, into = c("alpha", "rep", "MSEtype"), sep = " ") %>%
+    ggplot(aes(x=alpha, y=value, group =interaction(rep, MSEtype), 
+               color = MSEtype))+
     geom_line()
 }
 
-# draw_gene <- function(gene){
-#   
-#   cbind.data.frame(lmses[gene,], lmses_perm[gene,]) %>%
-#     gather() %>%
-#     separate(key, into = c("alpha", "rep"), sep = " ") %>%
-#     mutate(permutated = !is.na(rep))%>%
-#     group_by(alpha, permutated) %>%
-#     summarise(mean_mse = mean(value, na.rm=T),
-#               std_mse = sd(value, na.rm=T))%>%
-#     ggplot(aes(x=alpha, y=mean_mse,
-#                color = permutated))+
-#     geom_point()
-# }
-
 for(gene in subset){
-    print(draw_gene(gene))
-}
+    print(draw_gene(gene))}
+
+save(lmses, file = "results/brf_perumtations_mse.rdata")
 ```
 
 ## For lasso 
 
 ```{r}
-
 lmses <- data.frame(row.names = subset)
-lmses_perm<- data.frame(row.names = subset)
+
 
 for(alpha in ALPHAS){
   # set.seed(121314)
-  lmses[,as.character(alpha)] <- LASSO.D3S_inference_MSE(counts, subset, tfs, alpha = alpha, N=200,seed=121314,
+  for(perm in 1:N){
+    lmses[,paste(as.character(alpha), perm, "true_data")] <- LASSO.D3S_inference_MSE(counts, subset, tfs, alpha = alpha, N=100,
                              pwm_occurrence = pwm_occurrence, nCores = 15, tf_expression_permutation = F)
+  }
   
-  for(perm in 1:10){
-    lmses_perm[,paste(as.character(alpha), perm)] <- LASSO.D3S_inference_MSE(counts, subset, tfs, alpha = alpha, N=200,seed = 121314,
+  for(perm in 1:N){
+    lmses[,paste(as.character(alpha), perm, "shuffled")] <- LASSO.D3S_inference_MSE(counts, subset, tfs, alpha = alpha, N=100,
                            pwm_occurrence = pwm_occurrence, nCores = 15, tf_expression_permutation = T)
   }
 }
+
+gene <- subset[1]
 
 
 for(gene in subset){
     print(draw_gene(gene))
 }
+save(lmses, file = "results/lasso_perumtations_mse.rdata")
+
 ```
 
 

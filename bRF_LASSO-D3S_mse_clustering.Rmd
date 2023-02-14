@@ -547,13 +547,17 @@ Rien de spécial n'est trouvé en lien avec les ontologies enrichies dans certai
 expression <- data.frame(counts)
 expression <- (expression-rowMeans(expression)) / matrixStats::rowSds(as.matrix(expression))
 
-
 Heatmap(expression, cluster_columns = F, show_row_names = F)+ rowAnnotation(
     clusters_lasso = clusters_lasso, clusters_rf = clusters_rf,
     col=list(clusters_lasso= setNames(c("darkorange", "yellow", "green"), 
                                        nm = names(table(clusters_lasso))),
              clusters_rf= setNames(c("darkorange", "yellow", "green"), 
                                        nm = names(table(clusters_rf)))))
+
+Heatmap(expression[tfs,], cluster_columns = F, 
+        show_row_names = F, name = "Expression of TFS")
+Heatmap(expression[known_tfs,], cluster_columns = F, 
+        show_row_names = F, name = "Expression of TFS\nwith known PWMs")
 
 expression$genes <- rownames(expression)
 
@@ -579,8 +583,6 @@ reshape2::melt(expression) %>%
   ggplot(aes(x=time, y=value, col = group_rf, group =genes))+
   geom_line(alpha = 0.1) + 
   facet_wrap(group_rf~ trt, nrow = 1) 
-
-
 ```
 
 
