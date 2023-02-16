@@ -180,15 +180,46 @@ Quelle est la précision rappel des sous réseaux concernant ces gènes.
 
 ```{r, fig.width=10}
 load("rdata/pwm_prom_jaspar_dap.rdata")
+load("rdata/gene_structure.rdata")
 library(patchwork)
 
 genes_info <- data.frame(genes = genes, 
                          cluster_lasso = clusters_lasso[genes], 
                          cluster_rf = clusters_rf[genes])
+
 genes_info$is_tf <- genes %in% tfs
 genes_info$var <- var_expr
 genes_info$expr <- mean_expr
 genes_info$nb_motifs <- table(pwm_prom$target)[genes]
+genes_info[,c("n_introns", "n_transcripts")] <- 
+  gene_structure[match(genes_info$gene, gene_structure$gene),
+                 c("n_introns", "n_transcripts")]
+
+
+genes_info%>%
+  ggplot(aes(x=cluster_rf, y=log(n_introns))) + 
+  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  ggtitle(("Number of introns for RF groups")) + 
+  stat_compare_means() + genes_info%>%
+  ggplot(aes(x=cluster_lasso, y=log(n_introns))) + 
+  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  ggtitle(("Number of introns for LASSO groups")) +
+  stat_compare_means() 
+
+
+genes_info%>%
+  ggplot(aes(x=cluster_rf, y=n_transcripts)) + 
+  geom_boxplot(width=0.1, fill = "white")+
+  geom_violin(fill="darkblue", alpha=0.2)+
+  ggtitle(("Number of transcripts for RF groups")) + 
+  stat_compare_means() + genes_info%>%
+  ggplot(aes(x=cluster_lasso, y=n_transcripts)) + 
+  geom_boxplot(width=0.1, fill = "white")+
+  geom_violin(fill="darkblue", alpha=0.2)+
+  ggtitle(("Number of transcripts for LASSO groups")) +
+  stat_compare_means() 
 
 genes_info%>%
   ggplot(aes(x=cluster_rf, y=nb_motifs)) + 
@@ -250,12 +281,9 @@ genes_info %>%
   geom_text(y=0.2) + xlab("cluster LASSO") +ylim(c(0,0.2))+
   ggtitle("Fraction of TFs in LASSO groups")
 
-
-
 common_pwm_pos <- intersect(names(which(clusters_lasso == "0.7-1")), names(which(clusters_rf == "0.7-1")))
 DIANE::get_gene_information(common_pwm_pos, organism = "Arabidopsis thaliana")
 length(intersect(common_pwm_pos, tfs))/length(common_pwm_pos)
-
 ```
 Est-ce qu'on a significativement plus de TFs dans les genes qui sont bien prédits avec les PWM chez le lasso?
 

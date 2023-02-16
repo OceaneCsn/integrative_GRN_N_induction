@@ -21,5 +21,7 @@ tsss <- gff %>%
   group_by(V9) %>%
   summarise(n_transcripts = n())
 
+
 gene_structure <- left_join(tsss, introns, by = "V9")
+colnames(gene_structure)[1] <- "gene"
 save(gene_structure, file = "rdata/gene_structure.rdata")
