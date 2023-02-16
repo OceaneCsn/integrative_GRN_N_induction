@@ -30,6 +30,6 @@ Launch TFBS search from DAPSeq and JASPAR databases with FIMO, that is run from 
 
 ``` sudo docker run --rm -v /data/ocassan_data/PWM:/home/meme --user `id -u`:`id -g` memesuite/memesuite fimo --text --max-strand --max-stored-scores 10000000 DAPSeqMEME.txt TAIR10_promoters_no_duplicates.fasta > fimo_output_intron_prom_pv_max_strand_DAPSeq.tsv``` 
 
-Can also be done on not only prooters, but introns as well (concatenated fastas).
+Can also be done on not only promoters, but introns as well (concatenated fastas).
 
 The csv outputs from those two commands were then imported in R and merged to form the TFBS matrix for all regulators and genes in Arabidopsis, saved as `pwm_prom_jaspar_dap.rdata`.
