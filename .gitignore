@@ -7,3 +7,4 @@ rdata/pwm_prom_jaspar_dap.rdata
 *.o
 *.dll
 results/*.rdata
+*.gff
