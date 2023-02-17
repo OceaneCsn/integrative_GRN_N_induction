@@ -63,59 +63,56 @@ How does the individual MSE of genes varies with $\alpha$ for model estimation i
 
 ### bRf : biased Random Forests
 
-```{r, eval=FALSE}
-# ALPHAS <- seq(0,1, by = 0.1)
-# lmses <- data.frame(row.names = genes)
-# 
-# for(alpha in ALPHAS){
-#   set.seed(12131)
-#   lmses[,as.character(alpha)] <- bRF_inference_MSE(counts, genes, tfs, alpha = alpha, nTrees = 4000,
-#                              pwm_occurrence = pwm_occurrence, nCores = 18)
-# }
-# 
-# save(lmses, file = "results/logMSES_RFs_per_genes_other_seed.rdata")
+```{r, eval=T}
+ALPHAS <- seq(0,1, by = 0.1)
+lmses <- data.frame(row.names = genes)
+
+for(alpha in ALPHAS){
+  lmses[,as.character(alpha)] <- bRF_inference_MSE(counts, genes, tfs, alpha = alpha, nTrees = 4000,
+                             pwm_occurrence = pwm_occurrence, nCores = 58, seed = 121314)
+}
+
+save(lmses, file = "results/logMSES_RFs_per_genes_121314_seed.rdata")
 ```
 
 Clustering the genes :
 
 ```{r}
-load(file = "results/logMSES_RFs_per_genes_400trees.rdata")
+# load(file = "results/logMSES_RFs_per_genes_no_seed.rdata")
 
-plot(colMeans(exp(lmses)/var_expr))
+# plot(colMeans(exp(lmses)/var_expr))
 
 mse_rf <- (lmses-rowMeans(lmses)) / matrixStats::rowSds(as.matrix(lmses))
 
 ha = HeatmapAnnotation(
     alpha = anno_simple(as.numeric(rep(colnames(mse_rf),1))),
     annotation_name_side = "left")
-heatmap_rf_4000 <- Heatmap(lmses, row_km = 3, cluster_columns = F, show_row_names = F, 
+heatmap_rf_4000 <- Heatmap(mse_rf, row_km = 3, cluster_columns = F, show_row_names = F, 
         name = "scaled logMSE (z-score)", top_annotation = ha,
         row_title = "Genes", column_title = "alpha");heatmap_rf_4000
 ```
 
 ## LASSO-D3S
 
-```{r, eval=FALSE}
+```{r, eval=T}
 
-# lmses_lasso <- data.frame(row.names = genes)
-# 
-# for(alpha in ALPHAS){
-#   set.seed(12131)
-#   lmses_lasso[,as.character(alpha)] <- LASSO.D3S_inference_MSE(counts, genes, tfs,
-#                                                                alpha = alpha, N = 50,
-#                                pwm_occurrence = pwm_occurrence, nCores = 15)
-# }
+lmses_lasso <- data.frame(row.names = genes)
 
-# save(lmses_lasso, file = "results/logMSES_Lasso_per_genes_other_seed.rdata")
+for(alpha in ALPHAS){
+  lmses_lasso[,as.character(alpha)] <- LASSO.D3S_inference_MSE(counts, genes, tfs, seed = 121314,
+                                                               alpha = alpha, N = 200,
+                               pwm_occurrence = pwm_occurrence, nCores = 40)
+}
+save(lmses_lasso, file = "results/logMSES_Lasso_per_genes_121314_seed.rdata")
 
 ```
 
 
 
 ```{r}
-load(file = "results/logMSES_Lasso_per_genes.rdata")
+# load(file = "results/logMSES_Lasso_per_genes_no_seed.rdata")
 mse_lasso <- (lmses_lasso-rowMeans(lmses_lasso)) / matrixStats::rowSds(as.matrix(lmses_lasso))
-plot(colMeans(exp(lmses_lasso)/var_expr))
+# plot(colMeans(exp(lmses_lasso)/var_expr))
 heatmap_lasso <- Heatmap(mse_lasso, row_km = 4, cluster_columns = F, show_row_names = F, 
         name = "scaled logMSE (z-score)", top_annotation = ha,
         row_title = "Genes", column_title = "alpha"); heatmap_lasso
@@ -188,15 +185,15 @@ load("rdata/pwm_prom_jaspar_dap.rdata")
 library(patchwork)
 
 # to comment for new version where mse is already normalized per genes
-norm_mse <- exp(as.matrix(cbind(lmses, lmses_lasso)))/var_expr
-
+# norm_mse <- exp(as.matrix(cbind(lmses, lmses_lasso)))/var_expr
+norm_mse <- cbind(lmses, lmses_lasso)
 genes_info <- data.frame(genes = genes, 
                          cluster_lasso = clusters_lasso[genes], 
                          cluster_rf = clusters_rf[genes])
 genes_info$is_tf <- genes %in% tfs
 genes_info$var <- var_expr
 genes_info$expr <- mean_expr
-genes_info$min_mse <- matrixStats::rowMins(norm_mse)
+genes_info$min_mse <- matrixStats::rowMins(as.matrix(norm_mse))
 genes_info$nb_motifs <- table(pwm_prom$target)[genes]
 
 genes_info%>%
@@ -349,7 +346,7 @@ for(group in unique(clusters_lasso)){
 
 enrichments_per_pwm[enrichments_per_pwm<0.05] <- 0
 enrichments_per_pwm[enrichments_per_pwm>=0.05] <- 1
-Heatmap(enrichments_per_pwm)
+Heatmap(enrichments_per_pwm, cluster_columns = F)
 
 
 tfs_rf_pwm_pos <- rownames(enrichments_per_pwm[enrichments_per_pwm$`0.7-1rf`==0,])
@@ -357,7 +354,7 @@ tfs_lasso_pwm_pos <- rownames(enrichments_per_pwm[enrichments_per_pwm$`0.7-1lass
 DIANE::get_gene_information(tfs_rf_pwm_pos, organism = "Arabidopsis thaliana")
 DIANE::get_gene_information(tfs_lasso_pwm_pos, organism = "Arabidopsis thaliana")
 DIANE::get_gene_information(intersect(tfs_rf_pwm_pos, tfs_lasso_pwm_pos ), organism = "Arabidopsis thaliana")
-
+intersect(tfs_rf_pwm_pos,tfs_lasso_pwm_pos )
 
 tfs_rf_pwm_bad <- rownames(enrichments_per_pwm[enrichments_per_pwm$`0-0.2rf`==0,])
 tfs_lasso_pwm_bad <- rownames(enrichments_per_pwm[enrichments_per_pwm$`0-0.2lasso`==0,])

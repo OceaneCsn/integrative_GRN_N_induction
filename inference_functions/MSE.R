@@ -211,7 +211,7 @@ LASSO.D3S_inference_MSE <- function(counts, genes, tfs, alpha=0.25,
   
   # parallel computing of the lasso
   registerDoParallel(cores = nCores)
-  message(paste("\nUsing LASSO-D3S with", foreach::getDoParWorkers(), "cores."))
+  message(paste("\nUsing LASSO-D3S with", foreach::getDoParWorkers(), "cores. alpha =", alpha))
   "%dopar%" <- foreach::"%dopar%"
   tic()
   suppressPackageStartupMessages(result.reg <-

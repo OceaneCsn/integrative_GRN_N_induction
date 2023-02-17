@@ -10,16 +10,20 @@ output:
 
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F, fig.width = 8)
 
 source('inference_functions/bRF.R')
 source('inference_functions/LASSO-D3S.R')
 source('inference_functions/evaluateNetwork.R')
 source('inference_functions/MSE.R')
-library(ComplexHeatmap)
+# library(ComplexHeatmap)
 library(ggplot2)
 library(tidyverse)
 library(ggpubr)
+library(patchwork)
+library(ComplexHeatmap)
+
+
 ```
 
 This document demonstrates the use of the bRF and LASSO-D3S functions for integrative GRN inference.
@@ -29,9 +33,7 @@ Those functions infer the regulatory pathways of *Arabidopsis thaliana*'s roots 
 They use as inputs the expression profiles of N-responsive genes and TFBS information. 
 Prior TFBS information was built by searching in the promoters of the N-responsive genes the PWM of the N-responsive regulators. 
 
-## Data import
-
-### Expression data and TFBS data
+# Data import
 
 Import of the expression data and the N-responsive genes and regulators :
 
@@ -42,6 +44,13 @@ tfs <- input_data$grouped_regressors; length(tfs)
 counts <- input_data$counts; dim(counts)
 load("rdata/pwm_occurrences_N_response_varala.rdata")
 dim(pwm_occurrence)
+
+
+ALPHAS <- seq(0,1, by = 0.1)
+
+# subset <- sample(genes, replace = F, size = 20)
+subset <- genes
+
 ```
 
 
@@ -49,124 +58,113 @@ dim(pwm_occurrence)
 # Is the mse variation worsened by unmapping prior values and expression profiles of TFs?
 
 
-## Exploring the intrinsic variation of MSE profiles per genes, no permutations
-
-Without setting any seed, mse profiles are quite similar.
-
-```{r}
-ALPHAS <- seq(0,1, by = 0.1)
-
-subset <- sample(genes, replace = F, size = 10)
-lmses <- data.frame(row.names = subset)
-lmses_perm<- data.frame(row.names = subset)
-
-for(alpha in ALPHAS){
-  # set.seed(121314)
-  lmses[,as.character(alpha)] <- bRF_inference_MSE(counts, subset, tfs, alpha = alpha, nTrees = 4000,
-                             pwm_occurrence = pwm_occurrence, nCores = 15)
-  # set.seed(121314)
-  lmses_perm[,as.character(alpha)] <- bRF_inference_MSE(counts, subset, tfs, alpha = alpha, nTrees = 4000,
-                           pwm_occurrence = pwm_occurrence, nCores = 15, tf_expression_permutation = F)
-  
-}
-
-
-draw_gene <- function(gene){
-  df <- data.frame("mse1"=as.numeric(lmses[gene,]), 
-                   "mse2"=as.numeric(lmses_perm[gene,]), alpha = ALPHAS)
-  gather(df, mse1, mse2, key = "permutation", value = "mse") %>%
-    ggplot(aes(x=alpha, y=mse, group =permutation, color = permutation))+
-             geom_line()
-}
-for(gene in subset){
-    print(draw_gene(gene))
-}
-
-```
-
-```{r}
-lmses <- data.frame(row.names = subset)
-lmses_perm<- data.frame(row.names = subset)
-
-
-for(alpha in ALPHAS){
-  # set.seed(121314)
-  lmses[,as.character(alpha)] <- LASSO.D3S_inference_MSE(counts, subset, tfs, alpha = alpha, N=200,
-                             pwm_occurrence = pwm_occurrence, nCores = 15)
-  lmses_perm[,as.character(alpha)] <- LASSO.D3S_inference_MSE(counts, subset, tfs, alpha = alpha, N=200,
-                           pwm_occurrence = pwm_occurrence, nCores = 15, tf_expression_permutation = F)
-
-}
-
-
-for(gene in subset){
-    print(draw_gene(gene))
-}
-```
-
-# Comparing real MSE curves with 10 permutated ones
-
-
 ## For Rfs
 
 ```{r}
-lmses <- data.frame(row.names = subset)
-N <-100
-for(alpha in ALPHAS){
-  
-  for(perm in 1:N){
-    lmses[,paste(as.character(alpha), perm, "true_data")] <- bRF_inference_MSE(counts, subset, tfs, alpha = alpha, nTrees = 4000,
-                             pwm_occurrence = pwm_occurrence, nCores = 15, tf_expression_permutation = F)
-  }
-  
-  for(perm in 1:N){
-    lmses[,paste(as.character(alpha), perm, "shuffled")] <- bRF_inference_MSE(counts, subset, tfs, alpha = alpha, nTrees = 4000,
-                           pwm_occurrence = pwm_occurrence, nCores = 15, tf_expression_permutation = T)
-  }
-}
-
+# lmses <- data.frame(row.names = subset)
+# N <-100
+# for(alpha in ALPHAS){
+#   for(perm in 1:N){
+#     lmses[,paste(as.character(alpha), perm, "true_data")] <- bRF_inference_MSE(counts, subset, tfs, alpha = alpha, nTrees = 2000,
+#                              pwm_occurrence = pwm_occurrence, nCores = 45, tf_expression_permutation = F)
+#   }
+# 
+#   for(perm in 1:N){
+#     lmses[,paste(as.character(alpha), perm, "shuffled")] <- bRF_inference_MSE(counts, subset, tfs, alpha = alpha, nTrees = 2000,
+#                            pwm_occurrence = pwm_occurrence, nCores = 45, tf_expression_permutation = T)
+#   }
+# }
+# 
+# save(lmses, file = "results/brf_perumtations_mse_all_genes.rdata")
+load("results/brf_perumtations_mse_all_genes.rdata")
+# subset<-unique(rownames(lmses))
 draw_gene <- function(gene){
   lmses[gene,] %>%
     gather() %>%
     separate(key, into = c("alpha", "rep", "MSEtype"), sep = " ") %>%
     ggplot(aes(x=alpha, y=value, group =interaction(rep, MSEtype), 
-               color = MSEtype))+
-    geom_line()
+               color = MSEtype))+ggtitle(gene)+ylab("MSE/Var(gene)")+
+    xlab("alpha")+
+    geom_line()+ggtitle(gene)+theme_pubr(legend = "top")
 }
 
-for(gene in subset){
-    print(draw_gene(gene))}
 
-save(lmses, file = "results/brf_perumtations_mse.rdata")
+draw_gene_mean_sd <- function(gene, title = NULL){
+  data <- lmses[gene, ] %>%
+    gather() %>%
+    separate(key,
+             into = c("alpha", "rep", "MSEtype"),
+             sep = " ") %>%
+    group_by(alpha, MSEtype) %>%
+    mutate(mean_mse = mean(value, na.rm = T),
+           sd_mse = sd(value, na.rm = T)) %>%
+    ggplot(aes(
+      x = as.numeric(alpha),
+      y = value,
+      color = MSEtype,
+      fill = MSEtype
+    )) +ggtitle(paste(gene, title))+ylab("MSE/Var(gene)")+
+    geom_ribbon(aes(ymin = mean_mse - sd_mse , 
+                    ymax = mean_mse + sd_mse  ), 
+                alpha = .4)  +theme_pubr(legend = "top")+
+    geom_point(alpha = 0.1) + geom_smooth(se=F)+xlab("alpha")
+
+}
+
+get_diff_curves <- function(lmses){
+  data <- lmses %>%
+  rownames_to_column('gene') %>%
+    reshape2::melt()%>%
+    separate(variable,
+             into = c("alpha", "rep", "MSEtype"),
+             sep = " ") %>%
+    group_by(gene, alpha, MSEtype) %>%
+    mutate(mean_mse = mean(value, na.rm = T),
+           sd_mse = sd(value, na.rm = T)) %>%
+    select(mean_mse, sd_mse, gene, alpha, MSEtype)%>%
+    distinct() 
+  
+  data_true <- filter(data, MSEtype=="true_data")
+  data_perm <- filter(data, MSEtype=="shuffled") 
+  data_true$mean_mse_perm <- data_perm$mean_mse
+  data_true$sd_mse_perm <- data_perm$sd_mse
+  return(data_true %>%
+    mutate(mean_mse_diff = (mean_mse-mean_mse_perm)/sd_mse_perm))
+  # %>%
+  #   ggplot(aes(x=as.numeric(alpha), y=mean_mse_diff, color = gene))+
+  #   geom_line()
+}
+
+
+# for(gene in sample(genes,50, replace = F)){
+#     print(draw_gene(gene)+draw_gene_mean_sd(gene))
+# }
+
+
 ```
 
 ## For lasso 
 
 ```{r}
-lmses <- data.frame(row.names = subset)
-
-
-for(alpha in ALPHAS){
-  # set.seed(121314)
-  for(perm in 1:N){
-    lmses[,paste(as.character(alpha), perm, "true_data")] <- LASSO.D3S_inference_MSE(counts, subset, tfs, alpha = alpha, N=100,
-                             pwm_occurrence = pwm_occurrence, nCores = 15, tf_expression_permutation = F)
-  }
-  
-  for(perm in 1:N){
-    lmses[,paste(as.character(alpha), perm, "shuffled")] <- LASSO.D3S_inference_MSE(counts, subset, tfs, alpha = alpha, N=100,
-                           pwm_occurrence = pwm_occurrence, nCores = 15, tf_expression_permutation = T)
-  }
-}
-
-gene <- subset[1]
-
-
-for(gene in subset){
-    print(draw_gene(gene))
-}
-save(lmses, file = "results/lasso_perumtations_mse.rdata")
-
+# lmses <- data.frame(row.names = subset)
+# 
+# for(alpha in ALPHAS){
+#   # set.seed(121314)
+#   for(perm in 1:N){
+#     lmses[,paste(as.character(alpha), perm, "true_data")] <- LASSO.D3S_inference_MSE(counts, subset, tfs, alpha = alpha, N=100,
+#                              pwm_occurrence = pwm_occurrence, nCores = 45, tf_expression_permutation = F)
+# 
+#     lmses[,paste(as.character(alpha), perm, "shuffled")] <- LASSO.D3S_inference_MSE(counts, subset, tfs, alpha = alpha, N=100,
+#                            pwm_occurrence = pwm_occurrence, nCores = 45, tf_expression_permutation = T)
+#   }
+# 
+# }
+# save(lmses, file = "results/lasso_perumtations_mse_all_genes.rdata")
+# 
+# load("results/lasso_perumtations_mse_all_genes.rdata")
+# for(gene in subset){
+#     print(draw_gene(gene) +draw_gene_mean_sd(gene))
+# }
 ```
 
 
@@ -174,12 +172,76 @@ save(lmses, file = "results/lasso_perumtations_mse.rdata")
 
 
 
+# Clustering genes
+
+Based on the difference curves between true and permuted data
+
+
+```{r}
+
+diffs <- get_diff_curves(lmses)
+diffs %>%
+  ggplot(aes(x=as.numeric(alpha), y=mean_mse_diff, group = gene))+
+  geom_line(alpha = 0.2)
+
+
+fractions_out <- diffs %>%
+  mutate(diff_greater_than_sd = ifelse(abs(mean_mse_diff)>1, 1, 0)) %>%
+  group_by(gene) %>%
+  summarise(fraction_out = sum(diff_greater_than_sd)/11);fractions_out<-
+  setNames(fractions_out$fraction_out, fractions_out$gene)
+
+diff_curves <- diffs[c("gene", "alpha", "mean_mse_diff")] %>%
+  spread(alpha, mean_mse_diff) %>%
+  column_to_rownames("gene") %>%
+  as.matrix()
+
+
+diff_curves<-diff_curves[fractions_out[rownames(diff_curves)] > 0,]
+  
+cor_clust = function(x) hclust(as.dist(1-cor(t(x))), method = "average")
+
+Heatmap(diff_curves, cluster_rows = cor_clust,
+        cluster_columns = F, show_row_names = F)
+
+
+clusters_rf <- cutree(cor_clust(diff_curves), k = 2)
+table(clusters_rf)
+
+clusters_rf<- c(clusters_rf,setNames(rep("no diff", sum(fractions_out==0)),
+                                     names(fractions_out[fractions_out==0])))
+table(clusters_rf)
+
+
+for(gene in sample(genes,30, replace = F)){
+    print(draw_gene(gene)+
+            draw_gene_mean_sd(gene, title = paste(clusters_rf[gene], fractions_out[gene])))
+}
+
+ha = HeatmapAnnotation(
+    alpha = anno_simple(as.numeric(rep(colnames(diff_curves),1))),
+    annotation_name_side = "left")
+# draw a heatmap of the genes mean_mse on real data
+true_mse <- diffs[c("gene", "alpha", "mean_mse")] %>%
+  spread(alpha, mean_mse) %>%
+  column_to_rownames("gene") %>%
+  as.matrix() 
+  
+Heatmap((true_mse-rowMeans(true_mse))/matrixStats::rowSds(true_mse),
+        cluster_columns = F, show_row_names = F, top_annotation = ha)+ 
+  rowAnnotation(
+    clusters_rf = clusters_rf[rownames(true_mse)],
+    col=list(clusters_rf= setNames(c("darkorange", "darkgreen", "lightgrey"), 
+                                       nm = names(table(clusters_rf)))))
+```
 
 
 
+# Functional study of those groups
 
+```{r}
 
-
+```
 
 
 
