@@ -146,21 +146,21 @@ get_diff_curves <- function(lmses){
 ## For lasso 
 
 ```{r}
-# lmses <- data.frame(row.names = subset)
-# 
-# for(alpha in ALPHAS){
-#   # set.seed(121314)
-#   for(perm in 1:N){
-#     lmses[,paste(as.character(alpha), perm, "true_data")] <- LASSO.D3S_inference_MSE(counts, subset, tfs, alpha = alpha, N=100,
-#                              pwm_occurrence = pwm_occurrence, nCores = 45, tf_expression_permutation = F)
-# 
-#     lmses[,paste(as.character(alpha), perm, "shuffled")] <- LASSO.D3S_inference_MSE(counts, subset, tfs, alpha = alpha, N=100,
-#                            pwm_occurrence = pwm_occurrence, nCores = 45, tf_expression_permutation = T)
-#   }
-# 
-# }
-# save(lmses, file = "results/lasso_perumtations_mse_all_genes.rdata")
-# 
+lmses <- data.frame(row.names = subset)
+
+for(alpha in ALPHAS){
+  # set.seed(121314)
+  for(perm in 1:N){
+    lmses[,paste(as.character(alpha), perm, "true_data")] <- LASSO.D3S_inference_MSE(counts, subset, tfs, alpha = alpha, N=100,
+                             pwm_occurrence = pwm_occurrence, nCores = 40, tf_expression_permutation = F)
+
+    lmses[,paste(as.character(alpha), perm, "shuffled")] <- LASSO.D3S_inference_MSE(counts, subset, tfs, alpha = alpha, N=100,
+                           pwm_occurrence = pwm_occurrence, nCores = 40, tf_expression_permutation = T)
+  }
+
+}
+save(lmses, file = "results/lasso_perumtations_mse_all_genes.rdata")
+
 # load("results/lasso_perumtations_mse_all_genes.rdata")
 # for(gene in subset){
 #     print(draw_gene(gene) +draw_gene_mean_sd(gene))
@@ -213,9 +213,9 @@ clusters_rf<- c(clusters_rf,setNames(rep("no diff", sum(fractions_out==0)),
 table(clusters_rf)
 
 
-for(gene in sample(genes,30, replace = F)){
+for(gene in sample(genes,40, replace = F)){
     print(draw_gene(gene)+
-            draw_gene_mean_sd(gene, title = paste(clusters_rf[gene], fractions_out[gene])))
+            draw_gene_mean_sd(gene, title = paste(clusters_rf[gene], round(fractions_out[gene], 4))))
 }
 
 ha = HeatmapAnnotation(
@@ -227,10 +227,19 @@ true_mse <- diffs[c("gene", "alpha", "mean_mse")] %>%
   column_to_rownames("gene") %>%
   as.matrix() 
   
+
+true_mse_pos <- true_mse[names(clusters_rf[clusters_rf==2]),]
 Heatmap((true_mse-rowMeans(true_mse))/matrixStats::rowSds(true_mse),
         cluster_columns = F, show_row_names = F, top_annotation = ha)+ 
   rowAnnotation(
     clusters_rf = clusters_rf[rownames(true_mse)],
+    col=list(clusters_rf= setNames(c("darkorange", "darkgreen", "lightgrey"), 
+                                       nm = names(table(clusters_rf)))))
+
+Heatmap((true_mse_pos-rowMeans(true_mse_pos))/matrixStats::rowSds(true_mse_pos),
+        cluster_columns = F, show_row_names = F, top_annotation = ha)+ 
+  rowAnnotation(
+    clusters_rf = clusters_rf[rownames(true_mse_pos)],
     col=list(clusters_rf= setNames(c("darkorange", "darkgreen", "lightgrey"), 
                                        nm = names(table(clusters_rf)))))
 ```
@@ -240,19 +249,211 @@ Heatmap((true_mse-rowMeans(true_mse))/matrixStats::rowSds(true_mse),
 # Functional study of those groups
 
 ```{r}
+load("rdata/pwm_prom_jaspar_dap.rdata")
+load("rdata/gene_structure.rdata")
+
+mean_expr <- rowMeans(counts)[genes]
+var_expr <- matrixStats::rowSds(counts[genes,])*matrixStats::rowSds(counts[genes,])
+pwm_prom_n_TFs <- pwm_prom[pwm_prom$TF %in% tfs,]
+
+library(patchwork)
+
+# to comment for new version where mse is already normalized per genes
+# norm_mse <- exp(as.matrix(cbind(lmses, lmses_lasso)))/var_expr
+genes_info <- data.frame(genes = genes, 
+                         cluster_rf = clusters_rf[genes])
+
+genes_info$is_tf <- genes %in% tfs
+genes_info$var <- var_expr
+genes_info$expr <- mean_expr
+genes_info$min_mse <- matrixStats::rowMins(as.matrix(true_mse))
+genes_info$nb_motifs <- table(pwm_prom$target)[genes]
+genes_info$nb_motifs_n_tfs <- table(pwm_prom_n_TFs$target)[genes]
+
+genes_info[,c("n_introns", "n_transcripts")] <- 
+  gene_structure[match(genes_info$gene, gene_structure$gene),
+                 c("n_introns", "n_transcripts")]
+
+genes_info%>%
+  ggplot(aes(x=cluster_rf, y=log(n_introns))) + 
+  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  ggtitle(("Number of introns for RF groups")) +
+genes_info%>%
+  ggplot(aes(x=cluster_rf, y=n_transcripts)) + 
+  geom_boxplot(width=0.1, fill = "white")+
+  geom_violin(fill="darkblue", alpha=0.2)+
+  ggtitle(("Number of transcripts for RF groups")) + 
+  stat_compare_means()
+
+genes_info%>%
+  ggplot(aes(x=cluster_rf, y=nb_motifs)) + 
+  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  ggtitle(("Number of motifs in promoter for RF groups")) + 
+  genes_info%>%
+  ggplot(aes(x=cluster_rf, y=nb_motifs_n_tfs)) + 
+  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  ggtitle(("Number of motifs of N-responsive TFs in promoter for RF groups")) + 
+  stat_compare_means() + genes_info%>%
+  ggplot(aes(x=cluster_rf, y=min_mse)) + 
+  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  ggtitle(("Min mse for RF groups")) + 
+  stat_compare_means() 
+
+
+genes_info%>%
+  ggplot(aes(x=cluster_rf, y=var)) + 
+  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  ggtitle(("Gene variance for RF groups")) + scale_y_log10()+
+  stat_compare_means()+ genes_info%>%
+  ggplot(aes(x=cluster_rf, y=expr)) + 
+  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  ggtitle(("Gene expression for RF groups")) + scale_y_log10()+
+  stat_compare_means()
+
+
+genes_info %>%
+  group_by(cluster_rf) %>%
+  summarise(n=n(), 
+            tf_frac=sum(is_tf)/n()) %>%
+  ggplot(aes(x=cluster_rf, y=tf_frac, 
+                          label = paste("n=",n))) + 
+  geom_bar(stat = "identity", aes(fill=tf_frac), alpha = 1)+
+  geom_hline(yintercept = length(tfs)/length(genes)) + 
+  geom_text(y=0.2) + xlab("cluster RF") +
+  ggtitle("Fraction of TFs in RF groups")+ylim(c(0,0.2))
 
 ```
 
 
 
 
+```{r}
+# promoteurs enrichis en certains motifs de TFs?
+known_tfs <- tfs[which(tfs %in% pwm_prom$TF)]
+
+get_number_of_motifs_per_tfs <- function(genes){
+  table(pwm_prom[pwm_prom$target %in% genes & pwm_prom$TF %in% tfs,"TF"])[known_tfs]
+}
+
+targets_per_pwm <- data.frame(row.names = known_tfs)
+for(group in unique(clusters_rf)){
+  # targets_per_pwm[paste("lasso", group)] <- get_number_of_motifs_per_tfs(names(
+  #   which(clusters_lasso == group)))/sum(clusters_lasso == group)
+  targets_per_pwm[paste("rf", group)] <- get_number_of_motifs_per_tfs(names(
+    which(clusters_rf == group)))/sum(clusters_rf == group)
+
+}
+
+enrichments_per_pwm <- data.frame(row.names = known_tfs)
+n_genes <- length(genes)
+for(group in unique(clusters_rf)){
+  # number of motifs in all the genes
+  n_targets_lasso_in_all <- get_number_of_motifs_per_tfs(genes)
+  
+  # n_targets_lasso_in_group <- get_number_of_motifs_per_tfs(names(
+  #   which(clusters_lasso == group)))
+  # n_group_lasso <- length(names(which(clusters_lasso == group)))
+  
+  n_targets_rf_in_group <- get_number_of_motifs_per_tfs(names(
+    which(clusters_rf == group)))
+  n_group_rf <- length(names(which(clusters_rf == group)))
+  
+  for(tf in known_tfs){
+    
+    # number of genes with that motif in all genes
+    n_targets_in_all_tf <- n_targets_lasso_in_all[tf]
+    
+    # number of genes with that motif in the lasso group
+    # n_targets_lasso_in_group_tf <- n_targets_lasso_in_group[tf]
+    # p_lasso <- phyper(q=n_targets_lasso_in_group_tf-1,
+    #        m=n_targets_in_all_tf, #white balls
+    #        n=n_genes-n_targets_in_all_tf, # black balls
+    #        k=n_group_lasso, lower.tail = FALSE)
+    
+     # number of genes with that motif in the rf group
+    n_targets_rf_in_group_tf <- n_targets_rf_in_group[tf]
+    p_rf <- phyper(q=n_targets_rf_in_group_tf-1,
+           m=n_targets_in_all_tf, 
+           n=n_genes-n_targets_in_all_tf,
+           k=n_group_rf, lower.tail = FALSE)
+    
+    # enrichments_per_pwm[tf, paste0(group, "lasso")]<- p_lasso
+    enrichments_per_pwm[tf, paste0(group, "rf")]<- p_rf
+  }
+}
+
+enrichments_per_pwm[enrichments_per_pwm<0.05] <- 0
+enrichments_per_pwm[enrichments_per_pwm>=0.05] <- 1
+Heatmap(enrichments_per_pwm, cluster_columns = F)
+
+
+tfs_rf_pwm_pos <- rownames(enrichments_per_pwm[enrichments_per_pwm$`2rf`==0,])
+# tfs_lasso_pwm_pos <- rownames(enrichments_per_pwm[enrichments_per_pwm$`0.7-1lasso`==0,])
+DIANE::get_gene_information(tfs_rf_pwm_pos, organism = "Arabidopsis thaliana")
+# DIANE::get_gene_information(tfs_lasso_pwm_pos, organism = "Arabidopsis thaliana")
+# DIANE::get_gene_information(intersect(tfs_rf_pwm_pos, tfs_lasso_pwm_pos ), organism = "Arabidopsis thaliana")
+
+tfs_rf_pwm_bad <- rownames(enrichments_per_pwm[enrichments_per_pwm$`1rf`==0,])
+# tfs_lasso_pwm_bad <- rownames(enrichments_per_pwm[enrichments_per_pwm$`0-0.2lasso`==0,])
+DIANE::get_gene_information(tfs_rf_pwm_bad, organism = "Arabidopsis thaliana")
+# DIANE::get_gene_information(tfs_lasso_pwm_bad, organism = "Arabidopsis thaliana")
+
+tfs_rf_pwm_pretty_bad <- rownames(enrichments_per_pwm[enrichments_per_pwm$`no diffrf`==0,])
+# tfs_lasso_pwm_bad <- rownames(enrichments_per_pwm[enrichments_per_pwm$`0-0.2lasso`==0,])
+DIANE::get_gene_information(tfs_rf_pwm_pretty_bad, organism = "Arabidopsis thaliana")
+```
 
 
 
 
 
+# Go enrichments
+
+```{r}
+library(DIANE)
+background <- convert_from_agi(genes)
+
+for(group in unique(clusters_rf)){
+  
+  # genes_i <- names(which(clusters_lasso == group))
+  # 
+  # print(paste("LASSO", length(genes_i), "genes,", group, "\n"))
+  # genes_i <- convert_from_agi(genes_i)
+  # go_lasso <- enrich_go(genes_i, background)
+  # DIANE::draw_enrich_go(go_lasso)
+  # go_lasso
+  genes_i <- names(which(clusters_rf == group))
+  print(paste("RF", length(genes_i), "genes, group", group))
+  genes_i <- convert_from_agi(genes_i)
+  go_rf <- enrich_go(genes_i, background)
+  DIANE::draw_enrich_go(go_rf)
+  print(go_rf)
+}
 
 
+
+```
+
+# Expression
+
+
+```{r}
+expression <- data.frame(counts)
+expression <- (expression-rowMeans(expression)) / matrixStats::rowSds(as.matrix(expression))
+
+Heatmap(expression, cluster_columns = F, show_row_names = F)+
+  rowAnnotation(
+    clusters_rf = clusters_rf[rownames(expression)],
+    col=list(clusters_rf= setNames(c("darkorange", "darkgreen", "lightgrey"), 
+                                       nm = names(table(clusters_rf)))))
+
+```
 
 
 
