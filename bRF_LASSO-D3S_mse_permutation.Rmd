@@ -1,5 +1,5 @@
 ---
-title: "Integrative GRN inference : model exploration"
+title: "Integrative GRN inference : permuting the expression and motifs of TFs: effect on expression prediction"
 output: 
   html_document:
     df_print: paged
@@ -147,7 +147,7 @@ get_diff_curves <- function(lmses){
 
 ```{r}
 lmses <- data.frame(row.names = subset)
-
+N<-100
 for(alpha in ALPHAS){
   # set.seed(121314)
   for(perm in 1:N){

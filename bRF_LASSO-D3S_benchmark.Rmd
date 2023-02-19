@@ -68,14 +68,14 @@ infer_networks <- function(alphas, densities,
   for(alpha in alphas){ # exploring PWM integration strength
     for(rep in 1:nrep){ # exploring inherent variability
       
-      # mat_rf <- bRF_inference(counts, genes, tfs, nTrees = 1000,
+      # mat_rf <- bRF_inference(counts, genes, tfs, nTrees = 2000,
       #                         alpha = alpha, 
       #                         pwm_occurrence = pwm_occurrence, 
       #                         nCores = nCores, 
       #                         importance = "%IncMSE")
       
       mat_lasso <- LASSO.D3S_inferenceMDA(counts, genes, tfs,
-                                       alpha = alpha, N = 50,
+                                       alpha = alpha, N = 100,
                                        int_pwm_noise = 0, mda_type = "zero",
                                        pwm_occurrence = pwm_occurrence,
                                        nCores = nCores)

@@ -1,0 +1,107 @@
+---
+title: "Integrative GRN inference : permuting the expression and motifs of TFs: effect on precision and recall"
+output: 
+  html_document:
+    df_print: paged
+    toc: true
+    toc_float: true
+    toc_depth: 2
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F, fig.width = 8)
+
+source('inference_functions/bRF.R')
+source('inference_functions/LASSO-D3S.R')
+source('inference_functions/evaluateNetwork.R')
+source('inference_functions/MSE.R')
+# library(ComplexHeatmap)
+library(ggplot2)
+library(tidyverse)
+library(ggpubr)
+library(patchwork)
+library(ComplexHeatmap)
+
+
+```
+
+This document demonstrates the use of the bRF and LASSO-D3S functions for integrative GRN inference.
+
+Those functions infer the regulatory pathways of *Arabidopsis thaliana*'s roots in response to nitrate (N) induction from [Varala et al., 2018](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE97500).
+
+They use as inputs the expression profiles of N-responsive genes and TFBS information. 
+Prior TFBS information was built by searching in the promoters of the N-responsive genes the PWM of the N-responsive regulators. 
+
+# Data import
+
+Import of the expression data and the N-responsive genes and regulators :
+
+```{r}
+load('rdata/inference_input_N_response_varala.rdata')
+genes <- input_data$grouped_genes; length(genes)
+tfs <- input_data$grouped_regressors; length(tfs)
+counts <- input_data$counts; dim(counts)
+load("rdata/pwm_occurrences_N_response_varala.rdata")
+dim(pwm_occurrence)
+
+
+ALPHAS <- seq(0,1, by = 0.1)
+
+# subset <- sample(genes, replace = F, size = 20)
+subset <- genes
+```
+
+
+## Benchmark funtion 
+
+```{r}
+nCores = 45
+mats <- list()
+nrep <- 100
+for(alpha in ALPHAS){ # exploring PWM integration strength
+  for(rep in 1:nrep){ # exploring inherent variability
+    
+    mat_rf <- bRF_inference(counts, genes, tfs, nTrees = 2000,
+                            alpha = alpha,
+                            pwm_occurrence = pwm_occurrence,
+                            nCores = nCores,
+                            importance = "%IncMSE")
+    
+    mat_rf_perm <- bRF_inference(counts, genes, tfs, nTrees = 2000,
+                            alpha = alpha, tf_expression_permutation = TRUE,
+                            pwm_occurrence = pwm_occurrence,
+                            nCores = nCores,
+                            importance = "%IncMSE")
+    
+    # mat_lasso <- LASSO.D3S_inferenceMDA(counts, genes, tfs,
+    #                                  alpha = alpha, N = 100,
+    #                                  int_pwm_noise = 0, mda_type = "zero",
+    #                                  pwm_occurrence = pwm_occurrence,
+    #                                  nCores = nCores)
+    
+    mats[[paste0("bRF_", as.character(alpha),  '_trueData_', rep)]] <- mat_rf
+    mats[[paste0("bRF_", as.character(alpha),  '_shuffled_', rep)]] <- mat_rf_perm
+    
+  }
+}
+save(mats, file = "results/100_permutations_bRF_importances.rdata")
+```
+
+# Thresholding and computing precision/recall
+
+```{r}
+for(density in densities){ # exploring importance threshold stringency
+      
+      edges[[paste0("bRF_", as.character(alpha),  '_', density, '_', rep)]] <-
+        bRF_network(mat_rf, density = density, pwm_occurrence, genes, tfs)
+
+      # edges[[paste0("LASSO-D3S_", as.character(alpha),  '_', density, '_', rep)]] <-
+      #   LASSO.D3S_network(mat_lasso, density = density, pwm_occurrence, genes, 
+      #                     tfs, decreasing = T)
+}
+
+
+# compure precision and recall
+```
+

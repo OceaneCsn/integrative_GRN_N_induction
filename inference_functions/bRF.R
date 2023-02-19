@@ -40,6 +40,7 @@ library(igraph)
 #'
 #' @return The weighted list of regulatory interactions between genes and TFs
 bRF_inference <- function(counts, genes, tfs, alpha=0.25, scale = FALSE,
+                          tf_expression_permutation = FALSE,
                           pwm_occurrence, nTrees=500, importance="%IncMSE",
                           nCores = ifelse(is.na(detectCores()),1,
                                           max(detectCores() - 1, 1))){
@@ -70,6 +71,12 @@ bRF_inference <- function(counts, genes, tfs, alpha=0.25, scale = FALSE,
                                                     {
                                                       target_tfs <- setdiff(tfs, target)
                                                       x_target <- x[, target_tfs]
+                                                      if(tf_expression_permutation){
+                                                        # randomises the expression rows of TFs but not their ID
+                                                        x_target <- x_target[,sample(target_tfs, replace = F, 
+                                                                                     size = length(target_tfs))]
+                                                        colnames(x_target) <- target_tfs
+                                                      }
                                                       p = length(target_tfs)
                                                       y <- as.numeric(t(counts[target, ]))
                                                       
