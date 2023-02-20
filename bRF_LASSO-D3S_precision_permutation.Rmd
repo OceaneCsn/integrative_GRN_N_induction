@@ -21,9 +21,9 @@ library(ggplot2)
 library(tidyverse)
 library(ggpubr)
 library(patchwork)
-library(ComplexHeatmap)
+# library(ComplexHeatmap)
 
-
+theme_set(theme_pubr())
 ```
 
 This document demonstrates the use of the bRF and LASSO-D3S functions for integrative GRN inference.
@@ -91,17 +91,103 @@ save(mats, file = "results/100_permutations_bRF_importances.rdata")
 # Thresholding and computing precision/recall
 
 ```{r}
-for(density in densities){ # exploring importance threshold stringency
-      
-      edges[[paste0("bRF_", as.character(alpha),  '_', density, '_', rep)]] <-
-        bRF_network(mat_rf, density = density, pwm_occurrence, genes, tfs)
+load( "results/100_permutations_bRF_importances.rdata")
+edges <- list()
+densities <- c(0.005, 0.01,0.05,0.075)
 
-      # edges[[paste0("LASSO-D3S_", as.character(alpha),  '_', density, '_', rep)]] <-
-      #   LASSO.D3S_network(mat_lasso, density = density, pwm_occurrence, genes, 
-      #                     tfs, decreasing = T)
+for(name in names(mats)){ # exploring importance threshold stringency
+      for(density in densities){
+        edges[[paste0(name, '_', density)]] <-
+        bRF_network(mats[[name]], density = density, pwm_occurrence, genes, tfs)
+      }
+}
+
+save(edges, file = "results/100_permutations_bRF_edges.rdata")
+
+names(edges)
+# compure precision and recall
+```
+
+
+```{r}
+load("results/100_permutations_bRF_edges.rdata")
+
+color_palette = c("#C12131", "#EC5D2F", "#FE945C", "#FFC08E" )
+prettyZero <- function(l){
+    max.decimals = max(nchar(str_extract(l, "\\.[0-9]+")), na.rm = T)-1
+    lnew = formatC(l, replace.zero = T, zero.print = "0",
+        digits = max.decimals, format = "f", preserve.width=T)
+    return(lnew)
 }
 
 
-# compure precision and recall
+settings <- c("method", "alpha", "dataset","rep", "density")
+```
+
+## PWM support
+
+```{r, fig.width=10}
+
+# number of edges per network
+nrows <-
+  data.frame(alpha_rep = names(unlist(lapply(edges, FUN = nrow))),
+             n_edges = unlist(lapply(edges, FUN = nrow)))
+
+nrows[, settings] <-
+  str_split_fixed(nrows$alpha_rep, '_', length(settings))
+
+edges_num <- lapply(edges, function(df)
+  df[sapply(df, is.numeric)])
+
+pwm_support <-
+  data.frame(alpha_rep = names(unlist(lapply(edges_num, FUN = nrow))),
+             pwm = unlist(lapply(edges_num, FUN = colMeans)))
+pwm_support[, settings] <-
+  str_split_fixed(pwm_support$alpha_rep, '_', length(settings))
+
+# pwm_support_plot <- 
+  
+  
+pwm_support %>%
+  left_join(nrows, by = settings) %>%
+  mutate(alpha = as.numeric(alpha),
+         density_label = paste(density, ':', n_edges, 'edges')) %>%
+  ggplot(aes(color = density_label, x = alpha, y = pwm)) +
+  ggh4x::facet_nested_wrap(vars(method, density), ncol = 8, nest_line = T) +
+  geom_point() +
+  geom_smooth(aes(fill = density_label, linetype =dataset) , alpha = 0.1) +
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.position = "top",
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12)
+  ) +
+  xlab(expression(alpha)) + ylab("Mean PWM score in selected edges") +
+  ggtitle("Average PWM support of inferred edges") +
+  guides(color = guide_legend(nrow = 2, byrow = TRUE),
+         fill = guide_legend(nrow = 2, byrow = TRUE)) +
+  ylab(expression(paste("mean(", pi[tr], ")"))) +
+  scale_x_continuous(labels = prettyZero) +
+  scale_color_manual(name = "Network density", values = color_palette) +
+  scale_fill_manual(name = "Network density", values = color_palette)
+
+```
+
+```{r}
+source("inference_functions/evaluateNetwork.R")
+val_conn <-
+  evaluate_networks(
+    edges[sample(names(edges), size = 2)],
+    validation = c("TARGET", "CHIPSeq", "DAPSeq"),
+    nCores = 1,
+    input_genes = genes,
+    input_tfs = tfs
+  )
+
+val_conn[, settings] <-
+  str_split_fixed(val_conn$network_name, '_', length(settings))
 ```
 
