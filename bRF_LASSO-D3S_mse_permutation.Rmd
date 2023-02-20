@@ -211,7 +211,7 @@ table(clusters_rf)
 clusters_rf<- c(clusters_rf,setNames(rep("no diff", sum(fractions_out==0)),
                                      names(fractions_out[fractions_out==0])))
 table(clusters_rf)
-
+save(clusters_rf, file = "results/clusters_mse_bRF_100permutations.rdata")
 
 for(gene in sample(genes,40, replace = F)){
     print(draw_gene(gene)+

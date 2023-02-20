@@ -5,12 +5,13 @@ output:
     df_print: paged
     toc: true
     toc_float: true
-    toc_depth: 2
+    toc_depth: 3
+    code_folding: hide
 ---
 
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, warning = F, message = F, fig.width = 8)
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F, fig.width = 11)
 
 source('inference_functions/bRF.R')
 source('inference_functions/LASSO-D3S.R')
@@ -53,9 +54,9 @@ subset <- genes
 ```
 
 
-## Benchmark funtion 
+## Lauching the permutations and the true data inferences 100 times 
 
-```{r}
+```{r, eval=FALSE}
 nCores = 45
 mats <- list()
 nrep <- 100
@@ -88,9 +89,9 @@ for(alpha in ALPHAS){ # exploring PWM integration strength
 save(mats, file = "results/100_permutations_bRF_importances.rdata")
 ```
 
-# Thresholding and computing precision/recall
+# Thresholding the networks
 
-```{r}
+```{r, eval=FALSE}
 load( "results/100_permutations_bRF_importances.rdata")
 edges <- list()
 densities <- c(0.005, 0.01,0.05,0.075)
@@ -120,7 +121,6 @@ prettyZero <- function(l){
     return(lnew)
 }
 
-
 settings <- c("method", "alpha", "dataset","rep", "density")
 ```
 
@@ -145,9 +145,6 @@ pwm_support <-
 pwm_support[, settings] <-
   str_split_fixed(pwm_support$alpha_rep, '_', length(settings))
 
-# pwm_support_plot <- 
-  
-  
 pwm_support %>%
   left_join(nrows, by = settings) %>%
   mutate(alpha = as.numeric(alpha),
@@ -175,8 +172,9 @@ pwm_support %>%
   scale_fill_manual(name = "Network density", values = color_palette)
 
 ```
+## Computing validation metrics 
 
-```{r}
+```{r, eval=FALSE}
 val_conn <-
   evaluate_networks(
     edges,
@@ -192,12 +190,122 @@ val_conn[, settings] <-
 save(val_conn, file = "results/100_permutations_bRF_validation.rdata")
 
 
+val_chip <-
+  evaluate_networks(
+    edges,
+    validation = c("CHIPSeq"),
+    nCores = 15,
+    input_genes = genes,
+    input_tfs = tfs
+  )
+
+val_chip[, settings] <-
+  str_split_fixed(val_chip$network_name, '_', length(settings))
+save(val_chip, file = "results/100_permutations_bRF_validation_chip.rdata")
+
+val_target <-
+  evaluate_networks(
+    edges,
+    validation = c("TARGET"),
+    nCores = 15,
+    input_genes = genes,
+    input_tfs = tfs
+  )
+
+val_target[, settings] <-
+  str_split_fixed(val_target$network_name, '_', length(settings))
+save(val_target, file = "results/100_permutations_bRF_validation_target.rdata")
+
+
+val_dap <-
+  evaluate_networks(
+    edges,
+    validation = c("DAPSeq"),
+    nCores = 15,
+    input_genes = genes,
+    input_tfs = tfs
+  )
+
+val_dap[, settings] <-
+  str_split_fixed(val_dap$network_name, '_', length(settings))
+save(val_dap, file = "results/100_permutations_bRF_validation_dap.rdata")
+
+
 ```
 
+# Plotting validation
 
+## ConnecTF
 
 ```{r, fig.width=10}
+load("results/100_permutations_bRF_validation.rdata")
 data_val <- val_conn %>%
+    group_by(alpha, dataset, density) %>%
+    mutate(mean_precision = mean(precision, na.rm = T),
+           sd_precision = sd(precision, na.rm = T),
+           mean_recall = mean(recall, na.rm = T),
+           sd_recall = sd(recall, na.rm = T)) %>%
+  dplyr::select(-network_name) %>%
+  left_join(nrows, by = settings) %>%
+  mutate(alpha = as.numeric(alpha)) %>%
+  mutate(density_label = paste(density, ':', n_edges, 'edges')) 
+
+precision_all <- data_val %>%
+    ggplot(aes(
+      x = as.numeric(alpha),
+      y = precision,
+      color = dataset,
+      fill = dataset
+    ))+ylab("Precision")+
+    ggh4x::facet_nested_wrap(vars(method, density_label), ncol = 8, nest_line = T) + 
+    geom_ribbon(aes(ymin = mean_precision - sd_precision , 
+                    ymax = mean_precision + sd_precision  ), 
+                alpha = .4)  +theme_pubr(legend = "top")+
+    geom_point(alpha = 0.1) + geom_smooth(se=F)+xlab("alpha") +
+  xlab(expression(alpha)) + ylab("Precision") +
+  ggtitle("Precision against ConnecTF") +
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'top'
+  );precision_all
+
+recall_all <- data_val%>%
+    ggplot(aes(
+      x = as.numeric(alpha),
+      y = recall,
+      color = dataset,
+      fill = dataset
+    ))+
+    ggh4x::facet_nested_wrap(vars(method, density_label), ncol = 8, 
+                             nest_line = T, scales = "free") + 
+    geom_ribbon(aes(ymin = mean_recall - sd_recall , 
+                    ymax = mean_recall + sd_recall  ), 
+                alpha = .4)  +theme_pubr(legend = "none")+
+    geom_point(alpha = 0.1) + geom_smooth(se=F)+xlab("alpha") +
+  xlab(expression(alpha)) + ylab("Recall") +
+  ggtitle("Recall against ConnecTF") +
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'top'
+  );recall_all
+
+```
+
+## CHIP Seq only
+
+```{r}
+load("results/100_permutations_bRF_validation_chip.rdata")
+data_val <- val_chip %>%
     group_by(alpha, dataset, density) %>%
     mutate(mean_precision = mean(precision, na.rm = T),
            sd_precision = sd(precision, na.rm = T),
@@ -221,7 +329,7 @@ data_val %>%
                 alpha = .4)  +theme_pubr(legend = "top")+
     geom_point(alpha = 0.1) + geom_smooth(se=F)+xlab("alpha") +
   xlab(expression(alpha)) + ylab("Precision") +
-  ggtitle("Precision against ConnecTF") +
+  ggtitle("Precision against CHIP") +
   theme(
     strip.background = element_blank(),
     axis.title.x = element_text(size = 22),
@@ -246,7 +354,288 @@ data_val%>%
                 alpha = .4)  +theme_pubr(legend = "none")+
     geom_point(alpha = 0.1) + geom_smooth(se=F)+xlab("alpha") +
   xlab(expression(alpha)) + ylab("Recall") +
-  ggtitle("Recall against ConnecTF") +
+  ggtitle("Recall against CHIP") +
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'top'
+  )
+```
+
+
+## TARGET only
+
+```{r}
+load("results/100_permutations_bRF_validation_target.rdata")
+data_val <- val_target %>%
+    group_by(alpha, dataset, density) %>%
+    mutate(mean_precision = mean(precision, na.rm = T),
+           sd_precision = sd(precision, na.rm = T),
+           mean_recall = mean(recall, na.rm = T),
+           sd_recall = sd(recall, na.rm = T)) %>%
+  dplyr::select(-network_name) %>%
+  left_join(nrows, by = settings) %>%
+  mutate(alpha = as.numeric(alpha)) %>%
+  mutate(density_label = paste(density, ':', n_edges, 'edges')) 
+
+data_val %>%
+    ggplot(aes(
+      x = as.numeric(alpha),
+      y = precision,
+      color = dataset,
+      fill = dataset
+    ))+ylab("Precision")+
+    ggh4x::facet_nested_wrap(vars(method, density_label), ncol = 8, nest_line = T) + 
+    geom_ribbon(aes(ymin = mean_precision - sd_precision , 
+                    ymax = mean_precision + sd_precision  ), 
+                alpha = .4)  +theme_pubr(legend = "top")+
+    geom_point(alpha = 0.1) + geom_smooth(se=F)+xlab("alpha") +
+  xlab(expression(alpha)) + ylab("Precision") +
+  ggtitle("Precision against TARGET") +
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'top'
+  )
+
+data_val%>%
+    ggplot(aes(
+      x = as.numeric(alpha),
+      y = recall,
+      color = dataset,
+      fill = dataset
+    ))+
+    ggh4x::facet_nested_wrap(vars(method, density_label), ncol = 8, 
+                             nest_line = T, scales = "free") + 
+    geom_ribbon(aes(ymin = mean_recall - sd_recall , 
+                    ymax = mean_recall + sd_recall  ), 
+                alpha = .4)  +theme_pubr(legend = "none")+
+    geom_point(alpha = 0.1) + geom_smooth(se=F)+xlab("alpha") +
+  xlab(expression(alpha)) + ylab("Recall") +
+  ggtitle("Recall against TARGET") +
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'top'
+  )
+```
+
+
+## DAP Seq only
+
+```{r}
+load("results/100_permutations_bRF_validation_dap.rdata")
+data_val <- val_dap %>%
+    group_by(alpha, dataset, density) %>%
+    mutate(mean_precision = mean(precision, na.rm = T),
+           sd_precision = sd(precision, na.rm = T),
+           mean_recall = mean(recall, na.rm = T),
+           sd_recall = sd(recall, na.rm = T)) %>%
+  dplyr::select(-network_name) %>%
+  left_join(nrows, by = settings) %>%
+  mutate(alpha = as.numeric(alpha)) %>%
+  mutate(density_label = paste(density, ':', n_edges, 'edges')) 
+
+data_val %>%
+    ggplot(aes(
+      x = as.numeric(alpha),
+      y = precision,
+      color = dataset,
+      fill = dataset
+    ))+ylab("Precision")+
+    ggh4x::facet_nested_wrap(vars(method, density_label), ncol = 8, nest_line = T) + 
+    geom_ribbon(aes(ymin = mean_precision - sd_precision , 
+                    ymax = mean_precision + sd_precision  ), 
+                alpha = .4)  +theme_pubr(legend = "top")+
+    geom_point(alpha = 0.1) + geom_smooth(se=F)+xlab("alpha") +
+  xlab(expression(alpha)) + ylab("Precision") +
+  ggtitle("Precision against DAP") +
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'top'
+  )
+
+data_val%>%
+    ggplot(aes(
+      x = as.numeric(alpha),
+      y = recall,
+      color = dataset,
+      fill = dataset
+    ))+
+    ggh4x::facet_nested_wrap(vars(method, density_label), ncol = 8, 
+                             nest_line = T, scales = "free") + 
+    geom_ribbon(aes(ymin = mean_recall - sd_recall , 
+                    ymax = mean_recall + sd_recall  ), 
+                alpha = .4)  +theme_pubr(legend = "none")+
+    geom_point(alpha = 0.1) + geom_smooth(se=F)+xlab("alpha") +
+  xlab(expression(alpha)) + ylab("Recall") +
+  ggtitle("Recall against DAP") +
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'top'
+  )
+```
+
+
+# How are those curves for genes from the cluster of genes with a MSE decreased significantly by data integration?
+
+```{r, eval=FALSE}
+load("results/clusters_mse_bRF_100permutations.rdata")
+positive_genes <- names(clusters_rf[clusters_rf==2])
+positive_nets <- lapply(edges, function(net){net[net$to %in% positive_genes,]})
+```
+
+
+```{r, eval=FALSE}
+#frees up RAM
+rm(edges)
+
+val_conn_pos_true <-
+  evaluate_networks(
+    positive_nets[names(positive_nets)[str_detect(names(positive_nets), "trueData")]],
+    validation = c("TARGET", "CHIPSeq", "DAPSeq"),
+    nCores = 10,
+    input_genes = genes,
+    input_tfs = tfs
+  )
+
+val_conn_pos_shuffled <-
+  evaluate_networks(
+    positive_nets[names(positive_nets)[!str_detect(names(positive_nets), "trueData")]],
+    validation = c("TARGET", "CHIPSeq", "DAPSeq"),
+    nCores = 10,
+    input_genes = genes,
+    input_tfs = tfs
+  )
+
+val_conn_pos <- rbind.data.frame(val_conn_pos_true, val_conn_pos_shuffled)
+val_conn_pos[, settings] <-
+  str_split_fixed(val_conn_pos$network_name, '_', length(settings))
+save(val_conn_pos, file = "results/100_permutations_bRF_validation_cluster_pos.rdata")
+
+
+
+val_chip <-
+  evaluate_networks(
+    positive_nets,
+    validation = c("CHIPSeq"),
+    nCores = 10,
+    input_genes = genes,
+    input_tfs = tfs
+  )
+
+val_chip[, settings] <-
+  str_split_fixed(val_chip$network_name, '_', length(settings))
+save(val_chip, file = "results/100_permutations_bRF_validation_chip_cluster_pos.rdata")
+
+
+val_target <-
+  evaluate_networks(
+    positive_nets,
+    validation = c("TARGET"),
+    nCores = 10,
+    input_genes = genes,
+    input_tfs = tfs
+  )
+
+val_target[, settings] <-
+  str_split_fixed(val_target$network_name, '_', length(settings))
+save(val_target, file = "results/100_permutations_bRF_validation_target_cluster_pos.rdata")
+
+
+val_dap <-
+  evaluate_networks(
+    positive_nets,
+    validation = c("DAPSeq"),
+    nCores = 10,
+    input_genes = genes,
+    input_tfs = tfs
+  )
+
+val_dap[, settings] <-
+  str_split_fixed(val_dap$network_name, '_', length(settings))
+save(val_dap, file = "results/100_permutations_bRF_validation_dap_cluster_pos.rdata")
+
+
+
+```
+
+## ConnecTF
+
+```{r, fig.width=10}
+load(file = "results/100_permutations_bRF_validation_cluster_pos.rdata")
+data_val <- val_conn_pos %>%
+    group_by(alpha, dataset, density) %>%
+    mutate(mean_precision = mean(precision, na.rm = T),
+           sd_precision = sd(precision, na.rm = T),
+           mean_recall = mean(recall, na.rm = T),
+           sd_recall = sd(recall, na.rm = T)) %>%
+  dplyr::select(-network_name) %>%
+  left_join(nrows, by = settings) %>%
+  mutate(alpha = as.numeric(alpha)) %>%
+  mutate(density_label = paste(density, ':', n_edges, 'edges')) 
+
+data_val %>%
+    ggplot(aes(
+      x = as.numeric(alpha),
+      y = precision,
+      color = dataset,
+      fill = dataset
+    ))+ylab("Precision")+
+    ggh4x::facet_nested_wrap(vars(method, density_label), ncol = 8, nest_line = T) + 
+    geom_ribbon(aes(ymin = mean_precision - sd_precision , 
+                    ymax = mean_precision + sd_precision  ), 
+                alpha = .4)  +theme_pubr(legend = "top")+
+    geom_point(alpha = 0.1) + geom_smooth(se=F)+xlab("alpha") +
+  xlab(expression(alpha)) + ylab("Precision") +
+  ggtitle("Precision against ConnecTF, positive genes") +
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'top'
+  )
+precision_all
+data_val%>%
+    ggplot(aes(
+      x = as.numeric(alpha),
+      y = recall,
+      color = dataset,
+      fill = dataset
+    ))+
+    ggh4x::facet_nested_wrap(vars(method, density_label), ncol = 8, 
+                             nest_line = T, scales = "free") + 
+    geom_ribbon(aes(ymin = mean_recall - sd_recall , 
+                    ymax = mean_recall + sd_recall  ), 
+                alpha = .4)  +theme_pubr(legend = "none")+
+    geom_point(alpha = 0.1) + geom_smooth(se=F)+xlab("alpha") +
+  xlab(expression(alpha)) + ylab("Recall") +
+  ggtitle("Recall against ConnecTF, postitive genes") +
   theme(
     strip.background = element_blank(),
     axis.title.x = element_text(size = 22),
@@ -256,6 +645,204 @@ data_val%>%
     axis.text = element_text(size = 12),
     legend.position = 'top'
   ) 
+recall_all
+```
 
+## CHIP only
+
+
+
+```{r, fig.width=10}
+load(file = "results/100_permutations_bRF_validation_chip_cluster_pos.rdata")
+data_val <- val_chip %>%
+    group_by(alpha, dataset, density) %>%
+    mutate(mean_precision = mean(precision, na.rm = T),
+           sd_precision = sd(precision, na.rm = T),
+           mean_recall = mean(recall, na.rm = T),
+           sd_recall = sd(recall, na.rm = T)) %>%
+  dplyr::select(-network_name) %>%
+  left_join(nrows, by = settings) %>%
+  mutate(alpha = as.numeric(alpha)) %>%
+  mutate(density_label = paste(density, ':', n_edges, 'edges')) 
+
+data_val %>%
+    ggplot(aes(
+      x = as.numeric(alpha),
+      y = precision,
+      color = dataset,
+      fill = dataset
+    ))+ylab("Precision")+
+    ggh4x::facet_nested_wrap(vars(method, density_label), ncol = 8, nest_line = T) + 
+    geom_ribbon(aes(ymin = mean_precision - sd_precision , 
+                    ymax = mean_precision + sd_precision  ), 
+                alpha = .4)  +theme_pubr(legend = "top")+
+    geom_point(alpha = 0.1) + geom_smooth(se=F)+xlab("alpha") +
+  xlab(expression(alpha)) + ylab("Precision") +
+  ggtitle("Precision against CHIPSeq, positive genes") +
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'top'
+  )
+data_val%>%
+    ggplot(aes(
+      x = as.numeric(alpha),
+      y = recall,
+      color = dataset,
+      fill = dataset
+    ))+
+    ggh4x::facet_nested_wrap(vars(method, density_label), ncol = 8, 
+                             nest_line = T, scales = "free") + 
+    geom_ribbon(aes(ymin = mean_recall - sd_recall , 
+                    ymax = mean_recall + sd_recall  ), 
+                alpha = .4)  +theme_pubr(legend = "none")+
+    geom_point(alpha = 0.1) + geom_smooth(se=F)+xlab("alpha") +
+  xlab(expression(alpha)) + ylab("Recall") +
+  ggtitle("Recall against CHIPSeq, postitive genes") +
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'top'
+  ) 
+```
+
+## TARGET only
+
+
+
+```{r, fig.width=10}
+load(file = "results/100_permutations_bRF_validation_target_cluster_pos.rdata")
+data_val <- val_target %>%
+    group_by(alpha, dataset, density) %>%
+    mutate(mean_precision = mean(precision, na.rm = T),
+           sd_precision = sd(precision, na.rm = T),
+           mean_recall = mean(recall, na.rm = T),
+           sd_recall = sd(recall, na.rm = T)) %>%
+  dplyr::select(-network_name) %>%
+  left_join(nrows, by = settings) %>%
+  mutate(alpha = as.numeric(alpha)) %>%
+  mutate(density_label = paste(density, ':', n_edges, 'edges')) 
+
+data_val %>%
+    ggplot(aes(
+      x = as.numeric(alpha),
+      y = precision,
+      color = dataset,
+      fill = dataset
+    ))+ylab("Precision")+
+    ggh4x::facet_nested_wrap(vars(method, density_label), ncol = 8, nest_line = T) + 
+    geom_ribbon(aes(ymin = mean_precision - sd_precision , 
+                    ymax = mean_precision + sd_precision  ), 
+                alpha = .4)  +theme_pubr(legend = "top")+
+    geom_point(alpha = 0.1) + geom_smooth(se=F)+xlab("alpha") +
+  xlab(expression(alpha)) + ylab("Precision") +
+  ggtitle("Precision against TARGET, positive genes") +
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'top'
+  )
+data_val%>%
+    ggplot(aes(
+      x = as.numeric(alpha),
+      y = recall,
+      color = dataset,
+      fill = dataset
+    ))+
+    ggh4x::facet_nested_wrap(vars(method, density_label), ncol = 8, 
+                             nest_line = T, scales = "free") + 
+    geom_ribbon(aes(ymin = mean_recall - sd_recall , 
+                    ymax = mean_recall + sd_recall  ), 
+                alpha = .4)  +theme_pubr(legend = "none")+
+    geom_point(alpha = 0.1) + geom_smooth(se=F)+xlab("alpha") +
+  xlab(expression(alpha)) + ylab("Recall") +
+  ggtitle("Recall against TARGET, postitive genes") +
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'top'
+  ) 
+```
+
+## DAP only
+
+
+
+```{r, fig.width=10}
+load(file = "results/100_permutations_bRF_validation_dap_cluster_pos.rdata")
+data_val <- val_dap %>%
+    group_by(alpha, dataset, density) %>%
+    mutate(mean_precision = mean(precision, na.rm = T),
+           sd_precision = sd(precision, na.rm = T),
+           mean_recall = mean(recall, na.rm = T),
+           sd_recall = sd(recall, na.rm = T)) %>%
+  dplyr::select(-network_name) %>%
+  left_join(nrows, by = settings) %>%
+  mutate(alpha = as.numeric(alpha)) %>%
+  mutate(density_label = paste(density, ':', n_edges, 'edges')) 
+
+data_val %>%
+    ggplot(aes(
+      x = as.numeric(alpha),
+      y = precision,
+      color = dataset,
+      fill = dataset
+    ))+ylab("Precision")+
+    ggh4x::facet_nested_wrap(vars(method, density_label), ncol = 8, nest_line = T) + 
+    geom_ribbon(aes(ymin = mean_precision - sd_precision , 
+                    ymax = mean_precision + sd_precision  ), 
+                alpha = .4)  +theme_pubr(legend = "top")+
+    geom_point(alpha = 0.1) + geom_smooth(se=F)+xlab("alpha") +
+  xlab(expression(alpha)) + ylab("Precision") +
+  ggtitle("Precision against DAPSeq, positive genes") +
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'top'
+  )
+data_val%>%
+    ggplot(aes(
+      x = as.numeric(alpha),
+      y = recall,
+      color = dataset,
+      fill = dataset
+    ))+
+    ggh4x::facet_nested_wrap(vars(method, density_label), ncol = 8, 
+                             nest_line = T, scales = "free") + 
+    geom_ribbon(aes(ymin = mean_recall - sd_recall , 
+                    ymax = mean_recall + sd_recall  ), 
+                alpha = .4)  +theme_pubr(legend = "none")+
+    geom_point(alpha = 0.1) + geom_smooth(se=F)+xlab("alpha") +
+  xlab(expression(alpha)) + ylab("Recall") +
+  ggtitle("Recall against DAPSeq, postitive genes") +
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'top'
+  ) 
 ```
 
