@@ -196,39 +196,32 @@ save(val_conn, file = "results/100_permutations_bRF_validation.rdata")
 
 
 
-```{r}
-val_connecTF <- val_conn %>%
+```{r, fig.width=10}
+data_val <- val_conn %>%
+    group_by(alpha, dataset, density) %>%
+    mutate(mean_precision = mean(precision, na.rm = T),
+           sd_precision = sd(precision, na.rm = T),
+           mean_recall = mean(recall, na.rm = T),
+           sd_recall = sd(recall, na.rm = T)) %>%
   dplyr::select(-network_name) %>%
   left_join(nrows, by = settings) %>%
   mutate(alpha = as.numeric(alpha)) %>%
-  mutate(density_label = paste(density, ':', n_edges, 'edges')) %>%
-  ggplot(aes(color = density_label, x = alpha, y = precision)) +
-  ggh4x::facet_nested_wrap(vars(method, density_label), ncol = 8, nest_line = T) + geom_point() +
-  geom_smooth(aes(fill = density_label, linetype =dataset), alpha = 0.1) +
-  theme(
-    strip.background = element_blank(),
-    axis.title.x = element_text(size = 22),
-    title = element_text(size = 16),
-    strip.text = element_text(size = 16),
-    legend.text = element_text(size = 15),
-    axis.text = element_text(size = 12),
-    legend.position = 'none'
-  ) +
+  mutate(density_label = paste(density, ':', n_edges, 'edges')) 
+
+data_val %>%
+    ggplot(aes(
+      x = as.numeric(alpha),
+      y = precision,
+      color = dataset,
+      fill = dataset
+    ))+ylab("Precision")+
+    ggh4x::facet_nested_wrap(vars(method, density_label), ncol = 8, nest_line = T) + 
+    geom_ribbon(aes(ymin = mean_precision - sd_precision , 
+                    ymax = mean_precision + sd_precision  ), 
+                alpha = .4)  +theme_pubr(legend = "top")+
+    geom_point(alpha = 0.1) + geom_smooth(se=F)+xlab("alpha") +
   xlab(expression(alpha)) + ylab("Precision") +
   ggtitle("Precision against ConnecTF") +
-  scale_x_continuous(labels = prettyZero) +
-  scale_color_manual(name = "Network density", values = color_palette) +
-  scale_fill_manual(name = "Network density", values = color_palette);val_connecTF
-
-
-val_connecTF_recall <-  val_conn %>%
-  dplyr::select(-network_name) %>%
-  left_join(nrows, by = settings) %>%
-  mutate(alpha = as.numeric(alpha)) %>%
-  mutate(density_label = paste(density, ':', n_edges, 'edges')) %>%
-  ggplot(aes(color = density_label, x = alpha, y = recall)) +
-  ggh4x::facet_nested_wrap(vars(method), ncol = 8, nest_line = T) + geom_point() +
-  geom_smooth(aes(fill = density_label, linetype =dataset), alpha = 0.1) +
   theme(
     strip.background = element_blank(),
     axis.title.x = element_text(size = 22),
@@ -236,13 +229,33 @@ val_connecTF_recall <-  val_conn %>%
     strip.text = element_text(size = 16),
     legend.text = element_text(size = 15),
     axis.text = element_text(size = 12),
-    legend.position = 'none'
-  ) +
-  scale_x_continuous(labels = prettyZero) +
+    legend.position = 'top'
+  )
+
+data_val%>%
+    ggplot(aes(
+      x = as.numeric(alpha),
+      y = recall,
+      color = dataset,
+      fill = dataset
+    ))+
+    ggh4x::facet_nested_wrap(vars(method, density_label), ncol = 8, 
+                             nest_line = T, scales = "free") + 
+    geom_ribbon(aes(ymin = mean_recall - sd_recall , 
+                    ymax = mean_recall + sd_recall  ), 
+                alpha = .4)  +theme_pubr(legend = "none")+
+    geom_point(alpha = 0.1) + geom_smooth(se=F)+xlab("alpha") +
   xlab(expression(alpha)) + ylab("Recall") +
   ggtitle("Recall against ConnecTF") +
-  scale_color_manual(name = "Network density", values = color_palette) +
-  scale_fill_manual(name = "Network density", values = color_palette)
-val_connecTF_recall
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'top'
+  ) 
+
 ```
 
