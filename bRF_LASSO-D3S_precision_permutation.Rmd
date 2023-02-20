@@ -177,17 +177,72 @@ pwm_support %>%
 ```
 
 ```{r}
-source("inference_functions/evaluateNetwork.R")
 val_conn <-
   evaluate_networks(
-    edges[sample(names(edges), size = 2)],
+    edges,
     validation = c("TARGET", "CHIPSeq", "DAPSeq"),
-    nCores = 1,
+    nCores = 15,
     input_genes = genes,
     input_tfs = tfs
   )
 
 val_conn[, settings] <-
   str_split_fixed(val_conn$network_name, '_', length(settings))
+
+save(val_conn, file = "results/100_permutations_bRF_validation.rdata")
+
+
+```
+
+
+
+```{r}
+val_connecTF <- val_conn %>%
+  dplyr::select(-network_name) %>%
+  left_join(nrows, by = settings) %>%
+  mutate(alpha = as.numeric(alpha)) %>%
+  mutate(density_label = paste(density, ':', n_edges, 'edges')) %>%
+  ggplot(aes(color = density_label, x = alpha, y = precision)) +
+  ggh4x::facet_nested_wrap(vars(method, density_label), ncol = 8, nest_line = T) + geom_point() +
+  geom_smooth(aes(fill = density_label, linetype =dataset), alpha = 0.1) +
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'none'
+  ) +
+  xlab(expression(alpha)) + ylab("Precision") +
+  ggtitle("Precision against ConnecTF") +
+  scale_x_continuous(labels = prettyZero) +
+  scale_color_manual(name = "Network density", values = color_palette) +
+  scale_fill_manual(name = "Network density", values = color_palette);val_connecTF
+
+
+val_connecTF_recall <-  val_conn %>%
+  dplyr::select(-network_name) %>%
+  left_join(nrows, by = settings) %>%
+  mutate(alpha = as.numeric(alpha)) %>%
+  mutate(density_label = paste(density, ':', n_edges, 'edges')) %>%
+  ggplot(aes(color = density_label, x = alpha, y = recall)) +
+  ggh4x::facet_nested_wrap(vars(method), ncol = 8, nest_line = T) + geom_point() +
+  geom_smooth(aes(fill = density_label, linetype =dataset), alpha = 0.1) +
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'none'
+  ) +
+  scale_x_continuous(labels = prettyZero) +
+  xlab(expression(alpha)) + ylab("Recall") +
+  ggtitle("Recall against ConnecTF") +
+  scale_color_manual(name = "Network density", values = color_palette) +
+  scale_fill_manual(name = "Network density", values = color_palette)
+val_connecTF_recall
 ```
 
