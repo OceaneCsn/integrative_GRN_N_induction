@@ -59,9 +59,10 @@ bRF_inference <- function(counts, genes, tfs, alpha=0.25, scale = FALSE,
   pwm_imputed <- pwm_occurrence
   pwm_imputed[is.na(pwm_imputed)] <- 0.5
   
+  gene_specific = length(alpha) > 1
   # the regressions for each genes are done in parallel
   registerDoParallel(cores = nCores)
-  message(paste("\nbRF is running using", foreach::getDoParWorkers(), "cores. alpha =", alpha))
+  message(paste("\nbRF is running using", foreach::getDoParWorkers(), "cores."))
   "%dopar%" <- foreach::"%dopar%"
   tic()
   suppressPackageStartupMessages(result.reg <-
@@ -98,10 +99,15 @@ bRF_inference <- function(counts, genes, tfs, alpha=0.25, scale = FALSE,
                                                       #                   ifelse(pwm_imputed[target, target_tfs] == 0.5, 1-alpha,
                                                       #                          -sqrt(1-(alpha-1)^2)+1))
                                                       
+                                                      
+                                                      if(gene_specific)
+                                                        alpha_gene = alpha[target]
+                                                      else
+                                                        alpha_gene = alpha
                                                       # stronger version
-                                                      weights <- ifelse(pwm_imputed[target, target_tfs] == 1, sqrt(1-(alpha-1)^2)+1,
-                                                                        ifelse(pwm_imputed[target, target_tfs] == 0.5, 1-alpha,
-                                                                               -sqrt(1-(alpha-1)^2)+1))
+                                                      weights <- ifelse(pwm_imputed[target, target_tfs] == 1, sqrt(1-(alpha_gene-1)^2)+1,
+                                                                        ifelse(pwm_imputed[target, target_tfs] == 0.5, 1-alpha_gene,
+                                                                               -sqrt(1-(alpha_gene-1)^2)+1))
                                                       
                                                       
                                                       

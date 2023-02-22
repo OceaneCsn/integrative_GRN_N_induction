@@ -1,0 +1,199 @@
+---
+title: "Integrative GRN inference : building GRN with alpha-specific genes"
+output: 
+  html_document:
+    df_print: paged
+    toc: true
+    toc_float: true
+    toc_depth: 2
+    code_folding: hide
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F, fig.width = 10)
+
+source('inference_functions/bRF.R')
+source('inference_functions/LASSO-D3S.R')
+source('inference_functions/evaluateNetwork.R')
+source('inference_functions/MSE.R')
+# library(ComplexHeatmap)
+library(ggplot2)
+library(tidyverse)
+library(ggpubr)
+library(patchwork)
+library(ComplexHeatmap)
+
+```
+
+This document demonstrates the use of the bRF and LASSO-D3S functions for integrative GRN inference.
+
+Those functions infer the regulatory pathways of *Arabidopsis thaliana*'s roots in response to nitrate (N) induction from [Varala et al., 2018](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE97500).
+
+They use as inputs the expression profiles of N-responsive genes and TFBS information. 
+Prior TFBS information was built by searching in the promoters of the N-responsive genes the PWM of the N-responsive regulators. 
+
+# Data import
+
+Import of the expression data and the N-responsive genes and regulators :
+
+```{r}
+load('rdata/inference_input_N_response_varala.rdata')
+genes <- input_data$grouped_genes; length(genes)
+tfs <- input_data$grouped_regressors; length(tfs)
+counts <- input_data$counts; dim(counts)
+load("rdata/pwm_occurrences_N_response_varala.rdata")
+dim(pwm_occurrence)
+
+# values of mse per gene per alpha per rep for true and shuffled data
+load("results/brf_perumtations_mse_all_genes.rdata")
+
+# groups of genes depending on their behavior toward data integration
+load("results/clusters_mse_bRF_100permutations.rdata")
+positive_genes <- names(clusters_rf[clusters_rf==2])
+
+```
+
+# Get optimal alphas per gene
+
+This chunk of code returns the value of alpha where there is a maximal difference between true data and shuffled data in the MSE curves.
+
+```{r}
+data <- lmses %>%
+rownames_to_column('gene') %>%
+  reshape2::melt()%>%
+  separate(variable,
+           into = c("alpha", "rep", "MSEtype"),
+           sep = " ") %>%
+  group_by(gene, alpha, MSEtype) %>%
+  mutate(mean_mse = mean(value, na.rm = T),
+         sd_mse = sd(value, na.rm = T)) %>%
+  dplyr::select(mean_mse, sd_mse, gene, alpha, MSEtype)%>%
+  distinct() 
+
+data_true <- filter(data, MSEtype=="true_data")
+data_perm <- filter(data, MSEtype=="shuffled")
+
+data_true$mean_mse_perm <- data_perm$mean_mse
+data_true$sd_mse_perm <- data_perm$sd_mse
+
+alphas_opt <- data_true %>%
+  filter(gene %in% positive_genes) %>%
+   mutate(mean_mse_diff = (mean_mse)) %>%
+  # mutate(mean_mse_diff = (mean_mse-mean_mse_perm)/(sd_mse_perm+sd_mse)) %>%
+  group_by(gene) %>%
+  slice_min(order_by = mean_mse_diff) %>%
+  select(gene, alpha) %>%
+  column_to_rownames("gene")
+
+```
+
+## see the optimal alpha in the curves
+
+```{r}
+draw_gene_mean_sd <- function(gene, title = NULL){
+  lmses[gene, ] %>%
+    gather() %>%
+    separate(key,
+             into = c("alpha", "rep", "MSEtype"),
+             sep = " ") %>%
+    group_by(alpha, MSEtype) %>%
+    mutate(mean_mse = mean(value, na.rm = T),
+           sd_mse = sd(value, na.rm = T),
+           alpha = as.numeric(alpha)) %>%
+    ggplot(aes(
+      x = as.numeric(alpha),
+      y = value,
+      color = MSEtype,
+      fill = MSEtype
+    )) +ggtitle(paste(gene, title))+ylab("MSE/Var(gene)")+
+    geom_ribbon(aes(ymin = mean_mse - sd_mse , 
+                    ymax = mean_mse + sd_mse  ), 
+                alpha = .4)  +theme_pubr(legend = "top")+
+    geom_point(alpha = 0.1) + geom_smooth(se=F)+xlab("alpha") +
+    geom_vline(xintercept = as.numeric(alphas_opt[gene,]))
+}
+
+for(gene in sample(rownames(alphas_opt), 10)){
+  print(draw_gene_mean_sd(gene))
+}
+
+ggplot(alphas_opt, aes(x=as.numeric(alpha))) + 
+  geom_histogram(bins = 11)
+```
+
+```{r}
+alphas_per_gene <- setNames(as.numeric(alphas_opt$alpha), rownames(alphas_opt))
+hist(alphas_per_gene)
+
+mat <- bRF_inference(counts=counts, genes= positive_genes, tfs=tfs, alpha = alphas_per_gene, 
+              tf_expression_permutation = F, pwm_occurrence = pwm_occurrence,
+              nTrees = 2000, importance = "%IncMSE", nCores = 10)
+
+grn <- bRF_network(mat, 0.005, pwm_occurrence, positive_genes, tfs)
+
+mat_0 <- bRF_inference(counts=counts, genes= positive_genes, tfs=tfs, alpha = 0, 
+              tf_expression_permutation = F, pwm_occurrence = pwm_occurrence,
+              nTrees = 2000, importance = "%IncMSE", nCores = 10)
+grn_0 <- bRF_network(mat_0, 0.005, pwm_occurrence, positive_genes, tfs)
+
+mat_1 <- bRF_inference(counts=counts, genes= positive_genes, tfs=tfs, alpha = 1, 
+              tf_expression_permutation = F, pwm_occurrence = pwm_occurrence,
+              nTrees = 2000, importance = "%IncMSE", nCores = 10)
+grn_1 <- bRF_network(mat_1, 0.005, pwm_occurrence, positive_genes, tfs)
+
+
+evaluate_networks(list("best_mse" = grn, "expression" = grn_0, 
+                       "max_integration" = grn_1), 
+                  nCores = 2, input_genes = positive_genes, 
+                  input_tfs = tfs)
+
+```
+
+All genes :
+
+
+```{r}
+
+all_alphas_per_genes <- c(alphas_per_gene, 
+                          setNames(rep(0, length(setdiff(genes, positive_genes))), 
+                                       nm=setdiff(genes, positive_genes)))
+mat <- bRF_inference(counts=counts, genes= genes, tfs=tfs, alpha = all_alphas_per_genes, 
+              tf_expression_permutation = F, pwm_occurrence = pwm_occurrence,
+              nTrees = 2000, importance = "%IncMSE", nCores = 5)
+
+grn <- bRF_network(mat, 0.005, pwm_occurrence, genes, tfs)
+all_alphas_per_genes <- c(alphas_per_gene, 
+                          setNames(rep(1, length(setdiff(genes, positive_genes))), 
+                                       nm=setdiff(genes, positive_genes)))
+
+mat_12 <- bRF_inference(counts=counts, genes= genes, tfs=tfs, alpha = all_alphas_per_genes, 
+              tf_expression_permutation = F, pwm_occurrence = pwm_occurrence,
+              nTrees = 2000, importance = "%IncMSE", nCores = 5)
+
+grn_12 <- bRF_network(mat_12, 0.005, pwm_occurrence, genes, tfs)
+
+mat_0 <- bRF_inference(counts=counts, genes= genes, tfs=tfs, alpha = 0, 
+              tf_expression_permutation = F, pwm_occurrence = pwm_occurrence,
+              nTrees = 2000, importance = "%IncMSE", nCores = 5)
+grn_0 <- bRF_network(mat_0, 0.005, pwm_occurrence, genes, tfs)
+
+mat_1 <- bRF_inference(counts=counts, genes= genes, tfs=tfs, alpha = 1, 
+              tf_expression_permutation = F, pwm_occurrence = pwm_occurrence,
+              nTrees = 2000, importance = "%IncMSE", nCores = 5)
+grn_1 <- bRF_network(mat_1, 0.005, pwm_occurrence, genes, tfs)
+
+
+evaluate_networks(list("best" = grn, "best_12" = grn_12, "expression" = grn_0, 
+                       "max_integration" = grn_1),
+                  nCores = 2, input_genes = genes, 
+                  input_tfs = tfs, validation = c("TARGET"))
+
+evaluate_networks(list("best" = grn, "best_12" = grn_12, "expression" = grn_0, 
+                       "max_integration" = grn_1), 
+                  nCores = 2, input_genes = genes, 
+                  input_tfs = tfs)
+
+```
+
+
