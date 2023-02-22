@@ -6,11 +6,12 @@ output:
     toc: true
     toc_float: true
     toc_depth: 2
+    code_folding: hide
 ---
 
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, warning = F, message = F, fig.width = 8)
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F, fig.width = 10)
 
 source('inference_functions/bRF.R')
 source('inference_functions/LASSO-D3S.R')
@@ -121,7 +122,7 @@ get_diff_curves <- function(lmses){
     group_by(gene, alpha, MSEtype) %>%
     mutate(mean_mse = mean(value, na.rm = T),
            sd_mse = sd(value, na.rm = T)) %>%
-    select(mean_mse, sd_mse, gene, alpha, MSEtype)%>%
+    dplyr::select(mean_mse, sd_mse, gene, alpha, MSEtype)%>%
     distinct() 
   
   data_true <- filter(data, MSEtype=="true_data")
@@ -145,7 +146,7 @@ get_diff_curves <- function(lmses){
 
 ## For lasso 
 
-```{r}
+```{r, eval=FALSE}
 lmses <- data.frame(row.names = subset)
 N<-100
 for(alpha in ALPHAS){
@@ -410,12 +411,95 @@ DIANE::get_gene_information(tfs_rf_pwm_pretty_bad, organism = "Arabidopsis thali
 ```
 
 
+# Network ranks of the Tfs that have enriched motifs in some gene clusters
+
+
+
+```{r, fig.width=10, fig.height=10}
+load("results/100_permutations_bRF_edges.rdata")
+# 10 first replicates
+edges <- edges[names(edges)[as.numeric(str_split_fixed(names(edges), '_', 5)[,4])<=10]]
+net <- edges$bRF_1_trueData_1_0.005
+# nodes <- 
+get_nodes_relative_rank <- function(net, nodes){
+  return(setNames(rank(table(net$from))[nodes]/length(unique(net$from)),nodes))
+}
+
+positive_genes <- names(clusters_rf[clusters_rf==2])
+edges_positives <- lapply(edges, function(net){net[net$to %in% positive_genes,]})
+
+negative_genes <- names(clusters_rf[clusters_rf==1])
+edges_negatives <- lapply(edges, function(net){net[net$to %in% negative_genes,]})
+
+
+relative_rank <- lapply(edges, get_nodes_relative_rank, tfs_rf_pwm_pos)
+relative_rank_pos <- lapply(edges_positives, get_nodes_relative_rank, tfs_rf_pwm_pos)
+
+data.frame(relative_rank) %>%
+  rownames_to_column("gene") %>%
+  reshape2::melt() %>%
+  separate(variable, into = c("method", "alpha", "dataset", "rep", "density"), sep = '_', remove = F) %>%
+  mutate(alpha = as.numeric(alpha)) %>%
+  ggplot(aes(x=alpha, y=value, color = dataset)) + 
+  ggh4x::facet_nested_wrap(vars(density, gene), nest_line = T) + 
+  geom_point() + geom_smooth() +
+  theme(strip.background = element_blank(), axis.title.x = element_text(size = 22),
+        title = element_text(size = 16), strip.text = element_text(size = 16), 
+        legend.text = element_text(size = 15), axis.text = element_text(size = 12), 
+        legend.position = 'left') + ggtitle("TFs with motifs enriched in positive genes promoters : relative out-degree rank")
+
+
+data.frame(relative_rank_pos) %>%
+  rownames_to_column("gene") %>%
+  reshape2::melt() %>%
+  separate(variable, into = c("method", "alpha", "dataset", "rep", "density"), sep = '_', remove = F) %>%
+  mutate(alpha = as.numeric(alpha)) %>%
+  ggplot(aes(x=alpha, y=value, color = dataset)) + 
+  ggh4x::facet_nested_wrap(vars(density, gene), nest_line = T) + 
+  geom_point() + geom_smooth() +
+  theme(strip.background = element_blank(), axis.title.x = element_text(size = 22),
+        title = element_text(size = 16), strip.text = element_text(size = 16), 
+        legend.text = element_text(size = 15), axis.text = element_text(size = 12), 
+        legend.position = 'left') + ggtitle("TFs with motifs enriched in positive genes promoters : relative out-degree rank in positive subset")
+
+
+
+relative_rank_bad <- lapply(edges, get_nodes_relative_rank, tfs_rf_pwm_bad)
+relative_rank_bad_subset <- lapply(edges_negatives, get_nodes_relative_rank, tfs_rf_pwm_bad)
+
+data.frame(relative_rank_bad) %>%
+  rownames_to_column("gene") %>%
+  reshape2::melt() %>%
+  separate(variable, into = c("method", "alpha", "dataset", "rep", "density"), sep = '_', remove = F) %>%
+  mutate(alpha = as.numeric(alpha)) %>%
+  ggplot(aes(x=alpha, y=value, color = dataset)) + 
+  ggh4x::facet_nested_wrap(vars(density, gene), nest_line = T) + 
+  geom_point() + geom_smooth() +
+  theme(strip.background = element_blank(), axis.title.x = element_text(size = 22),
+        title = element_text(size = 16), strip.text = element_text(size = 16), 
+        legend.text = element_text(size = 15), axis.text = element_text(size = 12), 
+        legend.position = 'left') + ggtitle("TFs with motifs enriched in negative genes promoters : relative out-degree rank")
+
+data.frame(relative_rank_bad_subset) %>%
+  rownames_to_column("gene") %>%
+  reshape2::melt() %>%
+  separate(variable, into = c("method", "alpha", "dataset", "rep", "density"), sep = '_', remove = F) %>%
+  mutate(alpha = as.numeric(alpha)) %>%
+  ggplot(aes(x=alpha, y=value, color = dataset)) + 
+  ggh4x::facet_nested_wrap(vars(density, gene), nest_line = T) + 
+  geom_point() + geom_smooth() +
+  theme(strip.background = element_blank(), axis.title.x = element_text(size = 22),
+        title = element_text(size = 16), strip.text = element_text(size = 16), 
+        legend.text = element_text(size = 15), axis.text = element_text(size = 12), 
+        legend.position = 'left') + ggtitle("TFs with motifs enriched in negative genes promoters : relative out-degree rank in negative subset")
+
+```
 
 
 
 # Go enrichments
 
-```{r}
+```{r, eval=FALSE}
 library(DIANE)
 background <- convert_from_agi(genes)
 
@@ -452,6 +536,7 @@ Heatmap(expression, cluster_columns = F, show_row_names = F)+
     clusters_rf = clusters_rf[rownames(expression)],
     col=list(clusters_rf= setNames(c("darkorange", "darkgreen", "lightgrey"), 
                                        nm = names(table(clusters_rf)))))
+
 
 ```
 

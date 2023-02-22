@@ -110,6 +110,30 @@ names(edges)
 ```
 
 
+# Thresholding the networks
+
+```{r, eval=FALSE}
+load( "results/100_permutations_bRF_importances.rdata")
+load("results/clusters_mse_bRF_100permutations.rdata")
+positive_genes <- names(clusters_rf[clusters_rf==2])
+
+edges <- list()
+densities <- c(0.005, 0.01,0.05,0.075)
+
+for(name in names(mats)){ # exploring importance threshold stringency
+      for(density in densities){
+        edges[[paste0(name, '_', density)]] <-
+        bRF_network(mats[[name]][,positive_genes], density = density, pwm_occurrence, genes, tfs)
+      }
+}
+
+save(edges, file = "results/100_permutations_bRF_edges_positive.rdata")
+
+names(edges)
+# compure precision and recall
+```
+
+
 ```{r}
 load("results/100_permutations_bRF_edges.rdata")
 
