@@ -91,7 +91,7 @@ draw_gene <- function(gene){
 
 
 draw_gene_mean_sd <- function(gene, title = NULL){
-  data <- lmses[gene, ] %>%
+  lmses[gene, ] %>%
     gather() %>%
     separate(key,
              into = c("alpha", "rep", "MSEtype"),
@@ -218,6 +218,14 @@ for(gene in sample(genes,40, replace = F)){
     print(draw_gene(gene)+
             draw_gene_mean_sd(gene, title = paste(clusters_rf[gene], round(fractions_out[gene], 4))))
 }
+
+
+for(gene in c("AT1G08090", "AT1G12110")){
+    print(draw_gene(gene)+
+            draw_gene_mean_sd(gene, title = paste(clusters_rf[gene], round(fractions_out[gene], 4))))
+}
+
+
 
 ha = HeatmapAnnotation(
     alpha = anno_simple(as.numeric(rep(colnames(diff_curves),1))),
