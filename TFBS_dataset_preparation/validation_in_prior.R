@@ -23,7 +23,7 @@ head(links)
 evaluate_network(links, input_genes = genes, input_tfs = colnames(pwm_occurrence))[c("tpr", "recall")]
 evaluate_network(links, input_genes = genes, input_tfs = colnames(pwm_occurrence), validation = c("CHIPSeq"))[c("tpr", "recall")]
 evaluate_network(links, input_genes = genes, input_tfs = colnames(pwm_occurrence), validation = c("TARGET"))[c("tpr", "recall")]
-evaluate_network(links, input_genes = genes, input_tfs = colnames(pwm_occurrence), validation = c("DAPSeq"))[c("tpr", "recall")]
+# evaluate_network(links, input_genes = genes, input_tfs = colnames(pwm_occurrence), validation = c("DAPSeq"))[c("tpr", "recall")]
 
 val_conn$tpr
 val_conn$recall
