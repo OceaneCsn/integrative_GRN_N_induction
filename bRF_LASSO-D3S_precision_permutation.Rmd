@@ -95,8 +95,6 @@ for(name in names(mats)){ # exploring importance threshold stringency
 
 save(edges, file = "results/100_permutations_bRF_edges.rdata")
 
-names(edges)
-# compure precision and recall
 ```
 
 
@@ -119,12 +117,7 @@ for(name in names(mats)){ # exploring importance threshold stringency
 
 save(edges, file = "results/100_permutations_bRF_edges_positive_same_density.rdata")
 
-# compure precision and recall
 ```
-
-# Get the postive genes their own number of edges for an equal density
-
-
 
 
 
