@@ -4,7 +4,7 @@ library(parallel)
 library(foreach)
 library(doRNG)
 library(glmnet)
-
+library(tictoc)
 
 
 LASSO.D3S_inferenceMDA <- function(counts, genes, tfs, alpha=0.25, 
@@ -133,8 +133,9 @@ LASSO.D3S_inferenceMDA <- function(counts, genes, tfs, alpha=0.25,
 
 
 LASSO.D3S_inference <- function(counts, genes, tfs, alpha=0.25, 
-                                pwm_occurrence, int_pwm_noise = 0.1,
+                                pwm_occurrence, int_pwm_noise = 0,
                                 N = 100, 
+                                tf_expression_permutation = FALSE,
                                 score = "pval", robustness = 0.1,
                                 nCores = ifelse(is.na(detectCores()),1,
                                                 max(detectCores() - 1, 1))){
@@ -151,7 +152,7 @@ LASSO.D3S_inference <- function(counts, genes, tfs, alpha=0.25,
   counts <- round(counts, 0)
   x <- t(counts[tfs,])
   
-  # pwm scores to bias variable selecttion toward pairs supported by a TFBS
+  # pwm scores to bias variable selection toward pairs supported by a TFBS
   pwm_imputed <- pwm_occurrence
   pwm_imputed[is.na(pwm_imputed)] <- 0.5
   
@@ -169,6 +170,12 @@ LASSO.D3S_inference <- function(counts, genes, tfs, alpha=0.25,
                                                       # if needed
                                                       target_tfs <- setdiff(tfs, target)
                                                       x_target <- x[, target_tfs]
+                                                      if(tf_expression_permutation){
+                                                        # randomises the expression rows of TFs but not their ID
+                                                        x_target <- x_target[,sample(target_tfs, replace = F, 
+                                                                                     size = length(target_tfs))]
+                                                        colnames(x_target) <- target_tfs
+                                                      }
                                                       y <- t(counts[target, ])
                                                       
                                                       # weights for differential shrinkage
