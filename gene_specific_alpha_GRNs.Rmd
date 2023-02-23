@@ -47,10 +47,17 @@ dim(pwm_occurrence)
 
 # values of mse per gene per alpha per rep for true and shuffled data
 load("results/brf_perumtations_mse_all_genes.rdata")
+lmses_rf <- lmses
+load("results/lasso_perumtations_mse_all_genes.rdata")
+lmses_lasso <- lmses
+rm(lmses)
 
 # groups of genes depending on their behavior toward data integration
 load("results/clusters_mse_bRF_100permutations.rdata")
-positive_genes <- names(clusters_rf[clusters_rf==2])
+positive_genes_rf <- names(clusters_rf[clusters_rf==2])
+
+load("results/clusters_mse_lasso_100permutations.rdata")
+positive_genes_lasso <- names(clusters_lasso[clusters_lasso==1])
 
 ```
 
@@ -59,6 +66,16 @@ positive_genes <- names(clusters_rf[clusters_rf==2])
 This chunk of code returns the value of alpha where there is a maximal difference between true data and shuffled data in the MSE curves.
 
 ```{r}
+get_optimal_alphas_per_genes <- function(model = "rf", strategy = "min_mse"){
+  if(model == "rf"){
+    lmses = lmses_rf
+    positive_genes = positive_genes_rf
+  }
+  
+  if(model == "lasso"){
+    lmses = lmses_lasso
+    positive_genes = positive_genes_lasso
+  }
 data <- lmses %>%
 rownames_to_column('gene') %>%
   reshape2::melt()%>%
@@ -77,21 +94,51 @@ data_perm <- filter(data, MSEtype=="shuffled")
 data_true$mean_mse_perm <- data_perm$mean_mse
 data_true$sd_mse_perm <- data_perm$sd_mse
 
-alphas_opt <- data_true %>%
+if(strategy == "min_mse"){
+  alphas_opt <- data_true %>%
   filter(gene %in% positive_genes) %>%
    mutate(mean_mse_diff = (mean_mse)) %>%
-  # mutate(mean_mse_diff = (mean_mse-mean_mse_perm)/(sd_mse_perm+sd_mse)) %>%
   group_by(gene) %>%
   slice_min(order_by = mean_mse_diff) %>%
   select(gene, alpha) %>%
   column_to_rownames("gene")
+  
+  }
+  if(strategy == "max_div"){
+    alphas_opt <- data_true %>%
+    filter(gene %in% positive_genes) %>%
+    mutate(mean_mse_diff = (mean_mse-mean_mse_perm)/(sd_mse_perm+sd_mse)) %>%
+    group_by(gene) %>%
+    slice_min(order_by = mean_mse_diff) %>%
+    select(gene, alpha) %>%
+    column_to_rownames("gene")
+  }
 
+  alphas_per_genes <- setNames(as.numeric(alphas_opt$alpha), 
+                               rownames(alphas_opt))
+  # adding a value of alpha for genes that do not 
+  # benefit from data integration
+  all_alphas_per_genes <- c(alphas_per_gene, 
+                          setNames(rep(alpha_for_other_genes, 
+                                       length(setdiff(genes, positive_genes))), 
+                                  nm=setdiff(genes, positive_genes)))
+  
+  return(all_alphas_per_genes)
+}
+
+alphas_per_genes = list()
+for(model in c("rf", "lasso")){
+  for(strat in c("min_mse", "max_div")){
+    alphas_per_genes[paste0(model, "_", strat)] <- 
+      get_optimal_alphas_per_genes(model = model, strategy = strat)
+  }
+}
 ```
 
 ## see the optimal alpha in the curves
 
 ```{r}
-draw_gene_mean_sd <- function(gene, title = NULL){
+draw_gene_mean_sd <- function(lmses, gene, title = NULL){
   lmses[gene, ] %>%
     gather() %>%
     separate(key,
@@ -123,7 +170,7 @@ ggplot(alphas_opt, aes(x=as.numeric(alpha))) +
 ```
 
 ```{r}
-alphas_per_gene <- setNames(as.numeric(alphas_opt$alpha), rownames(alphas_opt))
+alphas_per_gene <- get_
 hist(alphas_per_gene)
 
 mat <- bRF_inference(counts=counts, genes= positive_genes, tfs=tfs, alpha = alphas_per_gene, 
@@ -163,9 +210,7 @@ mat <- bRF_inference(counts=counts, genes= genes, tfs=tfs, alpha = all_alphas_pe
               nTrees = 2000, importance = "%IncMSE", nCores = 5)
 
 grn <- bRF_network(mat, 0.005, pwm_occurrence, genes, tfs)
-all_alphas_per_genes <- c(alphas_per_gene, 
-                          setNames(rep(1, length(setdiff(genes, positive_genes))), 
-                                       nm=setdiff(genes, positive_genes)))
+
 
 mat_12 <- bRF_inference(counts=counts, genes= genes, tfs=tfs, alpha = all_alphas_per_genes, 
               tf_expression_permutation = F, pwm_occurrence = pwm_occurrence,

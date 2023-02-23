@@ -253,6 +253,108 @@ save(val_dap, file = "results/100_permutations_lasso_validation_dap.rdata")
 
 ```
 
+
+### topology of the all-genes networks
+
+```{r, fig.width=20, fig.height=7}
+get_nTF <- function(net){
+  return(mean(table(net$to)))
+}
+
+get_TF <- function(net){
+  return(length(unique(net$from)))
+}
+
+get_nGenes <- function(net){
+  return(length(unique(net$to)))
+}
+
+# subset <- edges[as.numeric(str_split_fixed(names(edges), '_', 5)[,4])<6]
+
+topo <- data.frame(alpha_rep = names(edges),
+                n_TFs = unlist(lapply(edges, FUN = get_nTF)),
+                TFs = unlist(lapply(edges, FUN = get_TF)),
+                n_genes = unlist(lapply(edges, FUN = get_nGenes)))
+
+topo[, settings] <- str_split_fixed(topo$alpha_rep,'_', length(settings))
+
+data_topo <- topo %>%  
+  left_join(nrows, by = settings) %>%
+  mutate(alpha = as.numeric(alpha)) %>%
+  mutate(density_label = paste(density, ':', n_edges, 'edges')) %>%
+  group_by(alpha, density, dataset) %>%
+  mutate(mean_n_TFs = mean(n_TFs, na.rm=T),
+            sd_n_TFs = sd(n_TFs, na.rm=T),
+            mean_TFs = mean(TFs, na.rm=T),
+            sd_TFs = sd(TFs, na.rm=T),
+            mean_nGenes = mean(n_genes, na.rm=T),
+            sd_nGenes = sd(n_genes, na.rm=T)) 
+
+regs_per_genes <- data_topo %>%
+  ggplot(aes(color = dataset, fill = dataset,x = alpha, y = n_TFs)) +
+  ggh4x::facet_nested_wrap(vars(method, density), ncol = 8, nest_line = T) + geom_point(alpha = 0.2) +
+  geom_smooth(se = F) +
+  geom_ribbon(aes(ymin = mean_n_TFs - sd_n_TFs , 
+                    ymax = mean_n_TFs + sd_n_TFs  ), 
+                alpha = .4)+
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'none'
+  ) +
+  scale_x_continuous(labels = prettyZero) +
+  xlab(expression(alpha)) + ylab("Average number of regulator per gene") + 
+                 ggtitle("Average number of regulator per gene")
+
+regs_in_network <- data_topo %>%
+  ggplot(aes(color = dataset, fill = dataset, x = alpha, y = TFs)) +
+  ggh4x::facet_nested_wrap(vars(method, density), ncol = 8, nest_line = T) + geom_point(alpha = 0.2) +
+  geom_ribbon(aes(ymin = mean_TFs - sd_TFs , 
+                    ymax = mean_TFs + sd_TFs  ), 
+                alpha = .4)+
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'top'
+  ) +
+  scale_x_continuous(labels = prettyZero) +
+  xlab(expression(alpha))+ ylab("Number of distinct regulators") + 
+                 ggtitle("Number of distinct regulators") 
+
+
+targets_in_network <- data_topo %>%
+  ggplot(aes(color = dataset, fill = dataset,x = alpha, y = n_genes)) +
+  ggh4x::facet_nested_wrap(vars(method, density), ncol = 8, nest_line = T) + 
+  geom_point(alpha = 0.2) +
+  geom_smooth(se = F) +
+  geom_ribbon(aes(ymin = mean_nGenes - sd_nGenes , 
+                    ymax = mean_nGenes + sd_nGenes  ), 
+                alpha = .4)+
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'top'
+  ) +
+  scale_x_continuous(labels = prettyZero) +
+  xlab(expression(alpha))+ ylab("Number of distinct targets") + 
+                 ggtitle("Number of distinct targets") 
+
+
+figure <- targets_in_network+regs_in_network+regs_per_genes + plot_layout(guides = "collect") + plot_annotation(tag_levels = 'a');figure
+```
+
 ### On positive networks
 
 ```{r, fig.width=10}
@@ -298,6 +400,107 @@ pwm_support %>%
   ylab(expression(paste("mean(", pi[tr], ")"))) +
   scale_x_continuous(labels = prettyZero)
 
+```
+
+### topology of the positive genes networks
+
+```{r, fig.width=20, fig.height=7}
+get_nTF <- function(net){
+  return(mean(table(net$to)))
+}
+
+get_TF <- function(net){
+  return(length(unique(net$from)))
+}
+
+get_nGenes <- function(net){
+  return(length(unique(net$to)))
+}
+
+# subset <- edges[as.numeric(str_split_fixed(names(edges), '_', 5)[,4])<6]
+
+topo <- data.frame(alpha_rep = names(edges),
+                n_TFs = unlist(lapply(edges, FUN = get_nTF)),
+                TFs = unlist(lapply(edges, FUN = get_TF)),
+                n_genes = unlist(lapply(edges, FUN = get_nGenes)))
+
+topo[, settings] <- str_split_fixed(topo$alpha_rep,'_', length(settings))
+
+data_topo <- topo %>%  
+  left_join(nrows, by = settings) %>%
+  mutate(alpha = as.numeric(alpha)) %>%
+  mutate(density_label = paste(density, ':', n_edges, 'edges')) %>%
+  group_by(alpha, density, dataset) %>%
+  mutate(mean_n_TFs = mean(n_TFs, na.rm=T),
+            sd_n_TFs = sd(n_TFs, na.rm=T),
+            mean_TFs = mean(TFs, na.rm=T),
+            sd_TFs = sd(TFs, na.rm=T),
+            mean_nGenes = mean(n_genes, na.rm=T),
+            sd_nGenes = sd(n_genes, na.rm=T)) 
+
+regs_per_genes <- data_topo %>%
+  ggplot(aes(color = dataset, fill = dataset,x = alpha, y = n_TFs)) +
+  ggh4x::facet_nested_wrap(vars(method, density), ncol = 8, nest_line = T) + geom_point(alpha = 0.2) +
+  geom_smooth(se = F) +
+  geom_ribbon(aes(ymin = mean_n_TFs - sd_n_TFs , 
+                    ymax = mean_n_TFs + sd_n_TFs  ), 
+                alpha = .4)+
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'none'
+  ) +
+  scale_x_continuous(labels = prettyZero) +
+  xlab(expression(alpha)) + ylab("Average number of regulator per gene") + 
+                 ggtitle("Average number of regulator per gene")
+
+regs_in_network <- data_topo %>%
+  ggplot(aes(color = dataset, fill = dataset, x = alpha, y = TFs)) +
+  ggh4x::facet_nested_wrap(vars(method, density), ncol = 8, nest_line = T) + geom_point(alpha = 0.2) +
+  geom_ribbon(aes(ymin = mean_TFs - sd_TFs , 
+                    ymax = mean_TFs + sd_TFs  ), 
+                alpha = .4)+
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'top'
+  ) +
+  scale_x_continuous(labels = prettyZero) +
+  xlab(expression(alpha))+ ylab("Number of distinct regulators") + 
+                 ggtitle("Number of distinct regulators") 
+
+
+targets_in_network <- data_topo %>%
+  ggplot(aes(color = dataset, fill = dataset,x = alpha, y = n_genes)) +
+  ggh4x::facet_nested_wrap(vars(method, density), ncol = 8, nest_line = T) + 
+  geom_point(alpha = 0.2) +
+  geom_smooth(se = F) +
+  geom_ribbon(aes(ymin = mean_nGenes - sd_nGenes , 
+                    ymax = mean_nGenes + sd_nGenes  ), 
+                alpha = .4)+
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'top'
+  ) +
+  scale_x_continuous(labels = prettyZero) +
+  xlab(expression(alpha))+ ylab("Number of distinct targets") + 
+                 ggtitle("Number of distinct targets") 
+
+
+figure <- targets_in_network+regs_in_network+regs_per_genes + plot_layout(guides = "collect") + plot_annotation(tag_levels = 'a');figure
 ```
 
 Not all densities should be explored with this restriction of genes, as there are too few genes to grant sufficient interactions supported by a prior of 1. We keep only the two smallest densities.
