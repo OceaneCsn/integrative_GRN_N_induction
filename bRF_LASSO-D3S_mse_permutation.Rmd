@@ -77,11 +77,6 @@ subset <- genes
 # }
 # 
 # save(lmses, file = "results/brf_perumtations_mse_all_genes.rdata")
-<<<<<<< HEAD
-
-=======
-load("results/brf_perumtations_mse_all_genes.rdata")
->>>>>>> 9b1478da7002ffb8da85d5b1e86bb4540068c669
 # subset<-unique(rownames(lmses))
 draw_gene <- function(gene){
   lmses[gene,] %>%
@@ -95,11 +90,7 @@ draw_gene <- function(gene){
 
 
 draw_gene_mean_sd <- function(gene, title = NULL){
-<<<<<<< HEAD
-  data <- lmses[gene, ] %>%
-=======
   lmses[gene, ] %>%
->>>>>>> 9b1478da7002ffb8da85d5b1e86bb4540068c669
     gather() %>%
     separate(key,
              into = c("alpha", "rep", "MSEtype"),
