@@ -65,8 +65,9 @@ positive_genes_lasso <- names(clusters_lasso[clusters_lasso==1])
 
 This chunk of code returns the value of alpha where there is a maximal difference between true data and shuffled data in the MSE curves.
 
-```{r}
-get_optimal_alphas_per_genes <- function(model = "rf", strategy = "min_mse"){
+```{r, eval=F}
+get_optimal_alphas_per_genes <- function(model = "rf", strategy = "min_mse",
+                                         alpha_for_other_genes = 0){
   if(model == "rf"){
     lmses = lmses_rf
     positive_genes = positive_genes_rf
@@ -97,13 +98,13 @@ data_true$sd_mse_perm <- data_perm$sd_mse
 if(strategy == "min_mse"){
   alphas_opt <- data_true %>%
   filter(gene %in% positive_genes) %>%
-   mutate(mean_mse_diff = (mean_mse)) %>%
+   mutate(mean_mse_diff = mean_mse) %>%
   group_by(gene) %>%
   slice_min(order_by = mean_mse_diff) %>%
   select(gene, alpha) %>%
   column_to_rownames("gene")
-  
-  }
+}
+
   if(strategy == "max_div"){
     alphas_opt <- data_true %>%
     filter(gene %in% positive_genes) %>%
@@ -113,12 +114,11 @@ if(strategy == "min_mse"){
     select(gene, alpha) %>%
     column_to_rownames("gene")
   }
-
-  alphas_per_genes <- setNames(as.numeric(alphas_opt$alpha), 
-                               rownames(alphas_opt))
+  # named vector,
   # adding a value of alpha for genes that do not 
   # benefit from data integration
-  all_alphas_per_genes <- c(alphas_per_gene, 
+  all_alphas_per_genes <- c(setNames(as.numeric(alphas_opt$alpha), 
+                               rownames(alphas_opt)), 
                           setNames(rep(alpha_for_other_genes, 
                                        length(setdiff(genes, positive_genes))), 
                                   nm=setdiff(genes, positive_genes)))
@@ -129,17 +129,34 @@ if(strategy == "min_mse"){
 alphas_per_genes = list()
 for(model in c("rf", "lasso")){
   for(strat in c("min_mse", "max_div")){
-    alphas_per_genes[paste0(model, "_", strat)] <- 
-      get_optimal_alphas_per_genes(model = model, strategy = strat)
+    for(alphas_other in c(0,1)){
+      alphas_per_genes[[paste0(model, "_", strat, "_", alphas_other)]] <- 
+      get_optimal_alphas_per_genes(model = model, strategy = strat, 
+                                   alpha_for_other_genes =  alphas_other)
+    }
   }
 }
+
+save(alphas_per_genes, file = "results/alphas_per_genes.rdata")
+
 ```
 
 ## see the optimal alpha in the curves
 
 ```{r}
-draw_gene_mean_sd <- function(lmses, gene, title = NULL){
-  lmses[gene, ] %>%
+
+load("results/alphas_per_genes.rdata")
+
+draw_gene_mean_sd <- function(gene, model="rf", title = NULL){
+  if(model == "rf"){
+    lmses = lmses_rf
+  }
+  
+  if(model == "lasso"){
+    lmses = lmses_lasso
+  }
+  
+  plot <- lmses[gene, ] %>%
     gather() %>%
     separate(key,
              into = c("alpha", "rep", "MSEtype"),
@@ -157,45 +174,168 @@ draw_gene_mean_sd <- function(lmses, gene, title = NULL){
     geom_ribbon(aes(ymin = mean_mse - sd_mse , 
                     ymax = mean_mse + sd_mse  ), 
                 alpha = .4)  +theme_pubr(legend = "top")+
-    geom_point(alpha = 0.1) + geom_smooth(se=F)+xlab("alpha") +
-    geom_vline(xintercept = as.numeric(alphas_opt[gene,]))
+    geom_point(alpha = 0.1) + geom_smooth(se=F)+xlab("alpha") 
+  if(model == "rf")
+    return(plot+
+    geom_vline(xintercept = as.numeric(alphas_per_genes$rf_min_mse_0[gene]))+
+    geom_vline(xintercept = as.numeric(alphas_per_genes$rf_max_div_0[gene]), color = "darkred"))
+  if(model == "lasso")
+    return(plot+
+    geom_vline(xintercept = as.numeric(alphas_per_genes$lasso_min_mse_0[gene]))+
+    geom_vline(xintercept = as.numeric(alphas_per_genes$lasso_max_div_0[gene]), color = "darkred"))
 }
 
-for(gene in sample(rownames(alphas_opt), 10)){
-  print(draw_gene_mean_sd(gene))
+for(gene in sample(genes, 20)){
+  print(draw_gene_mean_sd(gene, model = "lasso", title = "lasso")+
+          draw_gene_mean_sd(gene, model = "rf", title = "rf"))
 }
 
-ggplot(alphas_opt, aes(x=as.numeric(alpha))) + 
-  geom_histogram(bins = 11)
 ```
 
+
+
+```{r, eval=F}
+
+
+nCores = 35
+networks <- list()
+densities <- c(0.005, 0.01,0.05,0.075)
+
+for(model in c("lasso", "rf")){
+  for(strat in c("max_div")){
+    for(alphas_other in c(0)){
+      for(g in c("all", "positive")){
+        for(shuffle in c( F, T)){
+          for(rep in 1:10){
+            if(g == "all") gene_list <- genes
+            else{
+              if(model == "rf") gene_list <- positive_genes_rf
+              else gene_list <- positive_genes_lasso
+            }
+            
+            print(paste0(model, "-", strat, "-", alphas_other, "-", g, "-", 
+                               ifelse(shuffle, "shuffled", "trueData"), "-", rep))
+            
+            if(model == "rf"){
+              mat <- bRF_inference(counts=counts, genes= gene_list, tfs=tfs, 
+                          alpha = alphas_per_genes[[paste0(model, "_", strat, "_", alphas_other)]], 
+              tf_expression_permutation = shuffle, pwm_occurrence = pwm_occurrence,
+              nTrees = 2000, importance = "%IncMSE", nCores = nCores)
+              
+              for(density in densities){
+                networks[[paste0(model, "-", strat, "-", alphas_other, "-", g, "-", 
+                               ifelse(shuffle, "shuffled", "trueData"), "-", rep, "-", density)]] <-
+                bRF_network(mat, density, pwm_occurrence, gene_list, tfs)
+              }
+            }
+            
+            if(model == "lasso"){
+              mat <- LASSO.D3S_inference(counts, gene_list, tfs,
+                                   alpha = alphas_per_genes[[paste0(model, "_", strat, "_", alphas_other)]], 
+                                   N = 100, tf_expression_permutation = shuffle,
+                                   int_pwm_noise = 0, score = "pval",
+                                   pwm_occurrence = pwm_occurrence,
+                                   nCores = nCores)
+              
+              for(density in densities){
+                networks[[paste0(model, "-", strat, "-", alphas_other, "-", g, "-", 
+                               ifelse(shuffle, "shuffled", "trueData"), "-", rep, "-", density)]] <-
+                LASSO.D3S_network(mat, density, pwm_occurrence, gene_list, tfs)
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+save(networks, file = "results/gene_specific_alphas_grns_max_div_0others.rdata")
+
+```
+
+```{r, fig.width=10}
+load("results/gene_specific_alphas_grns_max_div_0others.rdata")
+nCores = 20
+
+
+pos_nets <- networks[str_detect(names(networks), 'positive')]
+all_nets <- networks[!str_detect(names(networks), 'positive')]
+names(pos_nets)
+
+pos_nets_lasso <- pos_nets[str_detect(names(pos_nets), 'lasso')]
+pos_nets_rf <- pos_nets[str_detect(names(pos_nets), 'rf')]
+
+all_nets_lasso <- all_nets[str_detect(names(all_nets), 'lasso')]
+all_nets_rf <- all_nets[str_detect(names(all_nets), 'rf')]
+
+
+val <- rbind.data.frame(evaluate_networks(pos_nets_lasso, nCores = nCores,
+                  input_genes = positive_genes_lasso ),
+                 evaluate_networks(pos_nets_rf, nCores = nCores,
+                  input_genes = positive_genes_rf),
+                 evaluate_networks(all_nets_lasso, nCores = nCores,
+                  input_genes = genes),
+                 evaluate_networks(all_nets_rf, nCores = nCores,
+                  input_genes = genes ))
+
+settings <- c("model", "alphaOpt", "alphaOtherGenes", "genesInNetwork", "dataset", "rep", "density")
+
+val[, settings] <-
+  str_split_fixed(val$network_name, '-', length(settings))
+
+
+val %>%
+ggplot(aes(x=dataset, y = precision, color = dataset)) + 
+  ggh4x::facet_nested_wrap(vars(model, density, genesInNetwork), 
+                           ncol = 8, nest_line = T) + 
+  geom_point() + stat_compare_means(label = "p.signif")
+
+val %>%
+ggplot(aes(x=dataset, y = recall, color = dataset)) + 
+  ggh4x::facet_nested_wrap(vars(model, density, genesInNetwork), scales = "free",
+                           ncol = 8, nest_line = T) + 
+  geom_point() + stat_compare_means(label = "p.signif")
+
+
+
+```
+
+
+
 ```{r}
-alphas_per_gene <- get_
+load("results/100_permutations_bRF_validation_cluster_pos.rdata")
+load("results/100_permutations_bRF_validation.rdata")
+
+load("results/100_permutations_lasso_validation.rdata")
+load("results/100_permutations_lasso_validation_cluster_pos.rdata")
+```
+
+
+```{r}
+
 hist(alphas_per_gene)
 
-mat <- bRF_inference(counts=counts, genes= positive_genes, tfs=tfs, alpha = alphas_per_gene, 
-              tf_expression_permutation = F, pwm_occurrence = pwm_occurrence,
-              nTrees = 2000, importance = "%IncMSE", nCores = 10)
+mat <- 
 
 grn <- bRF_network(mat, 0.005, pwm_occurrence, positive_genes, tfs)
 
-mat_0 <- bRF_inference(counts=counts, genes= positive_genes, tfs=tfs, alpha = 0, 
+mat_0 <- bRF_inference(counts=counts, genes= positive_genes_rf, tfs=tfs, alpha = 0, 
               tf_expression_permutation = F, pwm_occurrence = pwm_occurrence,
               nTrees = 2000, importance = "%IncMSE", nCores = 10)
-grn_0 <- bRF_network(mat_0, 0.005, pwm_occurrence, positive_genes, tfs)
+grn_0 <- bRF_network(mat_0, 0.005, pwm_occurrence, positive_genes_rf, tfs)
 
-mat_1 <- bRF_inference(counts=counts, genes= positive_genes, tfs=tfs, alpha = 1, 
+mat_1 <- bRF_inference(counts=counts, genes= positive_genes_rf, tfs=tfs, alpha = 1, 
               tf_expression_permutation = F, pwm_occurrence = pwm_occurrence,
               nTrees = 2000, importance = "%IncMSE", nCores = 10)
-grn_1 <- bRF_network(mat_1, 0.005, pwm_occurrence, positive_genes, tfs)
+grn_1 <- bRF_network(mat_1, 0.005, pwm_occurrence, positive_genes_rf, tfs)
 
 
-evaluate_networks(list("best_mse" = grn, "expression" = grn_0, 
+evaluate_networks(list("expression" = grn_0, 
                        "max_integration" = grn_1), 
-                  nCores = 2, input_genes = positive_genes, 
+                  nCores = 2, input_genes = positive_genes_rf, 
                   input_tfs = tfs)
-
 ```
+
 
 All genes :
 

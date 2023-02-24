@@ -141,16 +141,13 @@ LASSO.D3S_inference <- function(counts, genes, tfs, alpha=0.25,
                                                 max(detectCores() - 1, 1))){
   
   
-  # to avoid convergence issues : "inner loop 3; cannot correct step size"
-  maxit = 1e+05
-  if(alpha==1){
-    alpha=1-1e-8
-    maxit = 1e+07
-  }
+  
   
   
   counts <- round(counts, 0)
   x <- t(counts[tfs,])
+  
+  gene_specific = length(alpha) > 1
   
   # pwm scores to bias variable selection toward pairs supported by a TFBS
   pwm_imputed <- pwm_occurrence
@@ -178,8 +175,21 @@ LASSO.D3S_inference <- function(counts, genes, tfs, alpha=0.25,
                                                       }
                                                       y <- t(counts[target, ])
                                                       
+                                                      if(gene_specific)
+                                                        alpha_gene = alpha[target]
+                                                      else
+                                                        alpha_gene = alpha
+                                                      
+                                                      # to avoid convergence issues : "inner loop 3; cannot correct step size"
+                                                      maxit = 1e+05
+                                                      
+                                                      if(alpha_gene==1){
+                                                        alpha=1-1e-8
+                                                        maxit = 1e+07
+                                                      }
+                                                      
                                                       # weights for differential shrinkage
-                                                      penalty_factor <- 1 - pwm_imputed[target, target_tfs] * alpha
+                                                      penalty_factor <- 1 - pwm_imputed[target, target_tfs] * alpha_gene
                                                       
                                                       importances <- setNames(rep(0, length(tfs)), tfs)
                                                       
