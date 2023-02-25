@@ -87,18 +87,18 @@ save(mats, file = "results/100_permutations_lasso_importances_freq.rdata")
 # Thresholding the networks
 
 ```{r, eval=FALSE}
-load( "results/100_permutations_lasso_importances.rdata")
+# load( "results/100_permutations_lasso_importances_freq.rdata")
 edges <- list()
 densities <- c(0.005, 0.01,0.05,0.075)
 
 for(name in names(mats)){ # exploring importance threshold stringency
       for(density in densities){
         edges[[paste0(name, '_', density)]] <-
-        LASSO.D3S_network(mats[[name]], density = density, pwm_occurrence, genes, tfs)
+        LASSO.D3S_network(mats[[name]], density = density, pwm_occurrence, genes, tfs, decreasing = TRUE)
       }
 }
 
-save(edges, file = "results/100_permutations_lasso_edges.rdata")
+save(edges, file = "results/100_permutations_lasso_edges_freq.rdata")
 
 ```
 
@@ -115,11 +115,11 @@ densities <- c(0.005, 0.01,0.05,0.075)
 for(name in names(mats)){ # exploring importance threshold stringency
       for(density in densities){
         edges[[paste0(name, '_', density)]] <-
-        LASSO.D3S_network(mats[[name]][,positive_genes], density = density, pwm_occurrence, positive_genes, tfs)
+        LASSO.D3S_network(mats[[name]][,positive_genes], density = density, pwm_occurrence, positive_genes, tfs, decreasing = TRUE)
       }
 }
 
-save(edges, file = "results/100_permutations_lasso_edges_positive_same_density.rdata")
+save(edges, file = "results/100_permutations_lasso_edges_positive_same_density_freq.rdata")
 ```
 
 
@@ -143,7 +143,7 @@ settings <- c("method", "alpha", "dataset","rep", "density")
 ## PWM support
 
 ```{r, fig.width=10}
-load("results/100_permutations_lasso_edges.rdata")
+load("results/100_permutations_lasso_edges_freq.rdata")
 
 # number of edges per network
 nrows <-
@@ -207,35 +207,35 @@ val_conn <-
 val_conn[, settings] <-
   str_split_fixed(val_conn$network_name, '_', length(settings))
 
-save(val_conn, file = "results/100_permutations_lasso_validation.rdata")
+save(val_conn, file = "results/100_permutations_lasso_validation_freq.rdata")
 
+# 
+# val_chip <-
+#   evaluate_networks(
+#     edges,
+#     validation = c("CHIPSeq"),
+#     nCores = 25,
+#     input_genes = genes,
+#     input_tfs = tfs
+#   )
 
-val_chip <-
-  evaluate_networks(
-    edges,
-    validation = c("CHIPSeq"),
-    nCores = 25,
-    input_genes = genes,
-    input_tfs = tfs
-  )
-
-val_chip[, settings] <-
-  str_split_fixed(val_chip$network_name, '_', length(settings))
-save(val_chip, file = "results/100_permutations_lasso_validation_chip.rdata")
-
-val_target <-
-  evaluate_networks(
-    edges,
-    validation = c("TARGET"),
-    nCores = 25,
-    input_genes = genes,
-    input_tfs = tfs
-  )
-
-val_target[, settings] <-
-  str_split_fixed(val_target$network_name, '_', length(settings))
-save(val_target, file = "results/100_permutations_lasso_validation_target.rdata")
-
+# val_chip[, settings] <-
+#   str_split_fixed(val_chip$network_name, '_', length(settings))
+# save(val_chip, file = "results/100_permutations_lasso_validation_chip.rdata")
+# 
+# val_target <-
+#   evaluate_networks(
+#     edges,
+#     validation = c("TARGET"),
+#     nCores = 25,
+#     input_genes = genes,
+#     input_tfs = tfs
+#   )
+# 
+# val_target[, settings] <-
+#   str_split_fixed(val_target$network_name, '_', length(settings))
+# save(val_target, file = "results/100_permutations_lasso_validation_target.rdata")
+# 
 
 val_dap <-
   evaluate_networks(
@@ -248,7 +248,7 @@ val_dap <-
 
 val_dap[, settings] <-
   str_split_fixed(val_dap$network_name, '_', length(settings))
-save(val_dap, file = "results/100_permutations_lasso_validation_dap.rdata")
+save(val_dap, file = "results/100_permutations_lasso_validation_dap_freq.rdata")
 
 
 ```
@@ -358,7 +358,7 @@ figure <- targets_in_network+regs_in_network+regs_per_genes + plot_layout(guides
 ### On positive networks
 
 ```{r, fig.width=10}
-load("results/100_permutations_lasso_edges_positive_same_density.rdata")
+load("results/100_permutations_lasso_edges_positive_same_density_freq.rdata")
 # number of edges per network
 nrows <-
   data.frame(alpha_rep = names(unlist(lapply(edges, FUN = nrow))),
@@ -518,36 +518,36 @@ val_conn_pos <-
 
 val_conn_pos[, settings] <-
   str_split_fixed(val_conn_pos$network_name, '_', length(settings))
-save(val_conn_pos, file = "results/100_permutations_lasso_validation_cluster_pos.rdata")
+save(val_conn_pos, file = "results/100_permutations_lasso_validation_cluster_pos_freq.rdata")
 
 
+# 
+# val_chip <-
+#   evaluate_networks(
+#     edges,
+#     validation = c("CHIPSeq"),
+#     nCores = 25,
+#     input_genes = genes,
+#     input_tfs = tfs
+#   )
+# 
+# val_chip[, settings] <-
+#   str_split_fixed(val_chip$network_name, '_', length(settings))
+# save(val_chip, file = "results/100_permutations_lasso_validation_chip_cluster_pos_freq.rdata")
+# 
+# 
+# val_target <-
+#   evaluate_networks(
+#     edges,
+#     validation = c("TARGET"),
+#     nCores = 25,
+#     input_genes = genes,
+#     input_tfs = tfs
+#   )
 
-val_chip <-
-  evaluate_networks(
-    edges,
-    validation = c("CHIPSeq"),
-    nCores = 25,
-    input_genes = genes,
-    input_tfs = tfs
-  )
-
-val_chip[, settings] <-
-  str_split_fixed(val_chip$network_name, '_', length(settings))
-save(val_chip, file = "results/100_permutations_lasso_validation_chip_cluster_pos.rdata")
-
-
-val_target <-
-  evaluate_networks(
-    edges,
-    validation = c("TARGET"),
-    nCores = 25,
-    input_genes = genes,
-    input_tfs = tfs
-  )
-
-val_target[, settings] <-
-  str_split_fixed(val_target$network_name, '_', length(settings))
-save(val_target, file = "results/100_permutations_lasso_validation_target_cluster_pos.rdata")
+# val_target[, settings] <-
+#   str_split_fixed(val_target$network_name, '_', length(settings))
+# save(val_target, file = "results/100_permutations_lasso_validation_target_cluster_pos.rdata")
 
 
 val_dap <-
@@ -561,7 +561,7 @@ val_dap <-
 
 val_dap[, settings] <-
   str_split_fixed(val_dap$network_name, '_', length(settings))
-save(val_dap, file = "results/100_permutations_lasso_validation_dap_cluster_pos.rdata")
+save(val_dap, file = "results/100_permutations_lasso_validation_dap_cluster_pos_freq.rdata")
 
 ```
 
@@ -639,10 +639,10 @@ recall <- data_val%>%
 
 ```{r, fig.width=10}
 
-load("results/100_permutations_lasso_validation.rdata")
+load("results/100_permutations_lasso_validation_freq.rdata")
 draw_precision_recall(val_conn, "ConnecTF")
 
-load(file = "results/100_permutations_lasso_validation_cluster_pos.rdata")
+load(file = "results/100_permutations_lasso_validation_cluster_pos_freq.rdata")
 draw_precision_recall(val_conn_pos, "ConnecTF, positive genes")
 ```
 
@@ -672,10 +672,10 @@ draw_precision_recall(val_target, "TARGET, positive genes")
 ## DAP Seq only
 
 ```{r}
-load("results/100_permutations_lasso_validation_dap.rdata")
+load("results/100_permutations_lasso_validation_dap_freq.rdata")
 draw_precision_recall(val_dap, "DAP-Seq")
 
-load(file = "results/100_permutations_lasso_validation_dap_cluster_pos.rdata")
+load(file = "results/100_permutations_lasso_validation_dap_cluster_pos_freq.rdata")
 draw_precision_recall(val_dap, "DAP-Seq, positive genes")
 ```
 
