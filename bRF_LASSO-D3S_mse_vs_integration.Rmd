@@ -1,0 +1,188 @@
+---
+title: "Integrative GRN inference : permuting the expression and motifs of TFs: effect on expression prediction"
+output: 
+  html_document:
+    df_print: paged
+    toc: true
+    toc_float: true
+    toc_depth: 2
+    code_folding: hide
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F, fig.width = 10)
+
+source('inference_functions/bRF.R')
+source('inference_functions/LASSO-D3S.R')
+source('inference_functions/evaluateNetwork.R')
+source('inference_functions/MSE.R')
+# library(ComplexHeatmap)
+library(ggplot2)
+library(tidyverse)
+library(ggpubr)
+library(patchwork)
+library(ComplexHeatmap)
+
+
+```
+
+This document demonstrates the use of the bRF and LASSO-D3S functions for integrative GRN inference.
+
+Those functions infer the regulatory pathways of *Arabidopsis thaliana*'s roots in response to nitrate (N) induction from [Varala et al., 2018](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE97500).
+
+They use as inputs the expression profiles of N-responsive genes and TFBS information. 
+Prior TFBS information was built by searching in the promoters of the N-responsive genes the PWM of the N-responsive regulators. 
+
+# Data import
+
+Import of the expression data and the N-responsive genes and regulators :
+
+```{r}
+load('rdata/inference_input_N_response_varala.rdata')
+genes <- input_data$grouped_genes; length(genes)
+tfs <- input_data$grouped_regressors; length(tfs)
+counts <- input_data$counts; dim(counts)
+load("rdata/pwm_occurrences_N_response_varala.rdata")
+dim(pwm_occurrence)
+
+
+ALPHAS <- seq(0,1, by = 0.1)
+
+# subset <- sample(genes, replace = F, size = 20)
+subset <- genes
+
+
+load("results/brf_perumtations_mse_all_genes.rdata")
+
+
+load("results/100_permutations_bRF_importances.rdata")
+```
+
+
+
+# Is the mse variation worsened by unmapping prior values and expression profiles of TFs?
+
+
+## For Rfs
+
+```{r, message=F}
+
+draw_gene <- function(gene){
+  lmses[gene,] %>%
+    gather() %>%
+    separate(key, into = c("alpha", "rep", "MSEtype"), sep = " ") %>%
+    ggplot(aes(x=alpha, y=value, group =interaction(rep, MSEtype), 
+               color = MSEtype))+ggtitle(gene)+ylab("MSE/Var(gene)")+
+    xlab("alpha")+
+    geom_line()+ggtitle(gene)+theme_pubr(legend = "top")
+}
+
+
+draw_gene_mean_sd <- function(gene, title = NULL){
+  lmses[gene, ] %>%
+    gather() %>%
+    separate(key,
+             into = c("alpha", "rep", "MSEtype"),
+             sep = " ") %>%
+    group_by(alpha, MSEtype) %>%
+    mutate(mean_mse = mean(value, na.rm = T),
+           sd_mse = sd(value, na.rm = T)) %>%
+    ggplot(aes(
+      x = as.numeric(alpha),
+      y = value,
+      color = MSEtype,
+      fill = MSEtype
+    )) +ggtitle(paste(gene, title))+ylab("MSE/Var(gene)")+
+    geom_ribbon(aes(ymin = mean_mse - sd_mse , 
+                    ymax = mean_mse + sd_mse  ), 
+                alpha = .4)  +theme_pubr(legend = "top")+
+    geom_point(alpha = 0.1) + geom_smooth(se=F)+xlab("alpha")
+
+}
+
+
+
+draw_gene_effective_integration <- function(gene){
+  tfs_with_motif <- names(which(pwm_occurrence[gene,]==1))
+  data.frame(lapply(mats, function(mat){mean(rank(mat[,gene])[tfs_with_motif])})) %>%
+  gather(key = "setting", value = "summed_importance") %>%
+  separate(setting, into = c("method", "alpha", "dataset", "rep"), sep = "_") %>%
+  group_by(alpha, dataset) %>%
+  mutate(mean_imp = mean(summed_importance),
+            sd_imp = sd(summed_importance),
+         alpha = as.numeric(alpha))%>%
+  ggplot(aes(x=alpha, y = summed_importance, color = dataset, fill = dataset)) +
+  geom_point(alpha = 0.1) + geom_smooth(se=F)+
+  geom_ribbon(aes(ymin = mean_imp - sd_imp , 
+                    ymax = mean_imp + sd_imp  ), 
+                alpha = .4)  +theme_pubr(legend = "top") + 
+    ylab("effective data integration")
+}
+
+draw_MSE_vs_gene_effective_integration <- function(gene){
+  tfs_with_motif <- names(which(pwm_occurrence[gene,]==1))
+  
+  inte <- data.frame(lapply(mats, function(mat){mean(rank(mat[,gene])[tfs_with_motif])})) %>%
+  gather(key = "setting", value = "summed_importance") %>%
+  separate(setting, into = c("method", "alpha", "dataset", "rep"), sep = "_") %>%
+  group_by(alpha, dataset) %>%
+  mutate(mean_imp = mean(summed_importance),
+            sd_imp = sd(summed_importance),
+         alpha = as.numeric(alpha))
+  
+  
+  lmses[gene, ] %>%
+    gather() %>%
+    separate(key,
+             into = c("alpha", "rep", "MSEtype"),
+             sep = " ") %>%
+    group_by(alpha, MSEtype) %>%
+    rename(dataset = MSEtype)%>%
+    mutate(mean_mse = mean(value, na.rm = T),
+           sd_mse = sd(value, na.rm = T),
+           alpha = as.numeric(alpha),
+           dataset = str_replace(dataset, "true_data", "trueData")) %>%
+    full_join(inte, by = c("alpha", "dataset", "rep")) %>%
+  ggplot(aes(y=value, x = summed_importance, color = dataset, fill = dataset)) +
+  geom_point(alpha = 0.1, size = 0.5)+theme_pubr(legend = "top") + geom_smooth()+
+    ylab("MSE/Var(gene)") + xlab("effective integration") 
+}
+
+draw_MSE_vs_gene_effective_integration_means <- function(gene){
+  tfs_with_motif <- names(which(pwm_occurrence[gene,]==1))
+  
+  inte <- data.frame(lapply(mats, function(mat){mean(rank(mat[,gene])[tfs_with_motif])})) %>%
+  gather(key = "setting", value = "summed_importance") %>%
+  separate(setting, into = c("method", "alpha", "dataset", "rep"), sep = "_") %>%
+  group_by(alpha, dataset) %>%
+  summarise(mean_imp = mean(summed_importance),
+            sd_imp = sd(summed_importance),
+         alpha = as.numeric(alpha))
+  
+  
+  lmses[gene, ] %>%
+    gather() %>%
+    separate(key,
+             into = c("alpha", "rep", "MSEtype"),
+             sep = " ") %>%
+    group_by(alpha, MSEtype) %>%
+    rename(dataset = MSEtype)%>%
+    summarise(mean_mse = mean(value, na.rm = T),
+           sd_mse = sd(value, na.rm = T),
+           alpha = as.numeric(alpha),
+           dataset = str_replace(dataset, "true_data", "trueData")) %>%
+    full_join(inte, by = c("alpha", "dataset")) %>%
+  ggplot(aes(y=mean_mse, x = mean_imp, group = dataset, color = dataset, fill = dataset)) +
+  geom_point(alpha = 0.1)+theme_pubr(legend = "top") +  geom_line()+
+    ylab("MSE/Var(gene)") + xlab("effective integration") 
+}
+
+
+
+for(gene in sample(genes,20, replace = F)){
+    print(draw_gene_effective_integration(gene)+draw_gene_mean_sd(gene)+draw_MSE_vs_gene_effective_integration(gene))
+}
+
+  
+```

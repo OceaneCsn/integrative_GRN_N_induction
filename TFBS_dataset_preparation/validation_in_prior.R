@@ -49,9 +49,48 @@ sapply(both, FUN = validation_fraction)
 
 hist(sapply(both, FUN = validation_fraction), breaks = 100)
 
-
-
 nrow(merge(links, valdap, by = c('from', 'to')))/sum(links$from %in% studied_tfs)
 
+# loaded new connecTF with amplification
+# new_val <- validated_edges
+# new_val_n <- new_val[new_val$from %in% tfs & new_val$to %in% genes,]
+# 
+# nrow(merge(valdap, new_val_n, by = c("from", "to")))
+# validated_edges <- new_val_n
+# 
+# unique(new_val_n[stringr::str_detect(new_val_n$type, "DAPSeq"),]$from)
+# unique(valdap[stringr::str_detect(valdap$type, "DAPSeq"),]$from)
+# 
+# 
+# save(validated_edges, file = "rdata/connectf_N_responsive_genes_amp.rdata")
 
-valdap[val_dap$from %in% known_tfs, ]
+
+# dirty tests to see if the amplification changes a lot the precision of inferred grns
+
+
+load("results/100_permutations_bRF_edges.rdata")
+load("results/gene_specific_alphas_grns_max_div_0others.rdata")
+
+evaluate_network(networks$`rf-max_div-0-all-trueData-5-0.005`, 
+                 input_genes = genes, input_tfs = tfs, validation = c("DAPSeq"))[c("tpr", "recall")]
+
+
+evaluate_network(networks$`rf-max_div-0-all-shuffled-3-0.005`, 
+                 input_genes = genes, input_tfs = tfs, validation = c("DAPSeq"))[c("tpr", "recall")]
+
+
+evaluate_network(edges$bRF_0_trueData_1_0.005, 
+                 input_genes = genes, input_tfs = tfs, validation = c("DAPSeq"))[c("tpr", "recall")]
+
+
+evaluate_network(edges$bRF_0_shuffled_4_0.005, 
+                 input_genes = genes, input_tfs = tfs, validation = c("DAPSeq"))[c("tpr", "recall")]
+
+
+
+evaluate_network(edges$bRF_1_trueData_1_0.005, 
+                 input_genes = genes, input_tfs = tfs, validation = c("DAPSeq"))[c("tpr", "recall")]
+
+
+evaluate_network(edges$bRF_1_shuffled_4_0.005, 
+                 input_genes = genes, input_tfs = tfs, validation = c("DAPSeq"))[c("tpr", "recall")]
