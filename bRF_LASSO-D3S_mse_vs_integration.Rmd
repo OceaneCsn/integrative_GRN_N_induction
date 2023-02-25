@@ -184,5 +184,17 @@ for(gene in sample(genes,20, replace = F)){
     print(draw_gene_effective_integration(gene)+draw_gene_mean_sd(gene)+draw_MSE_vs_gene_effective_integration(gene))
 }
 
-  
+
 ```
+
+
+On the class of interest:
+
+```{r}
+load("results/clusters_mse_bRF_100permutations.rdata")
+pos_genes <- names(which(clusters_rf==2))
+for(gene in sample(pos_genes,20, replace = F)){
+    print(draw_gene_effective_integration(gene)+draw_gene_mean_sd(gene)+draw_MSE_vs_gene_effective_integration(gene))
+}
+```
+
