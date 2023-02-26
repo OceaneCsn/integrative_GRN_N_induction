@@ -209,33 +209,33 @@ val_conn[, settings] <-
 
 save(val_conn, file = "results/100_permutations_lasso_validation_freq.rdata")
 
-# 
-# val_chip <-
-#   evaluate_networks(
-#     edges,
-#     validation = c("CHIPSeq"),
-#     nCores = 25,
-#     input_genes = genes,
-#     input_tfs = tfs
-#   )
+#
+val_chip <-
+  evaluate_networks(
+    edges,
+    validation = c("CHIPSeq"),
+    nCores = 25,
+    input_genes = genes,
+    input_tfs = tfs
+  )
 
-# val_chip[, settings] <-
-#   str_split_fixed(val_chip$network_name, '_', length(settings))
-# save(val_chip, file = "results/100_permutations_lasso_validation_chip.rdata")
-# 
-# val_target <-
-#   evaluate_networks(
-#     edges,
-#     validation = c("TARGET"),
-#     nCores = 25,
-#     input_genes = genes,
-#     input_tfs = tfs
-#   )
-# 
-# val_target[, settings] <-
-#   str_split_fixed(val_target$network_name, '_', length(settings))
-# save(val_target, file = "results/100_permutations_lasso_validation_target.rdata")
-# 
+val_chip[, settings] <-
+  str_split_fixed(val_chip$network_name, '_', length(settings))
+save(val_chip, file = "results/100_permutations_lasso_validation_chip_freq.rdata")
+
+val_target <-
+  evaluate_networks(
+    edges,
+    validation = c("TARGET"),
+    nCores = 25,
+    input_genes = genes,
+    input_tfs = tfs
+  )
+
+val_target[, settings] <-
+  str_split_fixed(val_target$network_name, '_', length(settings))
+save(val_target, file = "results/100_permutations_lasso_validation_target_freq.rdata")
+
 
 val_dap <-
   evaluate_networks(
@@ -637,7 +637,7 @@ recall <- data_val%>%
 
 ## ConnecTF
 
-```{r, fig.width=10}
+```{r, fig.width=10, fig.height=10}
 
 load("results/100_permutations_lasso_validation_freq.rdata")
 draw_precision_recall(val_conn, "ConnecTF")
@@ -671,7 +671,7 @@ draw_precision_recall(val_target, "TARGET, positive genes")
 
 ## DAP Seq only
 
-```{r}
+```{r, fig.width=10, fig.height=10}
 load("results/100_permutations_lasso_validation_dap_freq.rdata")
 draw_precision_recall(val_dap, "DAP-Seq")
 
