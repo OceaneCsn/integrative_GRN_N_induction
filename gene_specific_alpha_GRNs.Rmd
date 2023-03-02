@@ -239,7 +239,7 @@ for(model in c("lasso", "rf")){
               mat <- LASSO.D3S_inference(counts, gene_list, tfs,
                                    alpha = alphas_per_genes[[paste0(model, "_", strat, "_", alphas_other)]], 
                                    N = 100, tf_expression_permutation = shuffle,
-                                   int_pwm_noise = 0, score = "pval",
+                                   int_pwm_noise = 0, score = "freq",
                                    pwm_occurrence = pwm_occurrence,
                                    nCores = nCores)
               

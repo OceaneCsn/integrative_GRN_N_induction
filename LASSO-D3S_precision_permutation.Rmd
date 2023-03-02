@@ -46,7 +46,7 @@ load("rdata/pwm_occurrences_N_response_varala.rdata")
 dim(pwm_occurrence)
 
 
-ALPHAS <- seq(0,1, by = 0.1)
+ALPHAS <- c(seq(0,0.8, by = 0.2), 0.9,1)
 
 # subset <- sample(genes, replace = F, size = 20)
 subset <- genes
@@ -56,7 +56,7 @@ subset <- genes
 ## Lauching the permutations and the true data inferences 100 times 
 
 ```{r, eval=FALSE}
-nCores = 40
+nCores = 45
 mats <- list()
 nrep <- 100
 for(alpha in ALPHAS){ # exploring PWM integration strength
@@ -64,16 +64,16 @@ for(alpha in ALPHAS){ # exploring PWM integration strength
     
     
     
-    mat_lasso <- LASSO.D3S_inference(counts, genes, tfs,
-                                     alpha = alpha, N = 100,
-                                     int_pwm_noise = 0, score = "freq",
+    mat_lasso <- LASSO.D3S_inference_stableMDA(counts, genes, tfs,
+                                     alpha = alpha, N = 100, robustness = 0.2,
+                                     int_pwm_noise = 0, mda_type = "shuffle",
                                      pwm_occurrence = pwm_occurrence,
                                      nCores = nCores)
     
-    mat_lasso_perm <- LASSO.D3S_inference(counts, genes, tfs,
-                                     alpha = alpha, N = 100, 
+    mat_lasso_perm <- LASSO.D3S_inference_stableMDA(counts, genes, tfs,
+                                     alpha = alpha, N = 100, robustness = 0.2,
                                      tf_expression_permutation = TRUE,
-                                     int_pwm_noise = 0, score = "freq",
+                                     int_pwm_noise = 0, mda_type = "shuffle",
                                      pwm_occurrence = pwm_occurrence,
                                      nCores = nCores)
     
@@ -82,8 +82,30 @@ for(alpha in ALPHAS){ # exploring PWM integration strength
     
   }
 }
-save(mats, file = "results/100_permutations_lasso_importances_freq.rdata")
+save(mats, file = "results/100_permutations_lasso_importances_mda_shuffle.rdata")
 ```
+
+
+```{r}
+
+# 
+mean(edges$LASSO_0.9_trueData_1_0.005$pwm)
+# 
+# hist(mat_lasso, breaks=100)
+# 
+# 
+grn0 <- LASSO.D3S_network(mat_lasso, density = 0.005, pwm_occurrence, genes, tfs, decreasing = T)
+mean(grn0$pwm)
+# 
+evaluate_network(grn0, validation = c("DAPSeq"), input_genes = genes, input_tfs = tfs)[c("tpr", "recall")]
+# 
+# tf <- "AT3G11280"
+# target <- "AT4G32480"
+
+edges <- lapply(edges, na.omit)
+
+```
+
 # Thresholding the networks
 
 ```{r, eval=FALSE}
@@ -98,7 +120,7 @@ for(name in names(mats)){ # exploring importance threshold stringency
       }
 }
 
-save(edges, file = "results/100_permutations_lasso_edges_freq.rdata")
+save(edges, file = "results/100_permutations_lasso_edges_mda_shuffle.rdata")
 
 ```
 
@@ -119,12 +141,41 @@ for(name in names(mats)){ # exploring importance threshold stringency
       }
 }
 
-save(edges, file = "results/100_permutations_lasso_edges_positive_same_density_freq.rdata")
+save(edges, file = "results/100_permutations_lasso_edges_positive_same_density_mda0.rdata")
 ```
 
 
 
+```{r, eval=FALSE}
+load( "results/100_permutations_lasso_importances_freq.rdata")
 
+edges <- list()
+densities <- c(0.005, 0.01,0.05,0.075)
+
+pwm_imputed <- pwm_occurrence
+pwm_imputed[is.na(pwm_imputed)] <- 0.5
+  
+
+## alternative that works for alpha = 1
+for(name in names(mats)){ # exploring importance threshold stringency
+      for(density in densities){
+        l <- setNames(lapply(genes, function(gene){names(which(rank(-mats[[name]][,gene]) < density*length(tfs)))}), genes)
+        edges[[paste0(name, '_', density)]] <-
+        plyr::ldply(l, rbind)%>%
+          rename(to = `.id`) %>%
+          pivot_longer( -c("to")) %>%
+          select(-name) %>%
+          rename(from = value)%>%
+          mutate(pwm = pwm_imputed[cbind(to, from)])
+      }
+}
+
+
+save(edges, file = "results/100_permutations_lasso_edges_gene_density_mda0.rdata")
+names(edges)
+
+edges <- edges[!str_detect(names(edges), "LASSO_1_")]
+```
 
 
 ```{r}
@@ -143,7 +194,10 @@ settings <- c("method", "alpha", "dataset","rep", "density")
 ## PWM support
 
 ```{r, fig.width=10}
-load("results/100_permutations_lasso_edges_freq.rdata")
+# load("results/100_permutations_lasso_edges_freq.rdata")
+# 
+
+
 
 # number of edges per network
 nrows <-
@@ -158,7 +212,7 @@ edges_num <- lapply(edges, function(df)
 
 pwm_support <-
   data.frame(alpha_rep = names(unlist(lapply(edges_num, FUN = nrow))),
-             pwm = unlist(lapply(edges_num, FUN = colMeans)))
+             pwm = unlist(lapply(edges_num, FUN = colMeans, na.rm=TRUE)))
 pwm_support[, settings] <-
   str_split_fixed(pwm_support$alpha_rep, '_', length(settings))
 
@@ -181,12 +235,10 @@ pwm_support %>%
   ) +
   xlab(expression(alpha)) + ylab("Mean PWM score in selected edges") +
   ggtitle("Average PWM support of inferred edges") +
-  guides(color = guide_legend(nrow = 2, byrow = TRUE),
-         fill = guide_legend(nrow = 2, byrow = TRUE)) +
+  guides(color = guide_legend(nrow = 10, byrow = TRUE),
+         fill = guide_legend(nrow = 10, byrow = TRUE)) +
   ylab(expression(paste("mean(", pi[tr], ")"))) +
-  scale_x_continuous(labels = prettyZero) +
-  scale_color_manual(name = "Network density", values = color_palette) +
-  scale_fill_manual(name = "Network density", values = color_palette)
+  scale_x_continuous(labels = prettyZero)
 
 ```
 
@@ -241,14 +293,15 @@ val_dap <-
   evaluate_networks(
     edges,
     validation = c("DAPSeq"),
-    nCores = 25,
+    nCores = 35,
     input_genes = genes,
     input_tfs = tfs
   )
 
 val_dap[, settings] <-
   str_split_fixed(val_dap$network_name, '_', length(settings))
-save(val_dap, file = "results/100_permutations_lasso_validation_dap_freq.rdata")
+
+save(val_dap, file = "results/100_permutations_lasso_validation_dap_freq_gene_density.rdata")
 
 
 ```
@@ -640,6 +693,7 @@ recall <- data_val%>%
 ```{r, fig.width=10, fig.height=10}
 
 load("results/100_permutations_lasso_validation_freq.rdata")
+
 draw_precision_recall(val_conn, "ConnecTF")
 
 load(file = "results/100_permutations_lasso_validation_cluster_pos_freq.rdata")
@@ -648,23 +702,23 @@ draw_precision_recall(val_conn_pos, "ConnecTF, positive genes")
 
 ## CHIP Seq only
 
-```{r}
+```{r, fig.width=10, fig.height=10}
 load("results/100_permutations_lasso_validation_chip.rdata")
 draw_precision_recall(val_chip, "CHIP-Seq")
 
 load(file = "results/100_permutations_lasso_validation_chip_cluster_pos.rdata")
-draw_precision_recall(val_chip, "CHIP-Seq, positive genes")
+# draw_precision_recall(val_chip, "CHIP-Seq, positive genes")
 ```
 
 
 ## TARGET only
 
-```{r}
+```{r, fig.width=10, fig.height=10}
 load("results/100_permutations_lasso_validation_target.rdata")
 draw_precision_recall(val_target, "TARGET")
 
 load(file = "results/100_permutations_lasso_validation_target_cluster_pos.rdata")
-draw_precision_recall(val_target, "TARGET, positive genes")
+# draw_precision_recall(val_target, "TARGET, positive genes")
 
 ```
 
@@ -673,7 +727,9 @@ draw_precision_recall(val_target, "TARGET, positive genes")
 
 ```{r, fig.width=10, fig.height=10}
 load("results/100_permutations_lasso_validation_dap_freq.rdata")
+
 draw_precision_recall(val_dap, "DAP-Seq")
+
 
 load(file = "results/100_permutations_lasso_validation_dap_cluster_pos_freq.rdata")
 draw_precision_recall(val_dap, "DAP-Seq, positive genes")

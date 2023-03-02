@@ -23,6 +23,8 @@ library(tidyverse)
 library(ggpubr)
 library(patchwork)
 library(ComplexHeatmap)
+library(msir)
+library(data.table)
 
 
 ```
@@ -49,8 +51,8 @@ dim(pwm_occurrence)
 
 ALPHAS <- seq(0,1, by = 0.1)
 
-# subset <- sample(genes, replace = F, size = 20)
-subset <- genes
+subset <- sample(genes, replace = F, size = 20)
+#subset <- genes
 
 
 load("results/brf_perumtations_mse_all_genes.rdata")
@@ -105,7 +107,7 @@ draw_gene_mean_sd <- function(gene, title = NULL){
 
 draw_gene_effective_integration <- function(gene){
   tfs_with_motif <- names(which(pwm_occurrence[gene,]==1))
-  data.frame(lapply(mats, function(mat){mean(rank(mat[,gene])[tfs_with_motif])})) %>%
+  data.frame(lapply(mats, function(mat){mean(mat[,gene][tfs_with_motif])})) %>%
   gather(key = "setting", value = "summed_importance") %>%
   separate(setting, into = c("method", "alpha", "dataset", "rep"), sep = "_") %>%
   group_by(alpha, dataset) %>%
@@ -120,18 +122,17 @@ draw_gene_effective_integration <- function(gene){
     ylab("effective data integration")
 }
 
+
 draw_MSE_vs_gene_effective_integration <- function(gene){
   tfs_with_motif <- names(which(pwm_occurrence[gene,]==1))
   
-  inte <- data.frame(lapply(mats, function(mat){mean(rank(mat[,gene])[tfs_with_motif])})) %>%
+  inte <- data.frame(lapply(mats, function(mat){mean(mat[,gene][tfs_with_motif])})) %>%
   gather(key = "setting", value = "summed_importance") %>%
   separate(setting, into = c("method", "alpha", "dataset", "rep"), sep = "_") %>%
   group_by(alpha, dataset) %>%
   mutate(mean_imp = mean(summed_importance),
             sd_imp = sd(summed_importance),
          alpha = as.numeric(alpha))
-  
-  
   lmses[gene, ] %>%
     gather() %>%
     separate(key,
@@ -144,57 +145,73 @@ draw_MSE_vs_gene_effective_integration <- function(gene){
            alpha = as.numeric(alpha),
            dataset = str_replace(dataset, "true_data", "trueData")) %>%
     full_join(inte, by = c("alpha", "dataset", "rep")) %>%
-  ggplot(aes(y=value, x = summed_importance, color = dataset, fill = dataset)) +
-  geom_point(alpha = 0.1, size = 0.5)+theme_pubr(legend = "top") + geom_smooth()+
-    ylab("MSE/Var(gene)") + xlab("effective integration") 
-}
-
-draw_MSE_vs_gene_effective_integration_means <- function(gene){
-  tfs_with_motif <- names(which(pwm_occurrence[gene,]==1))
-  
-  inte <- data.frame(lapply(mats, function(mat){mean(rank(mat[,gene])[tfs_with_motif])})) %>%
-  gather(key = "setting", value = "summed_importance") %>%
-  separate(setting, into = c("method", "alpha", "dataset", "rep"), sep = "_") %>%
-  group_by(alpha, dataset) %>%
-  summarise(mean_imp = mean(summed_importance),
-            sd_imp = sd(summed_importance),
-         alpha = as.numeric(alpha))
-  
-  
-  lmses[gene, ] %>%
-    gather() %>%
-    separate(key,
-             into = c("alpha", "rep", "MSEtype"),
-             sep = " ") %>%
-    group_by(alpha, MSEtype) %>%
-    rename(dataset = MSEtype)%>%
-    summarise(mean_mse = mean(value, na.rm = T),
-           sd_mse = sd(value, na.rm = T),
-           alpha = as.numeric(alpha),
-           dataset = str_replace(dataset, "true_data", "trueData")) %>%
-    full_join(inte, by = c("alpha", "dataset")) %>%
-  ggplot(aes(y=mean_mse, x = mean_imp, group = dataset, color = dataset, fill = dataset)) +
-  geom_point(alpha = 0.1)+theme_pubr(legend = "top") +  geom_line()+
+    group_by(dataset) %>%
+    dplyr::arrange(summed_importance) %>% 
+    mutate(lower = loess.sd(x=summed_importance, y=value)$lower,
+           upper = loess.sd(x=summed_importance, y=value)$upper) %>%
+    mutate(lower = frollmean(lower, 1, fill = NA),
+           upper = frollmean(upper, 1, fill = NA)) %>%
+  ggplot(aes(y=value, x = summed_importance, color = dataset, fill = dataset))+
+  geom_ribbon(aes(ymin =lower , 
+                  ymax = upper  ), 
+                alpha = .4)+ 
+  geom_point(alpha = 0.5, size = 0.5)+theme_pubr(legend = "top") + geom_smooth(method = "loess", se = F)+
     ylab("MSE/Var(gene)") + xlab("effective integration") 
 }
 
 
+# 
 
-for(gene in sample(genes,20, replace = F)){
+# 
+# loess <- plot(all_data$summed_importance,
+#               loess.sd(all_data$summed_importance, all_data$value)$sd)
+# 
+
+for(gene in subset){
     print(draw_gene_effective_integration(gene)+draw_gene_mean_sd(gene)+draw_MSE_vs_gene_effective_integration(gene))
 }
 
-
+# 
+# gene <- "AT3G49780"
+# bad_rf_rank <- draw_gene_effective_integration(gene)+draw_gene_mean_sd(gene)+draw_MSE_vs_gene_effective_integration(gene)
+# gene <- "AT3G17609"
+# good_rf_rank <- draw_gene_effective_integration(gene)+draw_gene_mean_sd(gene)+draw_MSE_vs_gene_effective_integration(gene)
+# 
+# 
+# bad_rf_rank/bad_rf_imp
+# good_rf_rank/good_rf_imp
 ```
 
 
-On the class of interest:
+## On the class of interest:
 
 ```{r}
 load("results/clusters_mse_bRF_100permutations.rdata")
 pos_genes <- names(which(clusters_rf==2))
-for(gene in sample(pos_genes,20, replace = F)){
+for(gene in sample(pos_genes,10, replace = F)){
     print(draw_gene_effective_integration(gene)+draw_gene_mean_sd(gene)+draw_MSE_vs_gene_effective_integration(gene))
 }
 ```
 
+# lasso
+
+```{r}
+load("results/lasso_perumtations_mse_all_genes.rdata")
+load("results/100_permutations_lasso_importances_freq.rdata")
+
+for(gene in subset){
+    print(draw_gene_effective_integration(gene)+draw_gene_mean_sd(gene)+draw_MSE_vs_gene_effective_integration(gene))
+}
+```
+
+
+## On the class of interest :
+
+
+```{r}
+load("results/clusters_mse_lasso_100permutations.rdata")
+pos_genes <- names(which(clusters_lasso==1))
+for(gene in sample(pos_genes,20, replace = F)){
+    print(draw_gene_effective_integration(gene)+draw_gene_mean_sd(gene)+draw_MSE_vs_gene_effective_integration(gene))
+}
+```

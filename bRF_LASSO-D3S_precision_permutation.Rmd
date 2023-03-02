@@ -97,6 +97,47 @@ save(edges, file = "results/100_permutations_bRF_edges.rdata")
 
 ```
 
+Fixed number of TFs per genes
+
+```{r, eval=FALSE}
+load( "results/100_permutations_bRF_importances.rdata")
+
+edges <- list()
+densities <- c(0.005, 0.01,0.05,0.075)
+
+pwm_imputed <- pwm_occurrence
+pwm_imputed[is.na(pwm_imputed)] <- 0.5
+  
+
+for(name in names(mats)){ # exploring importance threshold stringency
+      for(density in densities){
+        edges[[paste0(name, '_', density)]] <-
+        data.frame(setNames(lapply(genes, function(gene){names(which(rank(-mats[[name]][,gene]) < density*length(tfs)))}), genes), 
+                   fix.empty.names = T)%>%
+        gather(key = "to", value = "from") %>%
+          mutate(pwm = pwm_imputed[cbind(to, from)])
+      }
+}
+
+## alternative that works for alpha = 1
+for(name in names(mats)[str_detect(names(mats), "bRF_1_")]){ # exploring importance threshold stringency
+      for(density in densities){
+        l <- setNames(lapply(genes, function(gene){names(which(rank(-mats[[name]][,gene]) < density*length(tfs)))}), genes)
+        edges[[paste0(name, '_', density)]] <-
+        plyr::ldply(l, rbind)%>%
+          rename(to = `.id`) %>%
+          pivot_longer( -c("to")) %>%
+          select(-name) %>%
+          rename(from = value)%>%
+          mutate(pwm = pwm_imputed[cbind(to, from)])
+      }
+}
+
+
+
+save(edges, file = "results/100_permutations_bRF_edges_gene_density.rdata")
+
+```
 
 # Thresholding the networks
 
@@ -115,7 +156,20 @@ for(name in names(mats)){ # exploring importance threshold stringency
       }
 }
 
+# genes with no motifs get NAs as regulators with the gene_density method
+edges_no_na <- lapply(edges, na.omit)
+
+
 save(edges, file = "results/100_permutations_bRF_edges_positive_same_density.rdata")
+
+
+
+load("results/100_permutations_bRF_edges_gene_density.rdata")
+
+
+edges <- lapply(edges, function(net){net[net$to %in% positive_genes,]})
+save(edges, file = "results/100_permutations_bRF_edges_positive_gene_density.rdata")
+
 
 ```
 
@@ -130,6 +184,8 @@ prettyZero <- function(l){
         digits = max.decimals, format = "f", preserve.width=T)
     return(lnew)
 }
+
+edges$bRF_1_trueData_100_0.005
 
 settings <- c("method", "alpha", "dataset","rep", "density")
 ```
@@ -152,7 +208,7 @@ edges_num <- lapply(edges, function(df)
 
 pwm_support <-
   data.frame(alpha_rep = names(unlist(lapply(edges_num, FUN = nrow))),
-             pwm = unlist(lapply(edges_num, FUN = colMeans)))
+             pwm = unlist(lapply(edges_num, FUN = colMeans, na.rm=T)))
 pwm_support[, settings] <-
   str_split_fixed(pwm_support$alpha_rep, '_', length(settings))
 
@@ -182,6 +238,13 @@ pwm_support %>%
   scale_color_manual(name = "Network density", values = color_palette) +
   scale_fill_manual(name = "Network density", values = color_palette)
 
+tail(pwm_support, n=100)
+colMeans(edges_num$bRF_1_shuffled_100_0.005, na.rm = T)
+edges$bRF_1_shuffled_100_0.005[which(is.na(edges_num$bRF_1_trueData_100_0.005)),]
+
+edges$bRF_1_shuffled_100_0.005[edges$bRF_1_shuffled_100_0.005$to == "AT3G57157",]
+sum(pwm_occurrence["AT3G57157",], na.rm = T)
+dim(pwm_occurrence)
 ```
 
 
@@ -445,7 +508,7 @@ figure <- targets_in_network+regs_in_network+regs_per_genes + plot_layout(guides
 ```{r, eval=FALSE}
 val_conn <-
   evaluate_networks(
-    edges,
+    edges_no_na,
     validation = c("TARGET", "CHIPSeq", "DAPSeq"),
     nCores = 15,
     input_genes = genes,
@@ -487,15 +550,16 @@ save(val_target, file = "results/100_permutations_bRF_validation_target.rdata")
 
 val_dap <-
   evaluate_networks(
-    edges,
+    edges_no_na,
     validation = c("DAPSeq"),
-    nCores = 15,
+    nCores = 25,
     input_genes = genes,
     input_tfs = tfs
   )
-
 val_dap[, settings] <-
   str_split_fixed(val_dap$network_name, '_', length(settings))
+
+
 save(val_dap, file = "results/100_permutations_bRF_validation_dap.rdata")
 
 
@@ -580,6 +644,7 @@ recall <- data_val%>%
 ```{r, fig.width=10}
 
 load("results/100_permutations_bRF_validation.rdata")
+
 draw_precision_recall(val_conn, "ConnecTF")
 
 load(file = "results/100_permutations_bRF_validation_cluster_pos.rdata")
@@ -611,8 +676,9 @@ draw_precision_recall(val_target, "TARGET, positive genes")
 
 ## DAP Seq only
 
-```{r}
+```{r, fig.width=10, fig.height=10}
 load("results/100_permutations_bRF_validation_dap.rdata")
+
 draw_precision_recall(val_dap, "DAP-Seq")
 
 load(file = "results/100_permutations_bRF_validation_dap_cluster_pos.rdata")
@@ -674,7 +740,7 @@ val_dap <-
   evaluate_networks(
     edges,
     validation = c("DAPSeq"),
-    nCores = 10,
+    nCores = 15,
     input_genes = genes,
     input_tfs = tfs
   )
