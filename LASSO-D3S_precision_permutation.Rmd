@@ -92,7 +92,7 @@ save(mats, file = "results/100_permutations_lasso_importances_mda_shuffle.rdata"
 ```
 
 
-```{r}
+```{r, eval=FALSE}
 
 # 
 mean(edges$LASSO_0.9_trueData_1_0.005$pwm)
@@ -200,10 +200,8 @@ settings <- c("method", "alpha", "dataset","rep", "density")
 ## PWM support
 
 ```{r, fig.width=10}
-# load("results/100_permutations_lasso_edges_freq.rdata")
-# 
-
-
+load("results/100_permutations_lasso_edges_mda_shuffle.rdata")
+ 
 
 # number of edges per network
 nrows <-
@@ -614,7 +612,7 @@ val_dap <-
   evaluate_networks(
     edges,
     validation = c("DAPSeq"),
-    nCores = 25,
+    nCores = 35,
     input_genes = genes,
     input_tfs = tfs
   )
@@ -630,7 +628,7 @@ save(val_dap, file = "results/100_permutations_lasso_validation_dap_cluster_pos_
 
 ```{r}
 
-draw_precision_recall <- function(validation, data_type){
+draw_precision_recall <- function(validation, data_type, prior_validation = 0.3451811){
   data_val <- validation %>%
     group_by(alpha, dataset, density) %>%
     mutate(mean_precision = mean(precision, na.rm = T),
@@ -638,9 +636,7 @@ draw_precision_recall <- function(validation, data_type){
            mean_recall = mean(recall, na.rm = T),
            sd_recall = sd(recall, na.rm = T)) %>%
   dplyr::select(-network_name) %>%
-  left_join(nrows, by = settings) %>%
-  mutate(alpha = as.numeric(alpha)) %>%
-  mutate(density_label = paste(density, ':', n_edges, 'edges')) 
+  mutate(alpha = as.numeric(alpha)) 
 
 precision <- data_val %>%
     ggplot(aes(
@@ -664,7 +660,7 @@ precision <- data_val %>%
     legend.text = element_text(size = 15),
     axis.text = element_text(size = 12),
     legend.position = 'top'
-  )+geom_hline(yintercept = 0.3451811)
+  )+geom_hline(yintercept = prior_validation)
 
 recall <- data_val%>%
     ggplot(aes(
@@ -697,9 +693,9 @@ recall <- data_val%>%
 
 ## ConnecTF
 
-```{r, fig.width=10, fig.height=10}
+```{r, fig.width=10, fig.height=10, eval=FALSE}
 
-load("results/100_permutations_lasso_validation_freq.rdata")
+load("results/100_permutations_lasso_validation_.rdata")
 
 draw_precision_recall(val_conn, "ConnecTF")
 
@@ -736,16 +732,19 @@ load(file = "results/100_permutations_lasso_validation_target_cluster_pos.rdata"
 ```{r, fig.width=10, fig.height=10}
 load("results/100_permutations_lasso_validation_dap_mda_shuffle.rdata")
 draw_precision_recall(val_dap, "DAP-Seq")
-load("results/100_permutations_bRF_validation_dap.rdata")
-draw_precision_recall(val_dap, "DAP-Seq")
 
-# 
-# load(file = "results/100_permutations_lasso_validation_dap_cluster_pos_freq.rdata")
-# 
-# draw_precision_recall(val_dap, "DAP-Seq, positive genes")
+load("results/100_permutations_bRF_validation_dap.rdata")
+draw_precision_recall(val_dap, "DAP-Seq" )
 ```
 
 ```{r, fig.width=10, fig.height=10}
-draw_precision_recall(val_dap, "DAP-Seq, positive genes")
+load("results/100_permutations_lasso_validation_dap_cluster_pos_mda_shuffle.rdata")
+draw_precision_recall(val_dap, "DAP-Seq, positive genes", prior_validation = 0.2653061)
+
+
+load("results/100_permutations_bRF_validation_dap_cluster_pos.rdata")
+draw_precision_recall(val_dap, "DAP-Seq, positive genes", prior_validation = 0.3006536)
+
+
 ```
 
