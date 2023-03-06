@@ -95,10 +95,49 @@ for(name in names(mats)){ # exploring importance threshold stringency
 
 save(edges, file = "results/100_permutations_bRF_edges.rdata")
 
-names(edges)
-# compure precision and recall
 ```
 
+Fixed number of TFs per genes
+
+```{r, eval=FALSE}
+load( "results/100_permutations_bRF_importances.rdata")
+
+edges <- list()
+densities <- c(0.005, 0.01,0.05,0.075)
+
+pwm_imputed <- pwm_occurrence
+pwm_imputed[is.na(pwm_imputed)] <- 0.5
+  
+
+for(name in names(mats)){ # exploring importance threshold stringency
+      for(density in densities){
+        edges[[paste0(name, '_', density)]] <-
+        data.frame(setNames(lapply(genes, function(gene){names(which(rank(-mats[[name]][,gene]) < density*length(tfs)))}), genes), 
+                   fix.empty.names = T)%>%
+        gather(key = "to", value = "from") %>%
+          mutate(pwm = pwm_imputed[cbind(to, from)])
+      }
+}
+
+## alternative that works for alpha = 1
+for(name in names(mats)[str_detect(names(mats), "bRF_1_")]){ # exploring importance threshold stringency
+      for(density in densities){
+        l <- setNames(lapply(genes, function(gene){names(which(rank(-mats[[name]][,gene]) < density*length(tfs)))}), genes)
+        edges[[paste0(name, '_', density)]] <-
+        plyr::ldply(l, rbind)%>%
+          rename(to = `.id`) %>%
+          pivot_longer( -c("to")) %>%
+          select(-name) %>%
+          rename(from = value)%>%
+          mutate(pwm = pwm_imputed[cbind(to, from)])
+      }
+}
+
+
+
+save(edges, file = "results/100_permutations_bRF_edges_gene_density.rdata")
+
+```
 
 # Thresholding the networks
 
@@ -117,14 +156,22 @@ for(name in names(mats)){ # exploring importance threshold stringency
       }
 }
 
+# genes with no motifs get NAs as regulators with the gene_density method
+edges_no_na <- lapply(edges, na.omit)
+
+
 save(edges, file = "results/100_permutations_bRF_edges_positive_same_density.rdata")
 
-# compure precision and recall
+
+
+load("results/100_permutations_bRF_edges_gene_density.rdata")
+
+
+edges <- lapply(edges, function(net){net[net$to %in% positive_genes,]})
+save(edges, file = "results/100_permutations_bRF_edges_positive_gene_density.rdata")
+
+
 ```
-
-# Get the postive genes their own number of edges for an equal density
-
-
 
 
 
@@ -138,14 +185,177 @@ prettyZero <- function(l){
     return(lnew)
 }
 
+edges$bRF_1_trueData_100_0.005
+
 settings <- c("method", "alpha", "dataset","rep", "density")
 ```
 
 ## PWM support
 
-```{r, fig.width=10}
+```{r, fig.width=10, fig.height=6}
 load("results/100_permutations_bRF_edges.rdata")
 
+# number of edges per network
+nrows <-
+  data.frame(alpha_rep = names(unlist(lapply(edges, FUN = nrow))),
+             n_edges = unlist(lapply(edges, FUN = nrow)))
+
+nrows[, settings] <-
+  str_split_fixed(nrows$alpha_rep, '_', length(settings))
+
+edges_num <- lapply(edges, function(df)
+  df[sapply(df, is.numeric)])
+
+pwm_support <-
+  data.frame(alpha_rep = names(unlist(lapply(edges_num, FUN = nrow))),
+             pwm = unlist(lapply(edges_num, FUN = colMeans, na.rm=T)))
+pwm_support[, settings] <-
+  str_split_fixed(pwm_support$alpha_rep, '_', length(settings))
+
+pwm_support %>%
+  left_join(nrows, by = settings) %>%
+  mutate(alpha = as.numeric(alpha),
+         density_label = paste(density, ':', n_edges, 'edges')) %>%
+  ggplot(aes(color = density_label, x = alpha, y = pwm)) +
+  ggh4x::facet_nested_wrap(vars(method, density), ncol = 8, nest_line = T) +
+  geom_point() +
+  geom_smooth(aes(fill = density_label, linetype =dataset) , alpha = 0.1) +
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.position = "top",
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12)
+  ) +
+  xlab(expression(alpha)) + ylab("Mean PWM score in selected edges") +
+  ggtitle("Average PWM support of inferred edges") +
+  guides(color = guide_legend(nrow = 2, byrow = TRUE),
+         fill = guide_legend(nrow = 2, byrow = TRUE)) +
+  ylab(expression(paste("mean(", pi[tr], ")"))) +
+  scale_x_continuous(labels = prettyZero) +
+  scale_color_manual(name = "Network density", values = color_palette) +
+  scale_fill_manual(name = "Network density", values = color_palette)
+
+tail(pwm_support, n=100)
+colMeans(edges_num$bRF_1_shuffled_100_0.005, na.rm = T)
+edges$bRF_1_shuffled_100_0.005[which(is.na(edges_num$bRF_1_trueData_100_0.005)),]
+
+edges$bRF_1_shuffled_100_0.005[edges$bRF_1_shuffled_100_0.005$to == "AT3G57157",]
+sum(pwm_occurrence["AT3G57157",], na.rm = T)
+dim(pwm_occurrence)
+```
+
+
+### topology of the all-genes networks
+
+```{r, fig.width=20, fig.height=7}
+get_nTF <- function(net){
+  return(mean(table(net$to)))
+}
+
+get_TF <- function(net){
+  return(length(unique(net$from)))
+}
+
+get_nGenes <- function(net){
+  return(length(unique(net$to)))
+}
+
+# subset <- edges[as.numeric(str_split_fixed(names(edges), '_', 5)[,4])<6]
+
+topo <- data.frame(alpha_rep = names(edges),
+                n_TFs = unlist(lapply(edges, FUN = get_nTF)),
+                TFs = unlist(lapply(edges, FUN = get_TF)),
+                n_genes = unlist(lapply(edges, FUN = get_nGenes)))
+
+topo[, settings] <- str_split_fixed(topo$alpha_rep,'_', length(settings))
+
+data_topo <- topo %>%  
+  left_join(nrows, by = settings) %>%
+  mutate(alpha = as.numeric(alpha)) %>%
+  mutate(density_label = paste(density, ':', n_edges, 'edges')) %>%
+  group_by(alpha, density, dataset) %>%
+  mutate(mean_n_TFs = mean(n_TFs, na.rm=T),
+            sd_n_TFs = sd(n_TFs, na.rm=T),
+            mean_TFs = mean(TFs, na.rm=T),
+            sd_TFs = sd(TFs, na.rm=T),
+            mean_nGenes = mean(n_genes, na.rm=T),
+            sd_nGenes = sd(n_genes, na.rm=T)) 
+
+regs_per_genes <- data_topo %>%
+  ggplot(aes(color = dataset, fill = dataset,x = alpha, y = n_TFs)) +
+  ggh4x::facet_nested_wrap(vars(method, density), ncol = 8, nest_line = T) + geom_point(alpha = 0.2) +
+  geom_smooth(se = F) +
+  geom_ribbon(aes(ymin = mean_n_TFs - sd_n_TFs , 
+                    ymax = mean_n_TFs + sd_n_TFs  ), 
+                alpha = .4)+
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'none'
+  ) +
+  scale_x_continuous(labels = prettyZero) +
+  xlab(expression(alpha)) + ylab("Average number of regulator per gene") + 
+                 ggtitle("Average number of regulator per gene")
+
+regs_in_network <- data_topo %>%
+  ggplot(aes(color = dataset, fill = dataset, x = alpha, y = TFs)) +
+  ggh4x::facet_nested_wrap(vars(method, density), ncol = 8, nest_line = T) + geom_point(alpha = 0.2) +
+  geom_ribbon(aes(ymin = mean_TFs - sd_TFs , 
+                    ymax = mean_TFs + sd_TFs  ), 
+                alpha = .4)+
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'top'
+  ) +
+  scale_x_continuous(labels = prettyZero) +
+  xlab(expression(alpha))+ ylab("Number of distinct regulators") + 
+                 ggtitle("Number of distinct regulators") 
+
+
+targets_in_network <- data_topo %>%
+  ggplot(aes(color = dataset, fill = dataset,x = alpha, y = n_genes)) +
+  ggh4x::facet_nested_wrap(vars(method, density), ncol = 8, nest_line = T) + 
+  geom_point(alpha = 0.2) +
+  geom_smooth(se = F) +
+  geom_ribbon(aes(ymin = mean_nGenes - sd_nGenes , 
+                    ymax = mean_nGenes + sd_nGenes  ), 
+                alpha = .4)+
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'top'
+  ) +
+  scale_x_continuous(labels = prettyZero) +
+  xlab(expression(alpha))+ ylab("Number of distinct targets") + 
+                 ggtitle("Number of distinct targets") 
+
+
+figure <- targets_in_network+regs_in_network+regs_per_genes + plot_layout(guides = "collect") + plot_annotation(tag_levels = 'a');figure
+```
+
+
+
+
+## PWM support of positive networks
+
+```{r, fig.width=10, fig.height=6}
+load("results/100_permutations_bRF_edges_positive_same_density.rdata")
 # number of edges per network
 nrows <-
   data.frame(alpha_rep = names(unlist(lapply(edges, FUN = nrow))),
@@ -185,17 +395,120 @@ pwm_support %>%
   guides(color = guide_legend(nrow = 2, byrow = TRUE),
          fill = guide_legend(nrow = 2, byrow = TRUE)) +
   ylab(expression(paste("mean(", pi[tr], ")"))) +
-  scale_x_continuous(labels = prettyZero) +
-  scale_color_manual(name = "Network density", values = color_palette) +
-  scale_fill_manual(name = "Network density", values = color_palette)
+  scale_x_continuous(labels = prettyZero)
 
 ```
+
+
+
+### topology of the positive-genes networks
+
+```{r, fig.width=20, fig.height=7}
+get_nTF <- function(net){
+  return(mean(table(net$to)))
+}
+
+get_TF <- function(net){
+  return(length(unique(net$from)))
+}
+
+get_nGenes <- function(net){
+  return(length(unique(net$to)))
+}
+
+# subset <- edges[as.numeric(str_split_fixed(names(edges), '_', 5)[,4])<6]
+
+topo <- data.frame(alpha_rep = names(edges),
+                n_TFs = unlist(lapply(edges, FUN = get_nTF)),
+                TFs = unlist(lapply(edges, FUN = get_TF)),
+                n_genes = unlist(lapply(edges, FUN = get_nGenes)))
+
+topo[, settings] <- str_split_fixed(topo$alpha_rep,'_', length(settings))
+
+data_topo <- topo %>%  
+  left_join(nrows, by = settings) %>%
+  mutate(alpha = as.numeric(alpha)) %>%
+  mutate(density_label = paste(density, ':', n_edges, 'edges')) %>%
+  group_by(alpha, density, dataset) %>%
+  mutate(mean_n_TFs = mean(n_TFs, na.rm=T),
+            sd_n_TFs = sd(n_TFs, na.rm=T),
+            mean_TFs = mean(TFs, na.rm=T),
+            sd_TFs = sd(TFs, na.rm=T),
+            mean_nGenes = mean(n_genes, na.rm=T),
+            sd_nGenes = sd(n_genes, na.rm=T)) 
+
+regs_per_genes <- data_topo %>%
+  ggplot(aes(color = dataset, fill = dataset,x = alpha, y = n_TFs)) +
+  ggh4x::facet_nested_wrap(vars(method, density), ncol = 8, nest_line = T) + geom_point(alpha = 0.2) +
+  geom_smooth(se = F) +
+  geom_ribbon(aes(ymin = mean_n_TFs - sd_n_TFs , 
+                    ymax = mean_n_TFs + sd_n_TFs  ), 
+                alpha = .4)+
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'none'
+  ) +
+  scale_x_continuous(labels = prettyZero) +
+  xlab(expression(alpha)) + ylab("Average number of regulator per gene") + 
+                 ggtitle("Average number of regulator per gene")
+
+regs_in_network <- data_topo %>%
+  ggplot(aes(color = dataset, fill = dataset, x = alpha, y = TFs)) +
+  ggh4x::facet_nested_wrap(vars(method, density), ncol = 8, nest_line = T) + geom_point(alpha = 0.2) +
+  geom_ribbon(aes(ymin = mean_TFs - sd_TFs , 
+                    ymax = mean_TFs + sd_TFs  ), 
+                alpha = .4)+
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'top'
+  ) +
+  scale_x_continuous(labels = prettyZero) +
+  xlab(expression(alpha))+ ylab("Number of distinct regulators") + 
+                 ggtitle("Number of distinct regulators") 
+
+
+targets_in_network <- data_topo %>%
+  ggplot(aes(color = dataset, fill = dataset,x = alpha, y = n_genes)) +
+  ggh4x::facet_nested_wrap(vars(method, density), ncol = 8, nest_line = T) + 
+  geom_point(alpha = 0.2) +
+  geom_smooth(se = F) +
+  geom_ribbon(aes(ymin = mean_nGenes - sd_nGenes , 
+                    ymax = mean_nGenes + sd_nGenes  ), 
+                alpha = .4)+
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_text(size = 12),
+    legend.position = 'top'
+  ) +
+  scale_x_continuous(labels = prettyZero) +
+  xlab(expression(alpha))+ ylab("Number of distinct targets") + 
+                 ggtitle("Number of distinct targets") 
+
+
+figure <- targets_in_network+regs_in_network+regs_per_genes + plot_layout(guides = "collect") + plot_annotation(tag_levels = 'a');figure
+```
+
+
 ## Computing validation metrics 
 
 ```{r, eval=FALSE}
 val_conn <-
   evaluate_networks(
-    edges,
+    edges_no_na,
     validation = c("TARGET", "CHIPSeq", "DAPSeq"),
     nCores = 15,
     input_genes = genes,
@@ -237,28 +550,29 @@ save(val_target, file = "results/100_permutations_bRF_validation_target.rdata")
 
 val_dap <-
   evaluate_networks(
-    edges,
+    edges_no_na,
     validation = c("DAPSeq"),
-    nCores = 15,
+    nCores = 25,
     input_genes = genes,
     input_tfs = tfs
   )
-
 val_dap[, settings] <-
   str_split_fixed(val_dap$network_name, '_', length(settings))
+
+
 save(val_dap, file = "results/100_permutations_bRF_validation_dap.rdata")
 
 
 ```
 
+
+
+
+
 # Plotting validation
 
 
 ```{r}
-
-edges <- edges[!str_detect(names(edges), '_0.075|0.05')]
-
-
 
 draw_precision_recall <- function(validation, data_type){
   data_val <- validation %>%
@@ -330,6 +644,7 @@ recall <- data_val%>%
 ```{r, fig.width=10}
 
 load("results/100_permutations_bRF_validation.rdata")
+
 draw_precision_recall(val_conn, "ConnecTF")
 
 load(file = "results/100_permutations_bRF_validation_cluster_pos.rdata")
@@ -361,8 +676,9 @@ draw_precision_recall(val_target, "TARGET, positive genes")
 
 ## DAP Seq only
 
-```{r}
+```{r, fig.width=10, fig.height=10}
 load("results/100_permutations_bRF_validation_dap.rdata")
+
 draw_precision_recall(val_dap, "DAP-Seq")
 
 load(file = "results/100_permutations_bRF_validation_dap_cluster_pos.rdata")
@@ -370,57 +686,6 @@ draw_precision_recall(val_dap, "DAP-Seq, positive genes")
 ```
 
 
-# How are those curves for genes from the cluster of genes with a MSE decreased significantly by data integration?
-
-The same densities are obtained (number of edges), but after filtering edges that only point toward a group from the positive cluster of genes obtained from MSE permutations.
-
-
-## PWM support
-
-```{r, fig.width=10}
-load("results/100_permutations_bRF_edges_positive_same_density.rdata")
-# number of edges per network
-nrows <-
-  data.frame(alpha_rep = names(unlist(lapply(edges, FUN = nrow))),
-             n_edges = unlist(lapply(edges, FUN = nrow)))
-
-nrows[, settings] <-
-  str_split_fixed(nrows$alpha_rep, '_', length(settings))
-
-edges_num <- lapply(edges, function(df)
-  df[sapply(df, is.numeric)])
-
-pwm_support <-
-  data.frame(alpha_rep = names(unlist(lapply(edges_num, FUN = nrow))),
-             pwm = unlist(lapply(edges_num, FUN = colMeans)))
-pwm_support[, settings] <-
-  str_split_fixed(pwm_support$alpha_rep, '_', length(settings))
-
-pwm_support %>%
-  left_join(nrows, by = settings) %>%
-  mutate(alpha = as.numeric(alpha),
-         density_label = paste(density, ':', n_edges, 'edges')) %>%
-  ggplot(aes(color = density_label, x = alpha, y = pwm)) +
-  ggh4x::facet_nested_wrap(vars(method, density), ncol = 8, nest_line = T) +
-  geom_point() +
-  geom_smooth(aes(fill = density_label, linetype =dataset) , alpha = 0.1) +
-  theme(
-    strip.background = element_blank(),
-    axis.title.x = element_text(size = 22),
-    title = element_text(size = 16),
-    strip.text = element_text(size = 16),
-    legend.position = "top",
-    legend.text = element_text(size = 15),
-    axis.text = element_text(size = 12)
-  ) +
-  xlab(expression(alpha)) + ylab("Mean PWM score in selected edges") +
-  ggtitle("Average PWM support of inferred edges") +
-  guides(color = guide_legend(nrow = 2, byrow = TRUE),
-         fill = guide_legend(nrow = 2, byrow = TRUE)) +
-  ylab(expression(paste("mean(", pi[tr], ")"))) +
-  scale_x_continuous(labels = prettyZero)
-
-```
 
 Not all densities should be explored with this restriction of genes, as there are too few genes to grant sufficient interactions supported by a prior of 1. We keep only the two smallest densities.
 
@@ -475,7 +740,7 @@ val_dap <-
   evaluate_networks(
     edges,
     validation = c("DAPSeq"),
-    nCores = 10,
+    nCores = 15,
     input_genes = genes,
     input_tfs = tfs
   )
