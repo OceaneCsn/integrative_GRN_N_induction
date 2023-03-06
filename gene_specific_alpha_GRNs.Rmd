@@ -326,10 +326,7 @@ hist(alphas_per_genes$rf_max_div_0[positive_genes_rf])
 
 
 ```{r, fig.width=7, fig.height=4, eval=FALSE}
-# load("results/100_permutations_bRF_validation.rdata")
-# 
-# load("results/100_permutations_lasso_validation.rdata")
-# load("results/100_permutations_lasso_validation_cluster_pos.rdata")
+
 load("results/gene_specific_validation.rdata")
 
 load("results/100_permutations_bRF_validation_cluster_pos.rdata")
@@ -354,7 +351,7 @@ plot_positive <- val_rf_pos[(val_rf_pos$alpha == "0" | val_rf_pos$alpha == "1") 
   ggplot(aes(x=dataset, y = precision, color = dataset)) + 
   stat_compare_means(label = "p.signif") + 
   ylim(c(0.2, 0.5)) + stat_compare_means(label = "p.signif")+
-  theme_pubr(legend = "none") +
+  theme_pubr(legend = "none") + 
   geom_hline(yintercept = 0.3807947)+
   geom_boxplot(outlier.alpha = 0) + ggtitle("Gene-specific alpha") +
   plot_annotation(title = "Precision of 0.005 density networks for bRF ", 
@@ -368,9 +365,9 @@ plot_all <- val_rf_all[(val_rf_all$alpha == "0") &
   ggplot(aes(x=dataset, color = dataset, y = precision)) + 
   ggh4x::facet_nested_wrap(vars(alpha), 
                            ncol = 8, nest_line = T) +
-  geom_boxplot(outlier.alpha = 0)+ ggtitle("Global alpha")+ 
+  geom_boxplot(outlier.alpha = 0)+ ggtitle("No integration")+ 
   stat_compare_means(label = "p.signif")+
-  geom_hline(yintercept = 0.3451811) + 
+  geom_hline(yintercept = 0.3451811) + geom_jitter()+
   ylim(c(0.2, 0.5)) + theme_pubr(legend = "none")+
   theme(strip.background = element_blank())+
   val %>%
@@ -378,16 +375,26 @@ plot_all <- val_rf_all[(val_rf_all$alpha == "0") &
   ggplot(aes(x=dataset, y = precision, color = dataset)) + 
   stat_compare_means(label = "p.signif") + 
   ylim(c(0.2, 0.5)) + stat_compare_means(label = "p.signif")+
-  theme_pubr(legend = "none") +
+  theme_pubr(legend = "none") + geom_jitter()+
   geom_hline(yintercept = 0.3451811) + 
-  geom_boxplot(outlier.alpha = 0) + ggtitle("Gene-specific alpha") +
-  plot_annotation(title = "Precision of 0.005 density networks for bRF ", 
+  geom_boxplot(outlier.alpha = 0) + ggtitle("Gene-specific data integration") +
+  plot_annotation(title = "Precision against DAP-Seq of 0.005 density networks for bRF ", 
                   subtitle = "GRNs of all genes") +
   plot_layout(widths = c(1,1))
 
 
+load("results/brf_perumtations_mse_all_genes.rdata")
+names(lmses)
+lmses %>%
+  select(contains())
+rownames_to_column('gene') %>%
+  reshape2::melt()%>%
+  separate(variable,
+           into = c("alpha", "rep", "MSEtype"),
+           sep = " ") %>%
+  group_by(gene, alpha, MSEtype)
+  
 plot_all
-plot_positive
 
 ```
 
@@ -472,9 +479,9 @@ hist(alphas_per_genes$lasso_max_div_0[positive_genes_lasso])
 ```{r, fig.width=7, fig.height=4, eval=FALSE}
 load("results/gene_specific_validation_lasso_mda_shuffle.rdata")
 
-load("results/100_permutations_lasso_validation_cluster_pos.rdata")
+load("results/100_permutations_lasso_validation_cluster_pos_mda_shuffle.rdata")
 val_lasso_pos <- val_conn_pos
-load("results/100_permutations_lasso_validation.rdata")
+load("results/100_permutations_lasso_validation_mda_shuffle.rdata")
 val_lasso_all <- val_conn
 
 
