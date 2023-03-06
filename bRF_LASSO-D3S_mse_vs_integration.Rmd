@@ -178,11 +178,47 @@ draw_MSE_vs_gene_effective_integration <- function(gene, return_cluster = F){
     ylab("MSE/Var(gene)") + xlab("effective integration") + ggtitle(paste(gene, cluster))
 }
 
-# gene <-"AT1G08090"
+
+draw_MSE_vs_gene_effective_integration_t_test <- function(gene, return_cluster = F){
+  tfs_with_motif <- names(which(pwm_occurrence[gene,]==1))
+  if(return_cluster & length(tfs_with_motif)  == 0)
+    return("not saved")
+  if(length(tfs_with_motif)==0)
+    return((ggplot()+ ggtitle ("no motif in this gene")))
+  inte <- data.frame(lapply(mats, function(mat){mean(rank(mat[,gene])[tfs_with_motif])})) %>%
+  gather(key = "setting", value = "summed_importance") %>%
+  separate(setting, into = c("method", "alpha", "dataset", "rep"), sep = "_") %>%
+  group_by(alpha, dataset) %>%
+  mutate(mean_imp = mean(summed_importance),
+            sd_imp = sd(summed_importance),
+         alpha = as.numeric(alpha))
+  
+  lmses[gene, ] %>%
+    gather() %>%
+    separate(key,
+             into = c("alpha", "rep", "MSEtype"),
+             sep = " ") %>%
+    group_by(alpha, MSEtype) %>%
+    rename(dataset = MSEtype)%>%
+    mutate(mean_mse = mean(value, na.rm = T),
+           sd_mse = sd(value, na.rm = T),
+           alpha = as.numeric(alpha),
+           dataset = str_replace(dataset, "true_data", "trueData")) %>%
+    full_join(inte, by = c("alpha", "dataset", "rep")) %>%
+    group_by(dataset)%>%
+    mutate(mean_mse = mean(value, na.rm=T)) %>%
+    ggplot(aes(x=dataset, y=value, color = dataset)) + geom_jitter(size=0.5) + geom_boxplot() +
+    stat_compare_means(method = "t.test") + 
+    geom_point(aes(x=dataset, y=mean_mse), size = 2, col = 'black') +
+    ylab("MSE/Var(gene)") + xlab("effective integration") + 
+    ggtitle(paste(gene)) + theme_pubr()
+}
+
+gene <-"AT1G08090"
 
 
 # clusters_rf_eff <- sapply(genes, draw_MSE_vs_gene_effective_integration, return_cluster=T)
-# table(clusters_rf_eff)
+# table(clusters_rf_eff))
 # # # save(clusters_rf_eff, file = "results/clusters_mse_eff_bRF_100permutations.rdata")
 # # 
 # load("results/clusters_mse_bRF_100permutations.rdata")
@@ -198,8 +234,10 @@ draw_MSE_vs_gene_effective_integration <- function(gene, return_cluster = F){
 #   draw_MSE_vs_gene_effective_integration(gene)
 
 
-for(gene in sample(genes, replace = F, size = 200)){
-    print(draw_gene_effective_integration(gene)+draw_gene_mean_sd(gene)+draw_MSE_vs_gene_effective_integration(gene))
+for(gene in sample(genes, replace = F, size = 30)){
+    print(draw_gene_effective_integration(gene)+draw_gene_mean_sd(gene)+
+            draw_MSE_vs_gene_effective_integration(gene)+ draw_MSE_vs_gene_effective_integration_t_test(gene)+
+            plot_layout(ncol=4))
 }
 # 
 #genes saved with new method
@@ -210,12 +248,12 @@ for(gene in sample(genes, replace = F, size = 200)){
 # }
 
 # genes lost with new method
-for(gene in sample(setdiff(pos_genes, pos_genes_eff), size = 10, replace = F)){
-    print(draw_gene_effective_integration(gene)+draw_gene_mean_sd(gene)+draw_MSE_vs_gene_effective_integration(gene))
-}
-# 
+# for(gene in sample(setdiff(pos_genes, pos_genes_eff), size = 10, replace = F)){
+#     print(draw_gene_effective_integration(gene)+draw_gene_mean_sd(gene)+draw_MSE_vs_gene_effective_integration(gene))
+# }
+# # 
 # gene <- "AT5G01480"
-pwm_occurrence["AT1G08090", "AT5G10030"]
+# pwm_occurrence["AT1G08090", "AT5G10030"]
 ```
 
 
@@ -231,13 +269,21 @@ for(gene in sample(pos_genes,10, replace = F)){
 
 # lasso
 
-```{r, eval=FALSE}
+```{r, eval=F}
 load("results/lasso_perumtations_mse_all_genes.rdata")
 load("results/100_permutations_lasso_importances_freq.rdata")
 
-for(gene in subset){
-    print(draw_gene_effective_integration(gene)+draw_gene_mean_sd(gene)+draw_MSE_vs_gene_effective_integration(gene))
+
+for(gene in sample(genes, replace = F, size = 30)){
+    print(draw_gene_effective_integration(gene)+draw_gene_mean_sd(gene)+
+            draw_MSE_vs_gene_effective_integration(gene)+ draw_MSE_vs_gene_effective_integration_t_test(gene)+
+            plot_layout(ncol=4))
 }
+
+# 
+# for(gene in subset){
+#     print(draw_gene_effective_integration(gene)+draw_gene_mean_sd(gene)+draw_MSE_vs_gene_effective_integration(gene))
+# }
 ```
 
 
