@@ -23,7 +23,55 @@ head(links)
 evaluate_network(links, input_genes = genes, input_tfs = colnames(pwm_occurrence))[c("tpr", "recall")]
 evaluate_network(links, input_genes = genes, input_tfs = colnames(pwm_occurrence), validation = c("CHIPSeq"))[c("tpr", "recall")]
 evaluate_network(links, input_genes = genes, input_tfs = colnames(pwm_occurrence), validation = c("TARGET"))[c("tpr", "recall")]
-# evaluate_network(links, input_genes = genes, input_tfs = colnames(pwm_occurrence), validation = c("DAPSeq"))[c("tpr", "recall")]
+evaluate_network(links, input_genes = genes, input_tfs = colnames(pwm_occurrence), validation = c("DAPSeq"))[c("tpr", "recall")]
+
+
+
+
+
+
+
+
+
+
+
+
+
+########### on positive genes
+
+# groups of genes depending on their behavior toward data integration
+load("results/clusters_mse_bRF_100permutations.rdata")
+positive_genes_rf <- names(clusters_rf[clusters_rf==2])
+
+links <- getLinkList(pwm_occurrence[positive_genes_rf,known_tfs], reportMax = sum(pwm_occurrence[positive_genes_rf,known_tfs]))
+colnames(links)[1:2] <- c('from', 'to')
+head(links)
+
+evaluate_network(links, input_genes = positive_genes_rf, input_tfs = colnames(pwm_occurrence))[c("tpr", "recall")]
+evaluate_network(links, input_genes = positive_genes_rf, input_tfs = colnames(pwm_occurrence), validation = c("CHIPSeq"))[c("tpr", "recall")]
+evaluate_network(links, input_genes = positive_genes_rf, input_tfs = colnames(pwm_occurrence), validation = c("TARGET"))[c("tpr", "recall")]
+evaluate_network(links, input_genes = positive_genes_rf, input_tfs = colnames(pwm_occurrence), validation = c("DAPSeq"))[c("tpr", "recall")]
+
+
+
+
+
+
+load("results/clusters_mse_lasso_100permutations.rdata")
+positive_genes_lasso <- names(clusters_lasso[clusters_lasso==1])
+
+links <- getLinkList(pwm_occurrence[positive_genes_lasso,known_tfs], reportMax = sum(pwm_occurrence[positive_genes_lasso,known_tfs]))
+colnames(links)[1:2] <- c('from', 'to')
+head(links)
+
+evaluate_network(links, input_genes = positive_genes_lasso, input_tfs = colnames(pwm_occurrence))[c("tpr", "recall")]
+evaluate_network(links, input_genes = positive_genes_lasso, input_tfs = colnames(pwm_occurrence), validation = c("CHIPSeq"))[c("tpr", "recall")]
+evaluate_network(links, input_genes = positive_genes_lasso, input_tfs = colnames(pwm_occurrence), validation = c("TARGET"))[c("tpr", "recall")]
+evaluate_network(links, input_genes = positive_genes_lasso, input_tfs = colnames(pwm_occurrence), validation = c("DAPSeq"))[c("tpr", "recall")]
+
+
+
+
 
 val_conn$tpr
 val_conn$recall
