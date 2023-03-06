@@ -367,7 +367,7 @@ plot_all <- val_rf_all[(val_rf_all$alpha == "0") &
                            ncol = 8, nest_line = T) +
   geom_boxplot(outlier.alpha = 0)+ ggtitle("No integration")+ 
   stat_compare_means(label = "p.signif")+
-  geom_hline(yintercept = 0.3451811) + geom_jitter()+
+  geom_hline(yintercept = 0.331042) + geom_jitter()+
   ylim(c(0.2, 0.5)) + theme_pubr(legend = "none")+
   theme(strip.background = element_blank())+
   val %>%
@@ -376,7 +376,7 @@ plot_all <- val_rf_all[(val_rf_all$alpha == "0") &
   stat_compare_means(label = "p.signif") + 
   ylim(c(0.2, 0.5)) + stat_compare_means(label = "p.signif")+
   theme_pubr(legend = "none") + geom_jitter()+
-  geom_hline(yintercept = 0.3451811) + 
+  geom_hline(yintercept = 0.331042) + 
   geom_boxplot(outlier.alpha = 0) + ggtitle("Gene-specific data integration") +
   plot_annotation(title = "Precision against DAP-Seq of 0.005 density networks for bRF ", 
                   subtitle = "GRNs of all genes") +
@@ -423,14 +423,14 @@ plot_positive <- val_rf_pos[(val_rf_pos$alpha == "0" | val_rf_pos$alpha == "1") 
   stat_compare_means(label = "p.signif")+
   ylim(c(0.2, 0.5)) + theme_pubr(legend = "none")+
   theme(strip.background = element_blank())+
-  geom_hline(yintercept = 0.3006536)+
+  geom_hline(yintercept = 0.3547275)+
   val %>%
   filter(density == 0.005 & model == "rf" & genesInNetwork == "positive")%>%
   ggplot(aes(x=dataset, y = precision, color = dataset)) + 
   stat_compare_means(label = "p.signif") + 
   ylim(c(0.2, 0.5)) + stat_compare_means(label = "p.signif")+
   theme_pubr(legend = "none") +
-  geom_hline(yintercept = 0.3006536)+
+  geom_hline(yintercept = 0.3547275)+
   geom_boxplot(outlier.alpha = 0) + ggtitle("Gene-specific alpha") +
   plot_annotation(title = "Precision of 0.005 density networks for bRF ", 
                   subtitle = "GRNs of positive genes only") +
@@ -445,7 +445,7 @@ plot_all <- val_rf_all[(val_rf_all$alpha == "0") &
                            ncol = 8, nest_line = T) +
   geom_boxplot(outlier.alpha = 0)+ ggtitle("Global alpha")+ 
   stat_compare_means(label = "p.signif")+
-  geom_hline(yintercept = 0.3373373) + 
+  geom_hline(yintercept = 0.331042) + 
   ylim(c(0.2, 0.5)) + theme_pubr(legend = "none")+
   theme(strip.background = element_blank())+
   val %>%
@@ -454,7 +454,7 @@ plot_all <- val_rf_all[(val_rf_all$alpha == "0") &
   stat_compare_means(label = "p.signif") + 
   ylim(c(0.2, 0.5)) + stat_compare_means(label = "p.signif")+
   theme_pubr(legend = "none") +
-  geom_hline(yintercept = 0.3373373) + 
+  geom_hline(yintercept = 0.331042) + 
   geom_boxplot(outlier.alpha = 0) + ggtitle("Gene-specific alpha") +
   plot_annotation(title = "Precision of 0.005 density networks for bRF ", 
                   subtitle = "GRNs of all genes") +
@@ -565,14 +565,14 @@ plot_positive <- val_lasso_pos[(val_rf_pos$alpha == "0" | val_lasso_pos$alpha ==
   stat_compare_means(label = "p.signif")+
   ylim(c(0.2, 0.5)) + theme_pubr(legend = "none")+
   theme(strip.background = element_blank())+
-  geom_hline(yintercept = 0.2653061)+
+  geom_hline(yintercept = 0.3337577)+
   val %>%
   filter(density == 0.005 & model == "lasso" & genesInNetwork == "positive")%>%
   ggplot(aes(x=dataset, y = precision, color = dataset)) + 
   stat_compare_means(label = "p.signif") + 
   ylim(c(0.2, 0.5)) + stat_compare_means(label = "p.signif")+
   theme_pubr(legend = "none") +
-  geom_hline(yintercept = 0.2653061)+
+  geom_hline(yintercept = 0.3337577)+
   geom_boxplot(outlier.alpha = 0) + ggtitle("Gene-specific alpha") +
   plot_annotation(title = "Precision of 0.005 density networks for lasso ", 
                   subtitle = "GRNs of positive genes only") +
@@ -587,7 +587,7 @@ plot_all <- val_lasso_all[(val_lasso_all$alpha == "0") &
                            ncol = 8, nest_line = T) +
   geom_boxplot(outlier.alpha = 0)+ ggtitle("Global alpha")+ 
   stat_compare_means(label = "p.signif")+
-  geom_hline(yintercept = 0.3373373) + 
+  geom_hline(yintercept = 0.331042) + 
   ylim(c(0.2, 0.5)) + theme_pubr(legend = "none")+
   theme(strip.background = element_blank())+
   val %>%
@@ -596,7 +596,7 @@ plot_all <- val_lasso_all[(val_lasso_all$alpha == "0") &
   stat_compare_means(label = "p.signif") + 
   ylim(c(0.2, 0.5)) + stat_compare_means(label = "p.signif")+
   theme_pubr(legend = "none") +
-  geom_hline(yintercept = 0.3373373) + 
+  geom_hline(yintercept = 0.331042) + 
   geom_boxplot(outlier.alpha = 0) + ggtitle("Gene-specific alpha") +
   plot_annotation(title = "Precision of 0.005 density networks for lasso ", 
                   subtitle = "GRNs of all genes") +

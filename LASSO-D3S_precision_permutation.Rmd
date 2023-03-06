@@ -628,7 +628,7 @@ save(val_dap, file = "results/100_permutations_lasso_validation_dap_cluster_pos_
 
 ```{r}
 
-draw_precision_recall <- function(validation, data_type, prior_validation = 0.3451811){
+draw_precision_recall <- function(validation, data_type, prior_validation = 0.331042){
   data_val <- validation %>%
     group_by(alpha, dataset, density) %>%
     mutate(mean_precision = mean(precision, na.rm = T),
@@ -739,11 +739,11 @@ draw_precision_recall(val_dap, "DAP-Seq" )
 
 ```{r, fig.width=10, fig.height=10}
 load("results/100_permutations_lasso_validation_dap_cluster_pos_mda_shuffle.rdata")
-draw_precision_recall(val_dap, "DAP-Seq, positive genes", prior_validation = 0.2653061)
+draw_precision_recall(val_dap, "DAP-Seq, positive genes", prior_validation = 0.3337577)
 
 
 load("results/100_permutations_bRF_validation_dap_cluster_pos.rdata")
-draw_precision_recall(val_dap, "DAP-Seq, positive genes", prior_validation = 0.3006536)
+draw_precision_recall(val_dap, "DAP-Seq, positive genes", prior_validation = 0.3547275)
 
 
 ```
