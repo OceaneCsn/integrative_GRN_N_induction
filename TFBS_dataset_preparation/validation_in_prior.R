@@ -145,3 +145,90 @@ evaluate_network(edges$bRF_1_trueData_1_0.005,
 
 evaluate_network(edges$bRF_1_shuffled_4_0.005, 
                  input_genes = genes, input_tfs = tfs, validation = c("DAPSeq"))[c("tpr", "recall")]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+########### in prom extended prior network
+
+# What is the precision and recall on the different validation datasets of the prior PWM network?
+source("inference_functions/evaluateNetwork.R")
+source("inference_functions/bRF.R")
+
+load('../PWM/pwm_prom_extended_jaspar_dap.rdata')
+load(file = "rdata/inference_input_N_response_varala.rdata")
+load("rdata/pwm_occurrences_N_response_varala_prom_extended.rdata")
+
+genes <- input_data$grouped_genes
+known_tfs <- unique(pwm_prom$TF)
+known_tfs <- intersect(known_tfs, colnames(pwm_occurrence))
+tfs <- input_data$grouped_regressors
+
+dim(pwm_occurrence)
+
+# number of edges of the PWM network
+sum(pwm_occurrence[,known_tfs])
+
+links <- getLinkList(t(pwm_occurrence[,known_tfs]), reportMax = sum(pwm_occurrence[,known_tfs]))
+colnames(links)[1:2] <- c('from', 'to')
+head(links)
+
+evaluate_network(links, input_genes = genes, input_tfs = known_tfs)[c("tpr", "recall")]
+evaluate_network(links, input_genes = genes, input_tfs = known_tfs, validation = c("CHIPSeq"))[c("tpr", "recall")]
+evaluate_network(links, input_genes = genes, input_tfs = known_tfs, validation = c("TARGET"))[c("tpr", "recall")]
+
+evaluate_network(links, input_genes = genes, input_tfs = known_tfs, validation = c("DAPSeq"))[c("tpr", "recall", "fn", "tp")]
+
+pwm_occurrence["AT1G08090", "AT5G65210"]
+
+
+
+
+
+
+
+
+
+########### in prom + introns prior network
+
+# What is the precision and recall on the different validation datasets of the prior PWM network?
+source("inference_functions/evaluateNetwork.R")
+source("inference_functions/bRF.R")
+
+load('../PWM/pwm_jaspar_dapseq.rdata')
+load(file = "rdata/inference_input_N_response_varala.rdata")
+load("rdata/pwm_occurrences_N_response_varala_prom_introns.rdata")
+
+genes <- input_data$grouped_genes
+known_tfs <- unique(pwm$TF)
+known_tfs <- intersect(known_tfs, colnames(pwm_occurrence))
+tfs <- input_data$grouped_regressors
+
+dim(pwm_occurrence)
+
+# number of edges of the PWM network
+sum(pwm_occurrence[,known_tfs])
+
+links <- getLinkList(t(pwm_occurrence[,known_tfs]), reportMax = sum(pwm_occurrence[,known_tfs]))
+colnames(links)[1:2] <- c('from', 'to')
+head(links)
+hist(links$weight)
+
+
+evaluate_network(links, input_genes = genes, input_tfs = known_tfs)[c("tpr", "recall")]
+evaluate_network(links, input_genes = genes, input_tfs = known_tfs, validation = c("CHIPSeq"))[c("tpr", "recall")]
+evaluate_network(links, input_genes = genes, input_tfs = known_tfs, validation = c("TARGET"))[c("tpr", "recall")]
+
+evaluate_network(links, input_genes = genes, input_tfs = known_tfs, validation = c("DAPSeq"))[c("tpr", "recall", "fn", "tp")]
+
+pwm_occurrence["AT1G08090", "AT5G65210"]

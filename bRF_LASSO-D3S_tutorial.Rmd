@@ -57,10 +57,10 @@ dim(pwm_occurrence)
 Let's infer a GRN using bRF with $\alpha=0.8$ and $D = 0.005$.
 
 ```{r}
-importances <- bRF_inference(counts, genes, tfs, alpha = 0.8, nTrees = 1000,
-                             pwm_occurrence = pwm_occurrence, nCores = 10)
+importances <- bRF_inference(counts, genes, tfs, alpha = 1, nTrees = 1000,
+                             pwm_occurrence = pwm_occurrence, nCores = 25)
 
-grn_bRF <- bRF_network(importances, density = 0.005, pwm_occurrence, genes, tfs)
+grn_bRF_prom <- bRF_network(importances, density = 0.005, pwm_occurrence, genes, tfs)
   
 head(grn_bRF); dim(grn_bRF)
 mean(grn_bRF$pwm)
