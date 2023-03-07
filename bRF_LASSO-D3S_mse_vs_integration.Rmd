@@ -103,24 +103,10 @@ draw_gene_mean_sd <- function(gene, title = NULL){
 
 }
 
+pwm_imputed <- pwm_occurrence
+pwm_imputed[is.na(pwm_imputed)] <- 0.5
 
 
-draw_gene_effective_integration <- function(gene){
-  tfs_with_motif <- names(which(pwm_occurrence[gene,]==1))
-  data.frame(lapply(mats, function(mat){mean(rank(mat[,gene])[tfs_with_motif])})) %>%
-  gather(key = "setting", value = "summed_importance") %>%
-  separate(setting, into = c("method", "alpha", "dataset", "rep"), sep = "_") %>%
-  group_by(alpha, dataset) %>%
-  mutate(mean_imp = mean(summed_importance),
-            sd_imp = sd(summed_importance),
-         alpha = as.numeric(alpha))%>%
-  ggplot(aes(x=alpha, y = summed_importance, color = dataset, fill = dataset)) +
-  geom_point(alpha = 0.1) + geom_smooth(se=F)+
-  geom_ribbon(aes(ymin = mean_imp - sd_imp , 
-                    ymax = mean_imp + sd_imp  ), 
-                alpha = .4)  +theme_pubr(legend = "top") + 
-    ylab("effective data integration")
-}
 
 
 draw_MSE_vs_gene_effective_integration <- function(gene, return_cluster = F){
@@ -178,83 +164,65 @@ draw_MSE_vs_gene_effective_integration <- function(gene, return_cluster = F){
     ylab("MSE/Var(gene)") + xlab("effective integration") + ggtitle(paste(gene, cluster))
 }
 
+for(gene in sample(genes, replace = F, size = 5)){
+    print(draw_gene_effective_integration(gene)+draw_gene_mean_sd(gene)+
+            draw_MSE_vs_gene_effective_integration_mean(gene)+
+            plot_layout(ncol=3))
+}
 
-draw_MSE_vs_gene_effective_integration_t_test <- function(gene, return_cluster = F){
-  tfs_with_motif <- names(which(pwm_occurrence[gene,]==1))
-  if(return_cluster & length(tfs_with_motif)  == 0)
-    return("not saved")
-  if(length(tfs_with_motif)==0)
-    return((ggplot()+ ggtitle ("no motif in this gene")))
-  inte <- data.frame(lapply(mats, function(mat){mean(rank(mat[,gene])[tfs_with_motif])})) %>%
+for(gene in sample(genes, replace = F, size = 5)){
+    print(draw_gene_effective_integration(gene, prior = 1)+
+  draw_gene_effective_integration(gene, prior = 0.5)+
+  draw_gene_effective_integration(gene, prior = 0))
+}
+
+
+draw_gene_effective_integration <- function(gene, prior=1, type = "rank"){
+  tfs_with_motif <- names(which(pwm_imputed[gene,]== prior))
+  if(type == "rank")
+    data <- data.frame(lapply(mats, function(mat){mean(rank(mat[,gene])[tfs_with_motif])}))
+  if(type == "imp")
+    data <- data.frame(lapply(mats, function(mat){mean(mat[,gene][tfs_with_motif])}))
+  plot <- data %>%
   gather(key = "setting", value = "summed_importance") %>%
   separate(setting, into = c("method", "alpha", "dataset", "rep"), sep = "_") %>%
   group_by(alpha, dataset) %>%
   mutate(mean_imp = mean(summed_importance),
             sd_imp = sd(summed_importance),
-         alpha = as.numeric(alpha))
+         alpha = as.numeric(alpha))%>%
+  ggplot(aes(x=alpha, y = summed_importance, color = dataset, fill = dataset)) +
+  geom_point(alpha = 0.1) + geom_smooth(se=F)+
+  geom_ribbon(aes(ymin = mean_imp - sd_imp , 
+                    ymax = mean_imp + sd_imp  ), 
+                alpha = .4)  +theme_pubr(legend = "top")+
+    ylab("effective data integration")+
+    ggtitle(paste("prior:", prior, ',', length(tfs_with_motif), "TFs"), 
+            subtitle = type)
   
-  lmses[gene, ] %>%
-    gather() %>%
-    separate(key,
-             into = c("alpha", "rep", "MSEtype"),
-             sep = " ") %>%
-    group_by(alpha, MSEtype) %>%
-    rename(dataset = MSEtype)%>%
-    mutate(mean_mse = mean(value, na.rm = T),
-           sd_mse = sd(value, na.rm = T),
-           alpha = as.numeric(alpha),
-           dataset = str_replace(dataset, "true_data", "trueData")) %>%
-    full_join(inte, by = c("alpha", "dataset", "rep")) %>%
-    group_by(dataset)%>%
-    mutate(mean_mse = mean(value, na.rm=T)) %>%
-    ggplot(aes(x=dataset, y=value, color = dataset)) + geom_jitter(size=0.5) + geom_boxplot() +
-    stat_compare_means(method = "t.test") + 
-    geom_point(aes(x=dataset, y=mean_mse), size = 2, col = 'black') +
-    ylab("MSE/Var(gene)") + xlab("effective integration") + 
-    ggtitle(paste(gene)) + theme_pubr()
+  if(type == "rank")
+    plot+ylim(c(0,200)) + 
+    geom_hline(yintercept = 
+                 (length(names(which(pwm_imputed[gene,]== 0.5)))+
+                 length(names(which(pwm_imputed[gene,]== 0))))/2)
+  else
+    plot
 }
 
-gene <-"AT1G08090"
 
-
-# clusters_rf_eff <- sapply(genes, draw_MSE_vs_gene_effective_integration, return_cluster=T)
-# table(clusters_rf_eff))
-# # # save(clusters_rf_eff, file = "results/clusters_mse_eff_bRF_100permutations.rdata")
-# # 
-# load("results/clusters_mse_bRF_100permutations.rdata")
-# pos_genes <- names(which(clusters_rf==2))
-# load("results/clusters_mse_eff_bRF_100permutations.rdata")
-# pos_genes_eff <- names(which(clusters_rf_eff=="class of interest"))
-# 
-# length(intersect(pos_genes, pos_genes_eff))
-# 
-# 
-# dev%>%
-#   ggplot(aes(x=summed_importance, y=deviation)) + geom_point()+
-#   draw_MSE_vs_gene_effective_integration(gene)
-
-
-for(gene in sample(genes, replace = F, size = 30)){
-    print(draw_gene_effective_integration(gene)+draw_gene_mean_sd(gene)+
-            draw_MSE_vs_gene_effective_integration(gene)+ draw_MSE_vs_gene_effective_integration_t_test(gene)+
-            plot_layout(ncol=4))
-}
-# 
-#genes saved with new method
-
-
-# for(gene in setdiff(pos_genes_eff, pos_genes)){
-#     print(draw_MSE_vs_gene_effective_integration(gene))
-# }
-
-# genes lost with new method
-# for(gene in sample(setdiff(pos_genes, pos_genes_eff), size = 10, replace = F)){
-#     print(draw_gene_effective_integration(gene)+draw_gene_mean_sd(gene)+draw_MSE_vs_gene_effective_integration(gene))
-# }
-# # 
-# gene <- "AT5G01480"
-# pwm_occurrence["AT1G08090", "AT5G10030"]
 ```
+
+```{r, fig.height=5, fig.width=15}
+for(gene in sample(genes, replace = F, size = 5)){
+    print(draw_gene_effective_integration(gene, prior = 1)+
+            draw_gene_effective_integration(gene, prior = 1, type = "imp")+
+            draw_gene_effective_integration(gene, prior = 0.5)+
+            draw_gene_effective_integration(gene, prior = 0.5, type = "imp")+
+            draw_gene_effective_integration(gene, prior = 0)+
+            draw_gene_effective_integration(gene, prior = 0, type = "imp")+ 
+            plot_layout(ncol = 6) + plot_annotation(title = gene))
+}
+```
+
 
 
 ## On the class of interest:
@@ -271,7 +239,7 @@ for(gene in sample(pos_genes,10, replace = F)){
 
 ```{r, eval=F}
 load("results/lasso_perumtations_mse_all_genes.rdata")
-load("results/100_permutations_lasso_importances_freq.rdata")
+load("results/100_permutations_lasso_importances.rdata")
 
 
 for(gene in sample(genes, replace = F, size = 30)){
