@@ -11,7 +11,7 @@ output:
 
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, warning = F, message = F, fig.width = 10)
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F, fig.width = 15)
 
 source('inference_functions/bRF.R')
 source('inference_functions/LASSO-D3S.R')
@@ -69,17 +69,6 @@ load("results/100_permutations_bRF_importances.rdata")
 ## For Rfs
 
 ```{r, message=F}
-
-draw_gene <- function(gene){
-  lmses[gene,] %>%
-    gather() %>%
-    separate(key, into = c("alpha", "rep", "MSEtype"), sep = " ") %>%
-    ggplot(aes(x=alpha, y=value, group =interaction(rep, MSEtype), 
-               color = MSEtype))+ggtitle(gene)+ylab("MSE/Var(gene)")+
-    xlab("alpha")+
-    geom_line()+ggtitle(gene)+theme_pubr(legend = "top")
-}
-
 
 draw_gene_mean_sd <- function(gene, title = NULL){
   lmses[gene, ] %>%
@@ -164,16 +153,42 @@ draw_MSE_vs_gene_effective_integration <- function(gene, return_cluster = F){
     ylab("MSE/Var(gene)") + xlab("effective integration") + ggtitle(paste(gene, cluster))
 }
 
-for(gene in sample(genes, replace = F, size = 5)){
-    print(draw_gene_effective_integration(gene)+draw_gene_mean_sd(gene)+
-            draw_MSE_vs_gene_effective_integration_mean(gene)+
-            plot_layout(ncol=3))
-}
 
-for(gene in sample(genes, replace = F, size = 5)){
-    print(draw_gene_effective_integration(gene, prior = 1)+
-  draw_gene_effective_integration(gene, prior = 0.5)+
-  draw_gene_effective_integration(gene, prior = 0))
+draw_MSE_vs_gene_effective_integration_mean <- function(gene, return_cluster = F){
+  tfs_with_motif <- names(which(pwm_occurrence[gene,]==1))
+  if(return_cluster & length(tfs_with_motif)  == 0)
+    return("not saved")
+  if(length(tfs_with_motif)==0)
+    return((ggplot()+ ggtitle ("no motif in this gene")))
+  inte <- data.frame(lapply(mats, function(mat){mean(rank(mat[,gene])[tfs_with_motif])})) %>%
+  gather(key = "setting", value = "summed_importance") %>%
+  separate(setting, into = c("method", "alpha", "dataset", "rep"), sep = "_") %>%
+  group_by(alpha, dataset) %>%
+  mutate(mean_imp = mean(summed_importance),
+            sd_imp = sd(summed_importance),
+         alpha = as.numeric(alpha))
+  
+  curves <- lmses[gene, ] %>%
+    gather() %>%
+    separate(key,
+             into = c("alpha", "rep", "MSEtype"),
+             sep = " ") %>%
+    rename(dataset = MSEtype,)%>%
+    mutate(alpha = as.numeric(alpha),
+           dataset = str_replace(dataset, "true_data", "trueData"))%>%
+    full_join(inte, by = c("alpha", "dataset", "rep")) %>%
+    group_by(mean_imp, dataset) %>%
+    mutate(mean_mse = mean(value, na.rm = T),
+           sd_mse = sd(value, na.rm = T)) 
+    
+
+  curves %>%
+  ggplot(aes(y=value, x = mean_imp, color = dataset, fill = dataset))+
+  geom_ribbon(aes(ymin =mean_mse-sd_mse , 
+                  ymax = mean_mse + sd_mse),  alpha = .4)+ 
+    geom_point(alpha = 0.1, size = 0.5) +
+  theme_pubr(legend = "top") + geom_smooth(method = "loess", se = F)+
+    ylab("MSE/Var(gene)") + xlab("effective integration") + ggtitle(paste(gene))
 }
 
 
@@ -208,11 +223,21 @@ draw_gene_effective_integration <- function(gene, prior=1, type = "rank"){
     plot
 }
 
+for(gene in sample(genes, replace = F, size = 20)){
+    print(draw_gene_effective_integration(gene)+draw_gene_mean_sd(gene)+
+            draw_MSE_vs_gene_effective_integration(gene)+
+            draw_MSE_vs_gene_effective_integration_mean(gene)+
+            plot_layout(ncol=4))
+}
 
 ```
 
+
+### Effective integration 
+
+
 ```{r, fig.height=5, fig.width=15}
-for(gene in sample(genes, replace = F, size = 5)){
+for(gene in sample(genes, replace = F, size = 20)){
     print(draw_gene_effective_integration(gene, prior = 1)+
             draw_gene_effective_integration(gene, prior = 1, type = "imp")+
             draw_gene_effective_integration(gene, prior = 0.5)+
@@ -227,41 +252,93 @@ for(gene in sample(genes, replace = F, size = 5)){
 
 ## On the class of interest:
 
-```{r, eval=FALSE}
+```{r, eval=T}
 load("results/clusters_mse_bRF_100permutations.rdata")
 pos_genes <- names(which(clusters_rf==2))
-for(gene in sample(pos_genes,10, replace = F)){
-    print(draw_gene_effective_integration(gene)+draw_gene_mean_sd(gene)+draw_MSE_vs_gene_effective_integration(gene))
+# for(gene in sample(pos_genes,10, replace = F)){
+#     print(draw_gene_effective_integration(gene)+draw_gene_mean_sd(gene)+draw_MSE_vs_gene_effective_integration(gene))
+# }
+
+for(gene in sample(pos_genes, replace = F, size = 10)){
+    print(draw_gene_effective_integration(gene)+draw_gene_mean_sd(gene)+
+            draw_MSE_vs_gene_effective_integration(gene)+
+            draw_MSE_vs_gene_effective_integration_mean(gene)+
+            plot_layout(ncol=4))
+}
+```
+
+### Effective integration 
+
+```{r, fig.height=5, fig.width=15}
+for(gene in sample(pos_genes, replace = F, size = 10)){
+    print(draw_gene_effective_integration(gene, prior = 1)+
+            draw_gene_effective_integration(gene, prior = 1, type = "imp")+
+            draw_gene_effective_integration(gene, prior = 0.5)+
+            draw_gene_effective_integration(gene, prior = 0.5, type = "imp")+
+            draw_gene_effective_integration(gene, prior = 0)+
+            draw_gene_effective_integration(gene, prior = 0, type = "imp")+ 
+            plot_layout(ncol = 6) + plot_annotation(title = gene))
 }
 ```
 
 # lasso
 
-```{r, eval=F}
+```{r, eval=T}
 load("results/lasso_perumtations_mse_all_genes.rdata")
-load("results/100_permutations_lasso_importances.rdata")
+load("results/100_permutations_lasso_importances_mda_shuffle.rdata")
 
-
-for(gene in sample(genes, replace = F, size = 30)){
+for(gene in sample(genes, replace = F, size = 20)){
     print(draw_gene_effective_integration(gene)+draw_gene_mean_sd(gene)+
-            draw_MSE_vs_gene_effective_integration(gene)+ draw_MSE_vs_gene_effective_integration_t_test(gene)+
+            draw_MSE_vs_gene_effective_integration(gene)+
+            draw_MSE_vs_gene_effective_integration_mean(gene)+
             plot_layout(ncol=4))
 }
+```
 
-# 
-# for(gene in subset){
-#     print(draw_gene_effective_integration(gene)+draw_gene_mean_sd(gene)+draw_MSE_vs_gene_effective_integration(gene))
-# }
+
+### Effective integration 
+
+
+```{r, fig.height=5, fig.width=15}
+for(gene in sample(genes, replace = F, size = 20)){
+    print(draw_gene_effective_integration(gene, prior = 1)+
+            draw_gene_effective_integration(gene, prior = 1, type = "imp")+
+            draw_gene_effective_integration(gene, prior = 0.5)+
+            draw_gene_effective_integration(gene, prior = 0.5, type = "imp")+
+            draw_gene_effective_integration(gene, prior = 0)+
+            draw_gene_effective_integration(gene, prior = 0, type = "imp")+ 
+            plot_layout(ncol = 6) + plot_annotation(title = gene))
+}
 ```
 
 
 ## On the class of interest :
 
 
-```{r, eval=FALSE}
+```{r, eval=T}
 load("results/clusters_mse_lasso_100permutations.rdata")
 pos_genes <- names(which(clusters_lasso==1))
-for(gene in sample(pos_genes,20, replace = F)){
-    print(draw_gene_effective_integration(gene)+draw_gene_mean_sd(gene)+draw_MSE_vs_gene_effective_integration(gene))
+
+for(gene in sample(pos_genes, replace = F, size = 10)){
+    print(draw_gene_effective_integration(gene)+draw_gene_mean_sd(gene)+
+            draw_MSE_vs_gene_effective_integration(gene)+
+            draw_MSE_vs_gene_effective_integration_mean(gene)+
+            plot_layout(ncol=4))
+}
+
+```
+
+### Effective integration 
+
+
+```{r, fig.height=5, fig.width=15}
+for(gene in sample(pos_genes, replace = F, size = 10)){
+    print(draw_gene_effective_integration(gene, prior = 1)+
+            draw_gene_effective_integration(gene, prior = 1, type = "imp")+
+            draw_gene_effective_integration(gene, prior = 0.5)+
+            draw_gene_effective_integration(gene, prior = 0.5, type = "imp")+
+            draw_gene_effective_integration(gene, prior = 0)+
+            draw_gene_effective_integration(gene, prior = 0, type = "imp")+ 
+            plot_layout(ncol = 6) + plot_annotation(title = gene))
 }
 ```
