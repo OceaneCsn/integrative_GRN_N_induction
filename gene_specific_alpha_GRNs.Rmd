@@ -143,6 +143,104 @@ save(alphas_per_genes, file = "results/alphas_per_genes.rdata")
 
 ```
 
+
+## New way that does not use clusters
+
+```{r}
+
+
+get_opt_alpha_per_gene <- function(gene, type = "rank", return_cluster = F){
+  tfs_with_motif <- names(which(pwm_occurrence[gene,]==1))
+  if(return_cluster & length(tfs_with_motif)==0) return(0)
+  if(length(tfs_with_motif)>0){
+    
+  if(type == "rank")
+    data <- data.frame(lapply(mats, function(mat){mean(rank(mat[,gene])[tfs_with_motif])}))
+  if(type == "imp")
+    data <- data.frame(lapply(mats, function(mat){mean(mat[,gene][tfs_with_motif])}))
+  
+  inte <- data %>%
+  gather(key = "setting", value = "summed_importance") %>%
+  separate(setting, into = c("method", "alpha", "dataset", "rep"), sep = "_") %>%
+  group_by(alpha, dataset) %>%
+  mutate(mean_imp = mean(summed_importance, na.rm=T),
+            sd_imp = sd(summed_importance, na.rm=T),
+         alpha = as.numeric(alpha))
+  
+  curves <- lmses[gene, ] %>%
+    gather() %>%
+    separate(key,
+             into = c("alpha", "rep", "MSEtype"),
+             sep = " ") %>%
+    rename(dataset = MSEtype,)%>%
+    mutate(alpha = as.numeric(alpha),
+           dataset = str_replace(dataset, "true_data", "trueData"))%>%
+    full_join(inte, by = c("alpha", "dataset", "rep")) %>%
+    group_by(alpha, mean_imp, dataset) %>%
+    summarise(mean_mse = mean(value, na.rm = T),
+           sd_mse = sd(value, na.rm = T)) 
+  curves <- curves %>%
+  group_by(dataset) %>%
+    arrange(dataset, mean_imp)%>%
+      mutate(imps=curves[curves$dataset=="trueData", ]$mean_imp) %>%
+      mutate(approx_mse = approx(mean_imp,mean_mse,curves[curves$dataset=="trueData", ]$mean_imp, rule=2)$y,
+             approx_sd = approx(mean_imp,sd_mse,curves[curves$dataset=="trueData", ]$mean_imp, rule=2)$y) 
+  
+  
+  true <- curves[curves$dataset=="trueData",]
+  shuff <- curves[curves$dataset!="trueData",]
+  
+  true$div <- (shuff$approx_mse - shuff$approx_sd) - (true$mean_mse + true$sd_mse)
+  if(max(true$div)>0) alpha_opt <- true[true$div == max(true$div),]$alpha
+  else alpha_opt <- 0
+  
+  if(return_cluster) return(alpha_opt)
+  
+  curves%>%
+    ggplot(aes(y=mean_mse, x = mean_imp, color = dataset, fill = dataset))+
+  geom_ribbon(aes(ymin =mean_mse-sd_mse , 
+                  ymax = mean_mse + sd_mse),  alpha = .4)+ 
+    geom_ribbon(aes(x=imps,ymin =approx_mse-approx_sd , 
+                  ymax = approx_mse + approx_sd),  fill = "yellow", alpha = .25)+ 
+    geom_point(alpha = 0.1, size = 0.5) +
+    geom_line(aes(x=mean_imp, y = mean_mse)) + 
+      geom_line(aes(x=imps, y = approx_mse), col="black")+
+  theme_pubr(legend = "top") +
+    ylab("MSE/Var(gene)") + xlab("effective integration") + ggtitle(paste(gene, alpha_opt))
+  }
+  else(ggplot())
+  
+}
+
+
+mcsapply <- function (X, FUN, ..., simplify = TRUE, USE.NAMES = TRUE) {
+  FUN <- match.fun(FUN)
+  answer <- parallel::mclapply(X = X, FUN = FUN, ...)
+  if (USE.NAMES && is.character(X) && is.null(names(answer))) 
+    names(answer) <- X
+  if (!isFALSE(simplify) && length(answer)) 
+    simplify2array(answer, higher = (simplify == "array"))
+  else answer
+}
+
+library(parallel)
+
+for(gene in sample(genes, replace = F, size = 20)){
+  print(get_opt_alpha_per_gene(gene, type = "imp"))
+}
+
+clusters_rank <- mcsapply(genes, get_opt_alpha_per_gene, type = "rank", return_cluster=T, mc.cores=40)
+clusters_imp <- mcsapply(genes, get_opt_alpha_per_gene, type = "imp", return_cluster=T, mc.cores=40)
+
+hist(clusters_rank, breaks = 11)
+hist(clusters_imp, breaks = 11)
+
+plot(clusters_imp, clusters_rank)
+table(clusters_rank)
+table(clusters_imp)
+```
+
+
 ## see the optimal alpha in the curves
 
 ```{r}

@@ -154,13 +154,19 @@ draw_MSE_vs_gene_effective_integration <- function(gene, return_cluster = F){
 }
 
 
-draw_MSE_vs_gene_effective_integration_mean <- function(gene, return_cluster = F){
+draw_MSE_vs_gene_effective_integration_mean <- function(gene, type = "rank", return_cluster = F){
   tfs_with_motif <- names(which(pwm_occurrence[gene,]==1))
+  if(type == "rank")
+    data <- data.frame(lapply(mats, function(mat){mean(rank(mat[,gene])[tfs_with_motif])}))
+  if(type == "imp")
+    data <- data.frame(lapply(mats, function(mat){mean(mat[,gene][tfs_with_motif])}))
+  
   if(return_cluster & length(tfs_with_motif)  == 0)
     return("not saved")
   if(length(tfs_with_motif)==0)
     return((ggplot()+ ggtitle ("no motif in this gene")))
-  inte <- data.frame(lapply(mats, function(mat){mean(rank(mat[,gene])[tfs_with_motif])})) %>%
+  
+  inte <- data %>%
   gather(key = "setting", value = "summed_importance") %>%
   separate(setting, into = c("method", "alpha", "dataset", "rep"), sep = "_") %>%
   group_by(alpha, dataset) %>%
@@ -180,14 +186,13 @@ draw_MSE_vs_gene_effective_integration_mean <- function(gene, return_cluster = F
     group_by(mean_imp, dataset) %>%
     mutate(mean_mse = mean(value, na.rm = T),
            sd_mse = sd(value, na.rm = T)) 
-    
-
   curves %>%
-  ggplot(aes(y=value, x = mean_imp, color = dataset, fill = dataset))+
+  ggplot(aes(y=mean_, x = mean_imp, color = dataset, fill = dataset))+
   geom_ribbon(aes(ymin =mean_mse-sd_mse , 
                   ymax = mean_mse + sd_mse),  alpha = .4)+ 
     geom_point(alpha = 0.1, size = 0.5) +
-  theme_pubr(legend = "top") + geom_smooth(method = "loess", se = F)+
+    geom_line(aes(x=mean_imp, y = mean_mse)) + 
+  theme_pubr(legend = "top") + 
     ylab("MSE/Var(gene)") + xlab("effective integration") + ggtitle(paste(gene))
 }
 
@@ -223,10 +228,10 @@ draw_gene_effective_integration <- function(gene, prior=1, type = "rank"){
     plot
 }
 
-for(gene in sample(genes, replace = F, size = 20)){
+for(gene in sample(genes, replace = F, size = 10)){
     print(draw_gene_effective_integration(gene)+draw_gene_mean_sd(gene)+
-            draw_MSE_vs_gene_effective_integration(gene)+
             draw_MSE_vs_gene_effective_integration_mean(gene)+
+            draw_MSE_vs_gene_effective_integration_mean(gene, type = "imp")+
             plot_layout(ncol=4))
 }
 
