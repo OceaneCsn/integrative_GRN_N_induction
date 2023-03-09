@@ -922,3 +922,78 @@ mean_mses %>%
 ```
 
 
+```{r, fig.width=5, fig.height=5}
+global_alphas <-
+  rbind.data.frame(val_lasso_all[(val_lasso_all$alpha == "0"|val_lasso_all$alpha == "1") & 
+             as.numeric(val_lasso_all$rep) <=10 & val_rf_all$density == 0.005 &
+             val_lasso_all$method == "LASSO",],  val_rf_all[(val_rf_all$alpha == "0"|val_rf_all$alpha == "1") & 
+             as.numeric(val_rf_all$rep) <=10 & val_rf_all$density == 0.005 &
+             val_rf_all$method == "bRF",]) %>%
+  mutate(dataset = str_replace(dataset, "Data", "_data"),
+         method = str_replace(method, "LASSO", "lasso"),
+         method = str_replace(method, "bRF", "rf")) %>%
+  rename(model = method) %>%
+  select(-network_name)
+
+specific_alphas <- val %>%
+  filter(density == 0.005 & genesInNetwork == "all")%>%
+  select(precision, recall, model, dataset, rep, density) %>%
+  mutate(rep = as.numeric(rep))%>%
+  mutate(alpha = "specific",
+         dataset = str_replace(dataset, "Data", "_data"))
+  
+
+precision_recall <- rbind.data.frame(global_alphas, specific_alphas)
+
+
+# can not fix scale for variable only :(
+full_join(mean_mses, precision_recall, by = c("alpha", "model", "dataset", "rep")) %>%
+  reshape2::melt() %>%
+  filter(!variable %in% c("median_mse")) %>%
+  ggplot(aes(x=dataset, y=value, color = dataset)) + 
+  geom_boxplot(outlier.alpha = 0, width = 0.2) +
+  geom_jitter(width = 0.1, size=0.8)+xlab('')+ylab('Mean(MSE/Var(gene))')+
+  ggh4x::facet_nested_wrap(vars(variable, model, alpha),nest_line = T, nrow=3, scales = "free_y")+
+  stat_compare_means(hide.ns = T, label = "p.signif")+
+  theme(strip.background = element_blank(), 
+        axis.text.x = element_blank(), axis.ticks.x = element_blank()) 
+
+plot_data <- full_join(mean_mses, precision_recall, by = c("alpha", "model", "dataset", "rep"))
+
+precision <- plot_data %>%
+  ggplot(aes(x=dataset, y=precision, color = dataset)) + 
+  geom_boxplot(outlier.alpha = 0, width = 0.2) +
+  geom_jitter(width = 0.1, size=0.8)+xlab('')+ylab('Precision')+
+  ggh4x::facet_nested_wrap(vars(model, alpha),nest_line = T, nrow=1)+
+  theme(strip.background = element_blank(), title = element_text(size = 8), 
+        axis.text.x = element_blank(), axis.ticks.x = element_blank()) +
+  geom_hline(yintercept = 0.3337577)+ 
+  ggtitle("Precision of 0.005 density networks against DAP-Seq interaction")
+
+
+recall <- plot_data %>%
+  ggplot(aes(x=dataset, y=recall, color = dataset)) + 
+  geom_boxplot(outlier.alpha = 0, width = 0.2) +
+  geom_jitter(width = 0.1, size=0.8)+xlab('')+ylab('Recall')+
+  ggh4x::facet_nested_wrap(vars(model, alpha),nest_line = T, nrow=1)+
+  theme(strip.background = element_blank(), title = element_text(size = 12), 
+        axis.text.x = element_blank(), axis.ticks.x = element_blank())+ 
+  ggtitle("Recall of 0.005 density networks against DAP-Seq interaction")
+
+mse <- plot_data %>%
+  ggplot(aes(x=dataset, y=mean_mse, color = dataset)) + 
+  geom_boxplot(outlier.alpha = 0, width = 0.2) +
+  geom_jitter(width = 0.1, size=0.8)+xlab('')+ylab('Mean(MSE/Var(gene))')+
+  ggh4x::facet_nested_wrap(vars(model, alpha),nest_line = T, nrow=1)+
+  theme(strip.background = element_blank(), title = element_text(size = 8), 
+        legend.position = "none", 
+        axis.text.x = element_blank(), axis.ticks.x = element_blank())+ 
+  ggtitle("Expression prediction error") 
+
+
+precision / mse
+
+```
+
+
+
