@@ -204,7 +204,7 @@ get_opt_alpha_per_gene <- function(gene, type = "rank", return_cluster = F){
   true <- curves[curves$dataset=="trueData",]
   shuff <- curves[curves$dataset!="trueData",]
   
-  true$div <- (shuff$approx_mse - shuff$approx_sd) - (true$mean_mse + true$sd_mse)
+  true$div <- (shuff$approx_mse - shuff$approx_sd) - (true$mean_mse)
   if(max(true$div)>0) alpha_opt <- true[true$div == max(true$div),]$alpha
   else alpha_opt <- 0
   
@@ -230,9 +230,12 @@ get_opt_alpha_per_gene <- function(gene, type = "rank", return_cluster = F){
 
 ```{r, eval=F}
 
+# for the RFs
+load("results/brf_perumtations_mse_all_genes.rdata")
+load("results/100_permutations_bRF_importances.rdata")
 
 clusters_rank <- mcsapply(genes, get_opt_alpha_per_gene, type = "rank", return_cluster=T, mc.cores=40)
-clusters_imp <- mcsapply(genes, get_opt_alpha_per_gene, type = "imp", return_cluster=T, mc.cores=40)
+#clusters_imp <- mcsapply(genes, get_opt_alpha_per_gene, type = "imp", return_cluster=T, mc.cores=40)
 
 hist(clusters_rank, breaks = 11)
 hist(clusters_imp, breaks = 11)
@@ -243,7 +246,7 @@ table(clusters_imp)
 
 # both seem close... maybe keep rank because it gives a little more genes 
 # with alpha not null?
-save(clusters_rank, file = "results/clusters_eff_mse_bRF_100permutations.rdata")
+save(clusters_rank, file = "results/clusters_eff_mse_bRF_100permutations_tolerent.rdata")
 
 
 
@@ -254,7 +257,10 @@ load("results/100_permutations_lasso_importances_mda_shuffle.rdata")
 for(gene in sample(genes, replace = F, size = 20)){
   print(get_opt_alpha_per_gene(gene, type = "rank"))
 }
+
+
 clusters_rank <- mcsapply(genes, get_opt_alpha_per_gene, type = "rank", return_cluster=T, mc.cores=40)
+
 hist(clusters_rank)
 table(clusters_rank)
 table(clusters_rank_lasso)
@@ -266,7 +272,7 @@ genes_pos_lasso <- names(clusters_rank_lasso[clusters_rank_lasso>0])
 intersect(genes_pos_rf, genes_pos_lasso)
 plot(clusters_rank, clusters_rank_lasso)
 
-save(clusters_rank_lasso, file = "results/clusters_eff_mse_lasso_100permutations.rdata")
+save(clusters_rank_lasso, file = "results/clusters_eff_mse_lasso_100permutations_tolerant.rdata")
 ```
 # Some examples of criteria
 
@@ -304,8 +310,8 @@ for(gene in sample(genes, replace = F, size = 20)){
 library(ggExtra)
 
 
-load("results/clusters_eff_mse_lasso_100permutations.rdata")
-load("results/clusters_eff_mse_bRF_100permutations.rdata")
+load("results/clusters_eff_mse_lasso_100permutations_tolerant.rdata")
+load("results/clusters_eff_mse_bRF_100permutations_tolerent.rdata")
 
 
 table(clusters_rank)
@@ -446,7 +452,7 @@ get_gene_information(enriched_tfs, organism = "Arabidopsis thaliana")
 ```{r, eval=F}
 
 
-nCores = 40
+nCores = 30
 networks <- list()
 densities <- c(0.005, 0.01,0.05)
 
@@ -498,12 +504,12 @@ for(model in c("lasso", "rf")){
     }
   }
 }
-save(networks, file = "results/gene_specific_alphas_grns_all_genes_eff.rdata")
+save(networks, file = "results/gene_specific_alphas_grns_all_genes_eff_tolerant.rdata")
 
 ```
 
 ```{r, fig.width=10, eval=FALSE}
-# load("results/gene_specific_alphas_grns_max_div_0others.rdata")
+# load("results/gene_specific_alphas_grns_all_genes_eff.rdata")
 nCores = 20
 
 # 
@@ -529,7 +535,7 @@ nCores = 20
 #                   input_genes = genes ))
 
 val <- evaluate_networks(networks, nCores = nCores,
-                  input_genes = genes)
+                  input_genes = genes, validation = c("DAPSeq"))
 
 settings <- c("model", "alphaOpt", "alphaOtherGenes", "genesInNetwork", "dataset", "rep", "density")
 
@@ -639,7 +645,7 @@ plot_all
 
 ### DAP only
 
-```{r, fig.width=7, fig.height=4}
+```{r, fig.width=7, fig.height=6}
 # load("results/100_permutations_bRF_validation.rdata")
 # 
 # load("results/100_permutations_lasso_validation.rdata")
@@ -676,13 +682,14 @@ plot_positive <- val_rf_pos[(val_rf_pos$alpha == "0" | val_rf_pos$alpha == "1") 
   plot_layout(widths = c(2,1))
 
 
-plot_all <- val_rf_all[(val_rf_all$alpha == "0") & 
-             as.numeric(val_rf_all$rep) <=10 & val_rf_all$density == 0.005 &
+plot_all_rf <- val_rf_all[(val_rf_all$alpha == "0"|val_rf_all$alpha == "1") & 
+             as.numeric(val_rf_all$rep) <=20 & val_rf_all$density == 0.005 &
              val_rf_all$method == "bRF",] %>%
   ggplot(aes(x=dataset, color = dataset, y = precision)) + 
   ggh4x::facet_nested_wrap(vars(alpha), 
                            ncol = 8, nest_line = T) +
-  geom_boxplot(outlier.alpha = 0)+ ggtitle("Global alpha")+ 
+  geom_boxplot(outlier.alpha = 0, width = 0.2) + ggtitle("Global alpha") +
+  geom_jitter(width = 0.1)+xlab('')+
   stat_compare_means(label = "p.signif")+
   geom_hline(yintercept = 0.331042) + 
   ylim(c(0.2, 0.5)) + theme_pubr(legend = "none")+
@@ -692,16 +699,14 @@ plot_all <- val_rf_all[(val_rf_all$alpha == "0") &
   ggplot(aes(x=dataset, y = precision, color = dataset)) + 
   stat_compare_means(label = "p.signif") + 
   ylim(c(0.2, 0.5)) + stat_compare_means(label = "p.signif")+
-  theme_pubr(legend = "none") +
+  theme_pubr(legend = "none") +ylab('')+
   geom_hline(yintercept = 0.331042) + 
-  geom_boxplot(outlier.alpha = 0) + ggtitle("Gene-specific alpha") +
+  geom_boxplot(outlier.alpha = 0, width = 0.2) + ggtitle("Gene-specific alpha") +
+  geom_jitter(width = 0.1)+xlab('')+
   plot_annotation(title = "Precision of 0.005 density networks for bRF ", 
                   subtitle = "GRNs of all genes") +
-  plot_layout(widths = c(1,1))
+  plot_layout(widths = c(2,1));plot_all_rf
 
-
-plot_all
-plot_positive
 
 ```
 
@@ -781,7 +786,7 @@ plot_positive
 ### DAP only
 
 
-```{r, fig.width=7, fig.height=4}
+```{r, fig.width=10, fig.height=4}
 # load("results/100_permutations_bRF_validation.rdata")
 # 
 # load("results/100_permutations_lasso_validation.rdata")
@@ -795,7 +800,7 @@ load("results/100_permutations_lasso_validation_dap_mda_shuffle.rdata")
 val_lasso_all <- val_dap
 
 plot_positive <- val_lasso_pos[(val_rf_pos$alpha == "0" | val_lasso_pos$alpha == "1") & 
-             as.numeric(val_lasso_pos$rep) <=10 & val_lasso_pos$density == 0.005 &
+             as.numeric(val_lasso_pos$rep) <=20 & val_lasso_pos$density == 0.005 &
              val_lasso_pos$method == "LASSO",] %>%
   ggplot(aes(x=dataset, color = dataset, y = precision)) + 
   ggh4x::facet_nested_wrap(vars(alpha), 
@@ -804,7 +809,7 @@ plot_positive <- val_lasso_pos[(val_rf_pos$alpha == "0" | val_lasso_pos$alpha ==
   stat_compare_means(label = "p.signif")+
   ylim(c(0.2, 0.5)) + theme_pubr(legend = "none")+
   theme(strip.background = element_blank())+
-  geom_hline(yintercept = 0.3337577)+
+  geom_hline(yintercept = 0.3337577)+lab('')+
   val %>%
   filter(density == 0.005 & model == "lasso" & genesInNetwork == "positive")%>%
   ggplot(aes(x=dataset, y = precision, color = dataset)) + 
@@ -818,13 +823,14 @@ plot_positive <- val_lasso_pos[(val_rf_pos$alpha == "0" | val_lasso_pos$alpha ==
   plot_layout(widths = c(2,1))
 
 
-plot_all <- val_lasso_all[(val_lasso_all$alpha == "0") & 
-             as.numeric(val_lasso_all$rep) <=10 & val_rf_all$density == 0.005 &
+plot_all_lasso <- val_lasso_all[(val_lasso_all$alpha == "0"|val_lasso_all$alpha == "1") & 
+             as.numeric(val_lasso_all$rep) <=20 & val_rf_all$density == 0.005 &
              val_lasso_all$method == "LASSO",] %>%
   ggplot(aes(x=dataset, color = dataset, y = precision)) + 
   ggh4x::facet_nested_wrap(vars(alpha), 
                            ncol = 8, nest_line = T) +
-  geom_boxplot(outlier.alpha = 0)+ ggtitle("Global alpha")+ 
+  geom_boxplot(outlier.alpha = 0, width = 0.2) + ggtitle("Global alpha") +
+  geom_jitter(width = 0.1)+xlab('')+ylab('')+
   stat_compare_means(label = "p.signif")+
   geom_hline(yintercept = 0.331042) + 
   ylim(c(0.2, 0.5)) + theme_pubr(legend = "none")+
@@ -836,15 +842,83 @@ plot_all <- val_lasso_all[(val_lasso_all$alpha == "0") &
   ylim(c(0.2, 0.5)) + stat_compare_means(label = "p.signif")+
   theme_pubr(legend = "none") +
   geom_hline(yintercept = 0.331042) + 
-  geom_boxplot(outlier.alpha = 0) + ggtitle("Gene-specific alpha") +
+  geom_boxplot(outlier.alpha = 0, width = 0.2) + ggtitle("Gene-specific alpha") +
+  geom_jitter(width = 0.1)+xlab('')+ylab('')+
   plot_annotation(title = "Precision of 0.005 density networks for lasso ", 
                   subtitle = "GRNs of all genes") +
-  plot_layout(widths = c(1,1))
+  plot_layout(widths = c(2,1))
 
 
-plot_all
-plot_positive
+plot_all_rf | plot_all_lasso
 
+```
+
+
+# Prediction error on 
+
+
+```{r, fig.height=4, fig.width=5}
+
+load("results/lasso_perumtations_mse_all_genes.rdata")
+mse_data_lasso <- lmses[as.numeric(str_split_fixed(colnames(lmses), ' ', 3)[,2]) <=10] %>%
+rownames_to_column('gene') %>%
+  reshape2::melt()%>%
+  separate(variable,
+           into = c("alpha", "rep", "MSEtype"),
+           sep = " ")
+
+load("results/brf_perumtations_mse_all_genes.rdata")
+mse_data_rf <- lmses[as.numeric(str_split_fixed(colnames(lmses), ' ', 3)[,2]) <=10] %>%
+rownames_to_column('gene') %>%
+  reshape2::melt()%>%
+  separate(variable,
+           into = c("alpha", "rep", "MSEtype"),
+           sep = " ")
+
+
+mean_mses <- data.frame("dataset" = character(0), "model" = character(0), 
+                        "alpha" = character(0), rep = integer(0), 
+                        "mean_mse" = double(0), "median_mse" = double(0))
+
+alphas <- list("0" = setNames(rep(0, length(genes)), genes), 
+               "1" = setNames(rep(1, length(genes)), genes),
+               "specific_lasso" = clusters_rank_lasso, 
+               "specific_rf" = clusters_rank)
+
+for(model in c("rf", "lasso")){
+  for(alpha_strat in c("0","1","specific")){
+    for(dataset in c("true_data", "shuffled")){
+      
+      if(model == "lasso") data <- mse_data_lasso
+      if(model == "rf") data <- mse_data_rf
+      
+      if(alpha_strat == "specific") key = paste0(alpha_strat, '_', model)
+      else key = alpha_strat
+      
+        mean_mses <- rbind.data.frame(mean_mses, data %>%
+                           rename(mse = value) %>%
+                            mutate(alpha = as.numeric(alpha))%>%
+                            filter(MSEtype == dataset) %>%
+                            filter(alpha == alphas[[key]][gene]) %>%
+                            group_by(rep, MSEtype) %>%
+                            summarize(mean_mse = mean(mse, na.rm=T),
+                                      median_mse = median(mse, na.rm=T)) %>%
+                             mutate(alpha = alpha_strat,
+                                    model = model) %>%
+                             rename(dataset = MSEtype))
+    }
+  }
+}
+
+mean_mses %>%
+  ggplot(aes(x=dataset, y=mean_mse, color = dataset)) + 
+  geom_boxplot(outlier.alpha = 0, width = 0.2) +
+  geom_jitter(width = 0.1, size=0.8)+xlab('')+ylab('Mean(MSE/Var(gene))')+
+  ggh4x::facet_nested_wrap(vars(model, alpha),nest_line = T, ncol = 6)+
+  stat_compare_means(hide.ns = T, label = "p.signif")+
+  theme(strip.background = element_blank(), 
+        axis.text.x = element_blank(), axis.ticks.x = element_blank()) 
+  
 ```
 
 

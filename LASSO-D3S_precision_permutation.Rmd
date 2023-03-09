@@ -66,7 +66,7 @@ for(alpha in ALPHAS){ # exploring PWM integration strength
     
     
     mat_lasso <- LASSO.D3S_inference_stableMDA(counts, genes, tfs,
-                                     alpha = alpha, N = 100, robustness = 0.1,
+                                     alpha = alpha, N = 100, robustness = 0.8,
                                      int_pwm_noise = 0, mda_type = "shuffle",
                                      pwm_occurrence = pwm_occurrence,
                                      nCores = nCores)
