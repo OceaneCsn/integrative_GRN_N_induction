@@ -85,7 +85,7 @@ get_MSE_baseline <- function(counts, genes, nCores=ifelse(is.na(detectCores()),1
                                        }
                                      ))
     attr(mmse, "rng") <- NULL
-    mmmse <- mean(log(unlist(mmse)))
+    mmmse <- unlist(mmse)
   return(mmmse)
 }
 
@@ -165,7 +165,8 @@ bRF_inference_MSE <- function(counts, genes, tfs, alpha=0.25, scale = FALSE,
                                                                                         ntree=nTrees,
                                                                                         sw=weights)
 
-                                                        mean(rf_weighted$mse)/var(y)
+                                                        # mean(rf_weighted$mse)/var(y)
+                                                        mean((rf_weighted$predicted - y)^2)/var(y)
                                                       }
                                                       else{
                                                         # case when all weights are equal to 0 (no pwm found and alpha = 1)

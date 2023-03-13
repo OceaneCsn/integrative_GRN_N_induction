@@ -61,23 +61,28 @@ subset <- genes
 
 ## For Rfs
 
+
 ```{r}
-# lmses <- data.frame(row.names = subset)
-# N <-100
-# for(alpha in ALPHAS){
-#   for(perm in 1:N){
-#     lmses[,paste(as.character(alpha), perm, "true_data")] <- bRF_inference_MSE(counts, subset, tfs, alpha = alpha, nTrees = 2000,
-#                              pwm_occurrence = pwm_occurrence, nCores = 45, tf_expression_permutation = F)
-#   }
-# 
-#   for(perm in 1:N){
-#     lmses[,paste(as.character(alpha), perm, "shuffled")] <- bRF_inference_MSE(counts, subset, tfs, alpha = alpha, nTrees = 2000,
-#                            pwm_occurrence = pwm_occurrence, nCores = 45, tf_expression_permutation = T)
-#   }
-# }
-# 
-# save(lmses, file = "results/brf_perumtations_mse_all_genes.rdata")
-# subset<-unique(rownames(lmses))
+lmses <- data.frame(row.names = subset)
+N <-100
+for(alpha in ALPHAS){
+  for(perm in 1:N){
+    lmses[,paste(as.character(alpha), perm, "true_data")] <- bRF_inference_MSE(counts, subset, tfs, alpha = alpha, nTrees = 2000,
+                             pwm_occurrence = pwm_occurrence, nCores = 45, tf_expression_permutation = F)
+  }
+
+  for(perm in 1:N){
+    lmses[,paste(as.character(alpha), perm, "shuffled")] <- bRF_inference_MSE(counts, subset, tfs, alpha = alpha, nTrees = 2000,
+                           pwm_occurrence = pwm_occurrence, nCores = 45, tf_expression_permutation = T)
+  }
+}
+
+save(lmses, file = "results/brf_perumtations_mse_all_genes_predict.rdata")
+subset<-unique(rownames(lmses))
+```
+
+```{r}
+
 draw_gene <- function(gene){
   lmses[gene,] %>%
     gather() %>%

@@ -124,7 +124,8 @@ bRF_inference <- function(counts, genes, tfs, alpha=0.25, scale = FALSE,
                                                         im <- rf_weighted$importance[,importance]
                                                         # get relative increase in MSE instead of absolute increase
                                                         if(importance == "%IncMSE"){
-                                                          im <- im/mean(rf_weighted$mse)
+                                                          #im <- im/mean(rf_weighted$mse)
+                                                          im <- im/(mean(rf_weighted$mse)+im)
                                                         }
                                                         c(setNames(0, target), setNames(im, names(im)))[tfs]
                                                       } else {

@@ -55,10 +55,8 @@ subset <- sample(genes, replace = F, size = 20)
 #subset <- genes
 
 
-load("results/brf_perumtations_mse_all_genes.rdata")
-
-
-load("results/100_permutations_bRF_importances.rdata")
+load("results/brf_perumtations_mse_all_genes_predict.rdata")
+load("results/100_permutations_bRF_importances_inf.rdata")
 ```
 
 
@@ -347,3 +345,146 @@ for(gene in sample(pos_genes, replace = F, size = 10)){
             plot_layout(ncol = 6) + plot_annotation(title = gene))
 }
 ```
+
+
+
+Sophie : 
+
+
+Par ailleurs, je me questionne sur la priorisation des arêtes entre les différents gènes cibles (qui sont donc issues de différents modèles de régression).
+
+Je voudrais m'assurer que les arêtes que l'on priorise sont issues de 'bons' modèles (i.e. pour lesquels on a une baisse de l'erreur de prédiction par rapport à la baseline obtenue par la moyenne de l'expression).
+
+Il me semble que ça devrait être le cas. En gros, si le modèle estimé est comparable au modèle baseline, il ne devrait pas y avoir de grand écart entre l'erreur du modèle estimé et l'erreur après 'shuffling' ou mise à 0.
+
+Mais, est-ce qu'il te serait rapide/possible de représenter un nuage de points de l'importance calculée en fonction du ratio :
+
+ (MSE_baseline - MSE_full)/MSE_baseline ?
+
+Ce ratio donne une idée de la qualité du modèle 'full' (valeurs entre 0 et 1).
+
+Cela nous permettrait de s'en assurer. 
+
+```{r}
+baselines <- get_MSE_baseline(counts, genes, nCores = 30)
+baselines <- setNames(baselines, genes)
+
+var_expr <- setNames(matrixStats::rowSds(counts)*matrixStats::rowSds(counts), genes)
+colnames(lmses)
+hist(log(baselines))
+
+# for the RFs
+load("results/brf_perumtations_mse_all_genes.rdata")
+load("results/100_permutations_bRF_importances.rdata")
+
+
+ratio <- lmses[as.numeric(str_split_fixed(colnames(lmses), ' ', 3)[,2]) ==1] %>%rownames_to_column('gene') %>%
+  reshape2::melt()%>%
+  separate(variable,
+           into = c("alpha", "rep", "MSEtype"),
+           sep = " ") %>%
+  filter(MSEtype == "true_data") %>%
+  mutate(baseline = baselines[gene],
+         var = var_expr[gene]) %>%
+  mutate(quality_ratio = 1-value)
+
+plot_alpha_0_rf <- data.frame(mats$bRF_0_trueData_1) %>%
+  rownames_to_column("gene") %>%
+  reshape2::melt() %>%
+  full_join(ratio, by = "gene") %>%
+  ggplot(aes(x=quality_ratio, y = value.x)) +
+  geom_point(alpha = 0.1)+xlim(c(0,1)) + ggtitle("alpha = 0, RFs")+ ylab("importance")
+
+plot_alpha_1_rf <-data.frame(mats$bRF_1_trueData_1) %>%
+  rownames_to_column("gene") %>%
+  reshape2::melt() %>%
+  full_join(ratio, by = "gene") %>%
+  ggplot(aes(x=quality_ratio, y = value.x)) +
+  geom_point(alpha = 0.1)+xlim(c(0,1)) + ggtitle("alpha = 1, RFs") + ylab("importance")
+
+
+plot_alpha_0_rf + plot_alpha_1_rf
+```
+
+
+
+```{r, fig.width=10, fig.height=10}
+
+
+load("results/lasso_perumtations_mse_all_genes.rdata")
+load("results/100_permutations_lasso_importances_mda_shuffle.rdata")
+ratio <- lmses[as.numeric(str_split_fixed(colnames(lmses), ' ', 3)[,2]) ==1] %>%rownames_to_column('gene') %>%
+  reshape2::melt()%>%
+  separate(variable,
+           into = c("alpha", "rep", "MSEtype"),
+           sep = " ") %>%
+  filter(MSEtype == "true_data") %>%
+  mutate(baseline = baselines[gene],
+         var = var_expr[gene]) %>%
+  mutate(quality_ratio = 1-value)
+
+
+plot_alpha_0_lasso <- data.frame(mats$LASSO_0_trueData_1) %>%
+  rownames_to_column("gene") %>%
+  reshape2::melt() %>%
+  full_join(ratio, by = "gene") %>%
+  ggplot(aes(x=quality_ratio, y = value.x)) +
+  geom_point(alpha = 0.005)+xlim(c(0,1)) + ggtitle("alpha = 0, lasso")+ ylab("importance")
+
+plot_alpha_1_lasso <-data.frame(mats$LASSO_1_trueData_1) %>%
+  rownames_to_column("gene") %>%
+  reshape2::melt() %>%
+  full_join(ratio, by = "gene") %>%
+  ggplot(aes(x=quality_ratio, y = value.x)) +
+  geom_point(alpha = 0.005)+xlim(c(0,1)) + ggtitle("alpha = 1, lasso") + ylab("importance")
+(plot_alpha_0_lasso +plot_alpha_1_lasso) / 
+(plot_alpha_0_rf + plot_alpha_1_rf)
+```
+
+## MSE of RFs: why higher?
+
+Maybe trees should be pruned
+
+```{r}
+mses <- bRF_inference_MSE(counts, genes, tfs, alpha = 0, pwm_occurrence = pwm_occurrence, nTrees = 1000, nCores = 20)
+mean(mses)
+```
+
+
+## Importance metric of LASSO or RFs?
+
+```{r}
+mat_lasso <- LASSO.D3S_inference_stableMDA(counts, genes, tfs,
+                                     alpha = alpha, N = 100, robustness = 0.2,
+                                     int_pwm_noise = 0, mda_type = "shuffle",
+                                     pwm_occurrence = pwm_occurrence,
+                                     nCores = 40)
+
+plot_alpha_0.5_lasso <- data.frame(mat_lasso) %>%
+  rownames_to_column("gene") %>%
+  reshape2::melt() %>%
+  full_join(ratio, by = "gene") %>%
+  ggplot(aes(x=quality_ratio, y = value.x)) +
+  geom_hex() + ggtitle("alpha = 0.5, lasso")+ ylab("importance")
+
+
+
+mat_rf <- bRF_inference(counts, genes, tfs, nTrees = 1000,
+                            alpha = 1,
+                            pwm_occurrence = pwm_occurrence,
+                            nCores = nCores,
+                            importance = "%IncMSE")
+
+data.frame(mat_rf) %>%
+  rownames_to_column("gene") %>%
+  reshape2::melt() %>%
+  full_join(ratio, by = "gene") %>%
+  ggplot(aes(x=quality_ratio, y = value.x)) +
+  geom_hex() + ggtitle("alpha = 0.5, rf")+ ylab("importance")
+
+
+ grn <- bRF_network(mat_rf, density = 0.005, pwm_occurrence, genes, tfs)
+ evaluate_network(grn, input_genes = genes, input_tfs = tfs, validation = c("DAPSeq"))
+```
+
+

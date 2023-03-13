@@ -76,15 +76,15 @@ for(alpha in ALPHAS){ # exploring PWM integration strength
     
   }
 }
-save(mats, file = "results/100_permutations_bRF_importances.rdata")
+save(mats, file = "results/100_permutations_bRF_importances_inf.rdata")
 ```
 
 # Thresholding the networks
 
 ```{r, eval=FALSE}
-load( "results/100_permutations_bRF_importances.rdata")
+# load( "results/100_permutations_bRF_importances.rdata")
 edges <- list()
-densities <- c(0.005, 0.01,0.05,0.075)
+densities <- c(0.005, 0.01,0.05)
 
 for(name in names(mats)){ # exploring importance threshold stringency
       for(density in densities){
@@ -93,7 +93,7 @@ for(name in names(mats)){ # exploring importance threshold stringency
       }
 }
 
-save(edges, file = "results/100_permutations_bRF_edges.rdata")
+save(edges, file = "results/100_permutations_bRF_edges_inf.rdata")
 
 ```
 
@@ -185,7 +185,6 @@ prettyZero <- function(l){
     return(lnew)
 }
 
-edges$bRF_1_trueData_100_0.005
 
 settings <- c("method", "alpha", "dataset","rep", "density")
 ```
@@ -193,7 +192,7 @@ settings <- c("method", "alpha", "dataset","rep", "density")
 ## PWM support
 
 ```{r, fig.width=10, fig.height=6}
-load("results/100_permutations_bRF_edges.rdata")
+# load("results/100_permutations_bRF_edges.rdata")
 
 # number of edges per network
 nrows <-
@@ -550,7 +549,7 @@ save(val_target, file = "results/100_permutations_bRF_validation_target.rdata")
 
 val_dap <-
   evaluate_networks(
-    edges_no_na,
+    edges,
     validation = c("DAPSeq"),
     nCores = 25,
     input_genes = genes,
@@ -560,7 +559,7 @@ val_dap[, settings] <-
   str_split_fixed(val_dap$network_name, '_', length(settings))
 
 
-save(val_dap, file = "results/100_permutations_bRF_validation_dap.rdata")
+save(val_dap, file = "results/100_permutations_bRF_validation_dap_inf.rdata")
 
 
 ```
@@ -677,8 +676,7 @@ draw_precision_recall(val_target, "TARGET, positive genes")
 ## DAP Seq only
 
 ```{r, fig.width=10, fig.height=10}
-load("results/100_permutations_bRF_validation_dap.rdata")
-
+load("results/100_permutations_bRF_validation_dap_inf.rdata")
 draw_precision_recall(val_dap, "DAP-Seq")
 
 load(file = "results/100_permutations_bRF_validation_dap_cluster_pos.rdata")
