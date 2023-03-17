@@ -980,7 +980,7 @@ mean_mses %>%
 ```
 
 
-```{r, fig.width=5, fig.height=5}
+```{r, fig.width=7, fig.height=7}
 load("results/100_permutations_lasso_validation_dap_mda_shuffle.rdata")
 val_lasso_all <- val_dap
 
@@ -1062,4 +1062,184 @@ precision / mse
 ```
 
 
+# Place of NRT2.1 in the two alpha specific networks
+
+```{r}
+grn_rf <- networks$`rf-max_div-0-all-trueData-8-0.005`
+nrt2.1 <- "AT1G08090"
+get_gene_information(grn_rf[grn_rf$to == nrt2.1,]$from, organism = "Arabidopsis thaliana")
+
+mean(grn_lasso$pwm)
+grn_lasso <- networks$`lasso-max_div-0-all-trueData-1-0.005`
+get_gene_information(grn_lasso[grn_lasso$to == nrt2.1,]$from, organism = "Arabidopsis thaliana")
+
+
+ranking_rf <- get_gene_information(names(sort(table(grn_rf$from), decreasing = T )[1:20]), 
+                     organism = "Arabidopsis thaliana")
+
+ranking_lasso <- get_gene_information(names(sort(table(grn_lasso$from), decreasing = T )[1:20]), 
+                     organism = "Arabidopsis thaliana")
+
+ranking_rf$pwm <- rownames(ranking_rf) %in% unique(pwm_prom$TF)
+
+ranking_lasso$pwm <- rownames(ranking_lasso) %in% unique(pwm_prom$TF)
+ranking_rf; ranking_lasso
+
+
+
+grn_rf_0 <- rf_go$bRF_0_trueData_1_0.005
+
+get_gene_information(names(sort(table(grn_rf_0$from), decreasing = T )[1:20]), 
+                     organism = "Arabidopsis thaliana") %>%
+  rownames_to_column("gene") %>%
+  mutate(Motif_available = gene %in% unique(pwm_prom$TF))
+
+common <- merge(grn_lasso, grn_rf, by = c("from", "to"))
+
+get_gene_information(names(sort(table(common$from), decreasing = T )[1:15]), 
+                     organism = "Arabidopsis thaliana")
+
+```
+
+
+```{r, fig.width=15}
+library(clusterProfiler)
+library(visNetwork)
+
+
+load(file = "results/100_permutations_bRF_edges_inf.rdata")
+rf_go <- edges[names(edges)[str_detect(names(edges), "trueData") &
+               str_detect(names(edges), "bRF_0_|bRF_1_") &
+               str_detect(names(edges), "0.005") &
+               as.numeric(str_split_fixed(names(edges), '_', 5)[,4])<4]]
+rf_go$bRF_0_trueData_1_0.005
+
+load(file = "results/100_permutations_lasso_edges_mda_shuffle.rdata")
+
+lasso_go <- edges[names(edges)[str_detect(names(edges), "trueData") &
+               str_detect(names(edges), "LASSO_0_|LASSO_1_") &
+               str_detect(names(edges), "0.005") &
+               as.numeric(str_split_fixed(names(edges), '_', 5)[,4])<4]]
+
+
+net_go <- networks[str_detect(names(networks), "0.005") &
+                     str_detect(names(networks), "trueData") &
+                     as.numeric(str_split_fixed(names(networks), '-',7 )[,6])<4]
+
+global_alphas <- c(rf_go, lasso_go)
+
+names(net_go)
+
+
+N_go <- c("GO:0006807", "GO:0051171", "GO:0051173", "GO:0022622")
+
+
+convert_from_agi <- function(ids){
+  x <- org.At.tair.db::org.At.tairENTREZID
+  mapped_genes <- AnnotationDbi::mappedkeys(x)
+  xx <- as.list(x[mapped_genes])
+  return(unlist(xx[as.vector(ids)]))
+}
+get_nodes_degree <- function(graph){
+  data <- toVisNetworkData(graph)
+  degree <- igraph::degree(graph)
+  data$nodes$degree <- degree[match(data$nodes$id, names(degree))]
+  return(data$nodes)
+}
+
+networks_N_GSEA <- function(edges_list, N_go, nCores = 1){
+  
+  registerDoParallel(cores = nCores)
+  message(paste("\nParallel network N validation Using", foreach::getDoParWorkers(), "cores."))
+  "%dopar%" <- foreach::"%dopar%"
+  tic()
+  suppressPackageStartupMessages(
+    result.validation <-
+      doRNG::"%dorng%"(foreach::foreach(network_name = names(edges_list), .combine = rbind),
+                       {
+                         net<- graph_from_data_frame(edges_list[[network_name]], directed = TRUE)
+                         nodes <- get_nodes_degree(net)
+                        
+                         rownames(nodes) <- nodes$id
+                         nodes[names(convert_from_agi(nodes$id)), "entrez"] <- 
+                           convert_from_agi(nodes$id)
+                         
+                         degrees <- sort(setNames(nodes$degree, nodes$entrez), decreasing = T)
+                         
+                         gse <- gseGO(geneList=degrees, 
+                                      ont ="BP", 
+                                      minGSSize = 3, 
+                                      maxGSSize = 800, nPerm =1000,
+                                      pvalueCutoff = 1, 
+                                      verbose = TRUE, scoreType = "pos",
+                                      OrgDb = org.At.tair.db::org.At.tair.db, 
+                                      pAdjustMethod = "BH")
+                         res <- gse@result[gse@result$ID %in% N_go,c("Description", "enrichmentScore", "p.adjust")]
+                         if(nrow(res)>1){
+                           res$network_name <- network_name
+                           res
+                         }
+                         
+                       })
+  )
+  toc()
+  attr(result.validation, "rng") <- NULL # It contains the whole sequence of RNG seeds
+  return(result.validation)
+}
+
+
+N_gsea <- networks_N_GSEA(net_go, N_go, nCores = 1)
+N_gsea[,settings] <- str_split_fixed(N_gsea$network_name,'-',length(settings))
+
+N_gsea_global <- networks_N_GSEA(global_alphas, N_go, nCores = 1)
+
+settings <- c("model", "alpha", "dataset", "rep", "density")
+
+N_gsea_global[,settings] <- str_split_fixed(N_gsea_global$network_name,'_',length(settings))
+  
+n_genes_gsea <- N_gsea %>%
+  dplyr::select(-network_name) %>%
+  mutate(
+         density = paste0("D=", density),
+         Pathway = str_replace(Description, "nitrogen compound", "N"),
+         Pathway = str_replace(Pathway, "positive regulation of N metabolic process",
+                               "positive regulation of\nN metabolic process"),
+         Pathway = str_replace(Pathway, "regulation of N metabolic process",
+                               "regulation of N metabolic\nprocess")) %>%
+  ggplot(aes(color = Pathway, x = model, y = enrichmentScore, 
+             fill = Pathway)) +
+  ggh4x::facet_nested_wrap(vars(density, Pathway), ncol = 10, nest_line = T) + 
+   theme_pubr() +guides(color=guide_legend(nrow=5,byrow=TRUE))+ geom_point()+
+  theme(strip.background = element_blank(), axis.title.x = element_text(size = 22),
+        title = element_text(size = 16), strip.text = element_text(size = 16), 
+        legend.text = element_text(size = 12), axis.text = element_text(size = 12), 
+        legend.position = 'left',legend.spacing.y = unit(0.15, 'cm')) + ylim(c(0.5,1))+
+  ylab("Enrichment score") + 
+  ggtitle("GSEA of N pathways in the inferred GRNs");n_genes_gsea
+
+
+n_genes_gsea_global <- N_gsea_global %>%
+  dplyr::select(-network_name) %>%
+  mutate(model = str_replace(model, "bRF", "rf")) %>%
+  mutate(
+         density = paste0("D=", density),
+         Pathway = str_replace(Description, "nitrogen compound", "N"),
+         Pathway = str_replace(Pathway, "positive regulation of N metabolic process",
+                               "positive regulation of\nN metabolic process"),
+         Pathway = str_replace(Pathway, "regulation of N metabolic process",
+                               "regulation of N metabolic\nprocess")) %>%
+  ggplot(aes(color = Pathway, x = model, y = enrichmentScore, 
+             fill = Pathway)) +
+  ggh4x::facet_nested_wrap(vars(density, alpha, Pathway), ncol = 10, nest_line = T) + 
+   theme_pubr() +guides(color=guide_legend(nrow=5,byrow=TRUE))+ geom_point()+
+  theme(strip.background = element_blank(), axis.title.x = element_text(size = 22),
+        title = element_text(size = 16), strip.text = element_text(size = 16), 
+        legend.text = element_text(size = 12), axis.text = element_text(size = 12), 
+        legend.position = 'none',legend.spacing.y = unit(0.15, 'cm')) + ylim(c(0.5,1))+
+  ylab("Enrichment score") + 
+  ggtitle("GSEA of N pathways in the inferred GRNs");n_genes_gsea
+
+n_genes_gsea + n_genes_gsea_global
+
+```
 

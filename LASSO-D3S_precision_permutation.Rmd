@@ -730,8 +730,6 @@ load(file = "results/100_permutations_lasso_validation_target_cluster_pos.rdata"
 
 ```{r, fig.width=10, fig.height=10}
 load("results/100_permutations_lasso_validation_dap_mda_shuffle.rdata")
-
-
 draw_precision_recall(val_dap, "DAP-Seq")
 
 load("results/100_permutations_bRF_validation_dap.rdata")
