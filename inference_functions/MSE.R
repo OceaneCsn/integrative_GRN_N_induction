@@ -3,94 +3,13 @@ library(doParallel)
 library(parallel)
 library(foreach)
 library(doRNG)
-
 library(igraph)
 library(boot)
 library(randomForest)
 library(stringr)
 
-get_MSE <- function(net, method, nCores=ifelse(is.na(detectCores()),1,
-                                               max(detectCores() - 1, 1))){
-  registerDoParallel(cores = nCores)
-  message(paste("MSE for method", method))
-  tic()
-  if(method == "bRF" ){
-    x <- t(counts[tfs,])
-    suppressPackageStartupMessages(mmse <-
-                                     doRNG::"%dorng%"(foreach::foreach(
-                                       target = genes,  
-                                       .inorder = TRUE),
-                                       {
-                                         
-                                         target_tfs <- net[net$to == target,"from"]
-                                         if(length(target_tfs) > 0){
-                                           x_target <- x[, target_tfs]
-                                           y <- as.numeric(t(counts[target, ]))
-                                           rf <- randomForest(x=data.frame(x_target),y=y,importance=TRUE,
-                                                              mtry=round(sqrt(length(target_tfs))),ntree=1000)
-                                           mean(rf$mse)
-                                         }
-                                       }))
-    attr(mmse, "rng") <- NULL
-    mmmse <- mean(log(unlist(mmse)))
-  }
-  if(method == "LASSO-D3S" ){
-    x <- round(t(counts[tfs,]),0)
-    
-    suppressPackageStartupMessages(mmse <-
-                                     doRNG::"%dorng%"(foreach::foreach(
-                                       target = genes,  
-                                       .inorder = TRUE),
-                                       {
-                                         target_tfs <- net[net$to == target,"from"]
-                                         x_ <- round(t(counts[c(tfs, target),]),0)
-                                         if(length(target_tfs) > 0){
-                                           x_target <- x[, target_tfs]
-                                           y <- as.numeric(t(counts[target, ]))
-                                           target_tfs <- str_replace_all(target_tfs, '-', '.')
-                                           target <- str_replace_all(target, '-', '.')
-                                           lm_target <- glm(
-                                             formula = paste(paste0("`", target, "`"), '~', 
-                                                             paste(paste0("`", target_tfs, "`"), 
-                                                                   collapse = '+')), 
-                                             data = data.frame(x_), 
-                                             family = "poisson")
-                                           
-                                           cv.glm(glmfit = lm_target, K=length(y), 
-                                                  data = data.frame(t(round(counts,0))))$delta[2]
-                                         }
-                                       }))
-    
-    attr(mmse, "rng") <- NULL
-    mmmse <- mean(log(unlist(mmse)), na.rm=TRUE)
-  }
-  toc()
-  return(mmmse)
-}
 
-
-get_MSE_baseline <- function(counts, genes, nCores=ifelse(is.na(detectCores()),1,
-                                               max(detectCores() - 1, 1))){
-  registerDoParallel(cores = nCores)
-  tic()
-  suppressPackageStartupMessages(mmse <-
-                                   doRNG::"%dorng%"(foreach::foreach(
-                                     target = genes,  
-                                     .inorder = TRUE),
-                                     {
-                                       sampled <- sample(1:ncol(counts), replace = T, size = ncol(counts))
-                                       oob <- setdiff(1:ncol(counts), sampled)
-                                       
-                                       mean((counts[target,oob] - mean(counts[target, sampled]))^2)
-                                       }
-                                     ))
-    attr(mmse, "rng") <- NULL
-    mmmse <- unlist(mmse)
-  return(mmmse)
-}
-
-
-#' bRF GRN inference returns MSE
+#' weightedRF GRN inference returns MSE
 #'
 #' @param counts expression matrix with gene IDs as rownames and conditions in columns
 #' @param genes list of genes used as inputs for GRN inference
@@ -105,7 +24,7 @@ get_MSE_baseline <- function(counts, genes, nCores=ifelse(is.na(detectCores()),1
 #' @param nCores Number of cores for multithreading. (Not supported on Windows)
 #'
 #' @return The weighted list of regulatory interactions between genes and TFs
-bRF_inference_MSE <- function(counts, genes, tfs, alpha=0.25, scale = FALSE,
+weightedRF_inference_MSE <- function(counts, genes, tfs, alpha=0.25, scale = FALSE,
                           pwm_occurrence, nTrees=500, importance="%IncMSE",
                           tf_expression_permutation = FALSE,
                           seed =sample(1:10000, 1),
@@ -186,11 +105,31 @@ bRF_inference_MSE <- function(counts, genes, tfs, alpha=0.25, scale = FALSE,
 
 
 
-
-LASSO.D3S_inference_MSE <- function(counts, genes, tfs, alpha=0.25, 
+#' weightedLASSO GRN inference returns MSE
+#'
+#' @param counts Expression matrix (genes in rownames, conditions in columns)
+#' @param genes Vector of genes (in the rownames of counts) to be used in GRN inference as target genes
+#' @param tfs vector of genes (in the rownames of counts) that are transcriptional regulators
+#' to be used a predictors in the regressions for GRN inference
+#' @param alpha The strength of data integration.
+#' Numeric value (e.g 0, 0.5, 1) 
+#' @param pwm_occurrence Prior matrix Pi, giving PWM presence scores for TFs in rows
+#' and genes in columns. Can contain NAs for TFs that do not have a PWM available.
+#' @param int_pwm_noise Random perturbation applied to PWM priors in pwm_occurrence.
+#' Defalut is none, experimental.
+#' @param N Number of iterations of Stability selection
+#' @param mda_type value between "shuffle" or "zero" (weather to randomize a TF or put it to zero in 
+#' feature importance estimation)
+#' @param tf_expression_permutation weather or not to shuffle the expression of TFs between each other.
+#' @param nCores Number of cores for multithreading
+#'
+#' @return a matrix of feature importances for each TF-target pairs
+#' @export
+#'
+#' @examples
+weightedLASSO_inference_MSE <- function(counts, genes, tfs, alpha=0.25, 
                                    pwm_occurrence, int_pwm_noise = 0,
                                    N = 100, mda_type= "shuffle", 
-                                   seed =sample(1:10000, 1),
                                    tf_expression_permutation = FALSE,
                                    nCores = ifelse(is.na(detectCores()),1,
                                                    max(detectCores() - 1, 1))){
@@ -225,7 +164,6 @@ LASSO.D3S_inference_MSE <- function(counts, genes, tfs, alpha=0.25,
                                                       target_tfs <- setdiff(tfs, target)
                                                       x_target <- x[, target_tfs]
                                                       if(tf_expression_permutation){
-                                                        set.seed(sample(1:10000, 1))
                                                         # randomises the expression rows of TFs but not their ID
                                                         x_target <- x_target[,sample(target_tfs, replace = F, 
                                                                                      size = length(target_tfs))]
@@ -242,7 +180,6 @@ LASSO.D3S_inference_MSE <- function(counts, genes, tfs, alpha=0.25,
                                                       ######### Stability Selection
                                                       mse_gene = 0
                                                       n_actual = 0
-                                                      set.seed(seed)
                                                       for(n in 1:N) {
                                                         # bootstrapping observations
                                                         sampled <- sample(1:nrow(x), replace = T, size = nrow(x))
@@ -280,13 +217,7 @@ LASSO.D3S_inference_MSE <- function(counts, genes, tfs, alpha=0.25,
                                                               mses_oob <- c(mses_oob, mean((y[oob] - y_hat[,s])^2))
                                                             }
                                                             iLambdaMin = which(mses_oob == min(mses_oob))
-                                                            
-                                                            # y_hat_norm <- (y_hat[,iLambdaMin] - mean(y_hat[,iLambdaMin]))/
-                                                            #   sd(y_hat[,iLambdaMin])
-                                                            # 
-                                                            # if(normalized)
-                                                            #   mse_gene <- mse_gene + mean((y_norm[oob] - y_hat_norm[,iLambdaMin])^2)
-                                                            # else
+
                                                             mse_gene <- mse_gene + min(mses_oob)
                                                             
                                                             # selection frequency
@@ -303,3 +234,28 @@ LASSO.D3S_inference_MSE <- function(counts, genes, tfs, alpha=0.25,
   return(edges)
 }
 
+
+
+
+
+
+# 
+# get_MSE_baseline <- function(counts, genes, nCores=ifelse(is.na(detectCores()),1,
+#                                                           max(detectCores() - 1, 1))){
+#   registerDoParallel(cores = nCores)
+#   tic()
+#   suppressPackageStartupMessages(mmse <-
+#                                    doRNG::"%dorng%"(foreach::foreach(
+#                                      target = genes,  
+#                                      .inorder = TRUE),
+#                                      {
+#                                        sampled <- sample(1:ncol(counts), replace = T, size = ncol(counts))
+#                                        oob <- setdiff(1:ncol(counts), sampled)
+#                                        
+#                                        mean((counts[target,oob] - mean(counts[target, sampled]))^2)
+#                                      }
+#                                    ))
+#   attr(mmse, "rng") <- NULL
+#   mmmse <- unlist(mmse)
+#   return(mmmse)
+# }

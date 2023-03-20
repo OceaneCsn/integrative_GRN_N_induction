@@ -14,9 +14,9 @@ doParallel, parallel, foreach, doRNG, randomForest, igraph, boot, stringr, ticto
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-
-source('inference_functions/bRF.R')
-source('inference_functions/LASSO-D3S.R')
+library(tidyverse)
+source('inference_functions/weightedRF.R')
+source('inference_functions/weightedLASSO.R')
 source('inference_functions/evaluateNetwork.R')
 source('inference_functions/MSE.R')
 ```
@@ -52,53 +52,69 @@ dim(pwm_occurrence)
 ## GRN inference
 
 
-### bRf : biased Random Forests
+### weightedRF : weighted Random Forests
 
-Let's infer a GRN using bRF with $\alpha=0.8$ and $D = 0.005$.
+Let's infer a GRN using weightedRF with $\alpha=1$ and $D = 0.005$.
 
 ```{r}
-importances <- bRF_inference(counts, genes, tfs, alpha = 1, nTrees = 1000,
+importances <- weightedRF_inference(counts, genes, tfs, alpha = 1, nTrees = 1000,
                              pwm_occurrence = pwm_occurrence, nCores = 25)
 
-grn_bRF_prom <- bRF_network(importances, density = 0.005, pwm_occurrence, genes, tfs)
+grn_RF <- weightedRF_network(importances, density = 0.005, pwm_occurrence, genes, tfs)
   
-head(grn_bRF); dim(grn_bRF)
-mean(grn_bRF$pwm)
+head(grn_RF); dim(grn_RF)
+mean(grn_RF$pwm)
 ```
 
 
-### LASSO-D3S : LASSO with Differential Shrinkage and Stability Selection
+### weightedLASSO : LASSO with Differential Shrinkage and Stability Selection
 
-Let's infer a GRN using LASSO-D3S with $\alpha=0.5$ and $D = 0.005$.
+Let's infer a GRN using weightedLASSO with $\alpha=1$ and $D = 0.005$.
 
 ```{r}
-lasso_imp <- LASSO.D3S_inferenceMDA(counts, genes, tfs, alpha = 0.8, N = 50,
-                               pwm_occurrence = pwm_occurrence, nCores = 10)
-summary(c(lasso_imp))
-grn_lasso.d3s <- LASSO.D3S_network(lasso_imp, density = 0.005, pwm_occurrence, genes, tfs, decreasing = TRUE)
-head(grn_lasso.d3s); dim(grn_lasso.d3s)
-mean(grn_lasso.d3s$pwm)
+importances_lasso <- weightedLASSO_inference(counts, genes, tfs, alpha = 1, N = 50,
+                               pwm_occurrence = pwm_occurrence, nCores = 30, 
+                               robustness = 0.2)
+grn_lasso <- weightedLASSO_network(importances_lasso, density = 0.005, 
+                                       pwm_occurrence, genes, tfs, decreasing = TRUE)
+head(grn_lasso); dim(grn_lasso)
+mean(grn_lasso$pwm)
 ```
 
 
-### Validating the GRNs against ConnecTF
+### Getting prediction error on target genes (MSE)
+
+The error in predicting the expression of target genes during regressions in GRN inference can be assessed on test examples via these functions :
 
 ```{r}
-connecTF_validation <- evaluate_networks(list("bRF" = grn_bRF, "LASSO-D3S" = grn_lasso.d3s), 
+mse_RF <- weightedRF_inference_MSE(counts, genes, tfs, alpha = 1, nTrees = 1000,
+                             pwm_occurrence = pwm_occurrence, nCores = 25)
+mse_lasso <- weightedLASSO_inference_MSE(counts, genes, tfs, alpha = 1, N = 50,
+                               pwm_occurrence = pwm_occurrence, nCores = 30)
+
+data.frame(weightedRF = mse_RF,
+                  weightedLASSO = mse_lasso) %>%
+  reshape2::melt() %>%
+  rename(normalized_mse = value, model = variable) %>%
+  ggplot(aes(x= normalized_mse, fill = model)) +
+  geom_histogram(alpha = 0.5)
+
+```
+
+### Validating the GRNs against DAPSeq
+
+The following function computes precision and recall on experimental TF-DNA interactions in Arabidopsis:
+
+```{r}
+dapseq_validation <- evaluate_networks(list("bRF" = grn_RF, "LASSO-D3S" = grn_lasso), 
                                          input_genes = genes, input_tfs = tfs, 
-                                         nCores =2);connecTF_validation
+                                         validation = c("DAPSeq"),
+                                         nCores =2);dapseq_validation
 ```
 
-In this example, approximately approximately 40% of predicted edges by bRF and LASSO-D3S are supported by ConnecTF experiments.
+In this example, approximately approximately 40% of predicted edges by weightedRF and 45% of weightedLASSO are supported by DAPSeq experiments.
 
 
-### Computing prediction error
 
-```{r}
-get_MSE(grn_bRF, method = "bRF", nCores=6)
-get_MSE(grn_lasso.d3s, method = "LASSO-D3S", nCores=6)
-get_MSE_baseline(counts, unique(c(grn_lasso.d3s$from, grn_lasso.d3s$to)),nCores = 10)
-
-```
 
 

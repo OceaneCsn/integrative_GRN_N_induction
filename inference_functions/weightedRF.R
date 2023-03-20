@@ -24,22 +24,24 @@ library(tictoc)
 library(reshape2)
 library(igraph)
 
-#' bRF GRN inference
+
+#' weightedRF GRN inference
 #'
-#' @param counts expression matrix with gene IDs as rownames and conditions in columns
-#' @param genes list of genes used as inputs for GRN inference
-#' @param tfs list of TFs used as predictors for GRN inference
-#' @param alpha integration strength, value should be between 0 and 1.
-#' @param scale weather or not to scale expression data to z-scores.
-#' @param pwm_occurrence matrix of prior data Pi containing TFBS scores between
-#' TFs and genes
+#' @param counts Expression matrix (genes in rownames, conditions in columns)
+#' @param genes Vector of genes (in the rownames of counts) to be used in GRN inference as target genes
+#' @param tfs vector of genes (in the rownames of counts) that are transcriptional regulators
+#' to be used a predictors in the regressions for GRN inference
+#' @param alpha The strength of data integration.
+#' Numeric value (e.g 0, 1) or a named vector giving the value of alpha for each target gene
+#' @param pwm_occurrence Prior matrix Pi, giving PWM presence scores for TFs in rows
+#' and genes in columns. Can contain NAs for TFs that do not have a PWM available.
 #' @param nTrees Number of trees in Random Forests
 #' @param importance Importance metric in Random Forests.
-#' MDA ("%IncMSE") is the default value. MDI can be used via "IncNodePurity".
+#' relative MDA ("%IncMSE") is the default value. MDI can be used via "IncNodePurity".
 #' @param nCores Number of cores for multithreading. (Not supported on Windows)
 #'
 #' @return The weighted list of regulatory interactions between genes and TFs
-bRF_inference <- function(counts, genes, tfs, alpha=0.25, scale = FALSE,
+weightedRF_inference <- function(counts, genes, tfs, alpha=0.25, 
                           tf_expression_permutation = FALSE,
                           pwm_occurrence, nTrees=500, importance="%IncMSE",
                           nCores = ifelse(is.na(detectCores()),1,
@@ -47,11 +49,6 @@ bRF_inference <- function(counts, genes, tfs, alpha=0.25, scale = FALSE,
   
   # counts must be normalized so that genes to have comparable node purities
   if(importance=="IncNodePurity") scale = TRUE
-  
-  # z-score if scaling is required
-  if(scale){
-    counts <- (counts - rowMeans(counts))/genefilter::rowSds(counts)
-   }
   
   x <- t(counts[tfs,])
   
@@ -62,7 +59,7 @@ bRF_inference <- function(counts, genes, tfs, alpha=0.25, scale = FALSE,
   gene_specific = length(alpha) > 1
   # the regressions for each genes are done in parallel
   registerDoParallel(cores = nCores)
-  message(paste("\nbRF is running using", foreach::getDoParWorkers(), "cores."))
+  message(paste("\nweightedRF is running using", foreach::getDoParWorkers(), "cores."))
   "%dopar%" <- foreach::"%dopar%"
   tic()
   suppressPackageStartupMessages(result.reg <-
@@ -80,31 +77,14 @@ bRF_inference <- function(counts, genes, tfs, alpha=0.25, scale = FALSE,
                                                       }
                                                       p = length(target_tfs)
                                                       y <- as.numeric(t(counts[target, ]))
-                                                      
-                                                      # first version for Phd manuscript
-                                                      #weights <- 10^(prior_strength* pwm_imputed[target, target_tfs]*alpha)
-                                                      
-                                                      # do not include genes in which no known PWMs are found
-                                                      # at alpha = 1
-                                                      
-                                                      # sophie's version : not strong enough
-                                                      # weights <- ifelse(pwm_imputed[target, target_tfs] == 1, 1,
-                                                      #                   ifelse(pwm_imputed[target, target_tfs] == 0, 1-alpha,
-                                                      #                          sqrt(1-alpha^2)))
-                                                      
-                                                      # new version for a more similar behavior to the lasso for 
-                                                      # large alphas and no need for k
-                                                      # ok but not linear enough
-                                                      # weights <- ifelse(pwm_imputed[target, target_tfs] == 1, 1,
-                                                      #                   ifelse(pwm_imputed[target, target_tfs] == 0.5, 1-alpha,
-                                                      #                          -sqrt(1-(alpha-1)^2)+1))
-                                                      
+
                                                       
                                                       if(gene_specific)
                                                         alpha_gene = alpha[target]
                                                       else
                                                         alpha_gene = alpha
-                                                      # stronger version
+                                                      
+                                                      # link function between priors and subsampling weights
                                                       weights <- ifelse(pwm_imputed[target, target_tfs] == 1, sqrt(1-(alpha_gene-1)^2)+1,
                                                                         ifelse(pwm_imputed[target, target_tfs] == 0.5, 1-alpha_gene,
                                                                                -sqrt(1-(alpha_gene-1)^2)+1))
@@ -144,9 +124,9 @@ bRF_inference <- function(counts, genes, tfs, alpha=0.25, scale = FALSE,
 
 
 
-#' Threshold bRF GRN to a desired density
+#' Threshold weightedRF_inference GRN to a desired density
 #'
-#' @param mat result of bRF_inference function
+#' @param mat result of weightedRF_inference function
 #' @param density desired network density
 #' @param pwm_occurrence matrix of prior data Pi containing TFBS scores between
 #' TFs and genes
@@ -154,7 +134,7 @@ bRF_inference <- function(counts, genes, tfs, alpha=0.25, scale = FALSE,
 #' @param tfs list of TFs used as predictors for GRN inference
 #'
 #' @return dataframe of oriented edges, and their prior value in pwm_occurrence
-bRF_network <- function(mat, density, pwm_occurrence, genes, tfs){
+weightedRF_network <- function(mat, density, pwm_occurrence, genes, tfs){
   # getting the number of genes for a desired density
   nEdges = round(density * (length(genes) - 1) * length(tfs), 0)
   
