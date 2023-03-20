@@ -462,6 +462,15 @@ Heatmap((mse_other-rowMeans(mse_other))/matrixStats::rowSds(mse_other),
 dev.off()
 ```
 
+# Intersection between classes
+
+
+```{r}
+library(ggVennDiagram)
+ggVennDiagram("weightedLASSO" = )
+```
+
+
 
 ```{r, fig.height=7}
 
@@ -510,6 +519,24 @@ dev.off()
 
 ```
 
+# Intersection between classes
+
+
+```{r}
+library(ggVennDiagram)
+venn <- ggVennDiagram(list("weightedRF" = names(alphas_rf[alphas_rf!=0]),
+                   "weightedLASSO" = names(alphas_lasso[alphas_lasso!=0])), color="black")+ 
+  scale_fill_gradient(low = "#EEEEEE", high = "#4670CD")+scale_color_manual(values = c("grey", "grey"))+
+  theme(legend.position = "none")
+
+# hypergeometric test to assess the significance of the intersect
+p_enrich <- phyper(q=148, m = length(names(alphas_rf[alphas_rf!=0])), 
+                   n = length(genes) - length(names(alphas_rf[alphas_rf!=0])), 
+                   k = length( names(alphas_lasso[alphas_lasso!=0])), lower.tail = F)
+p_enrich
+
+ggexport(venn, filename = "results/classes_intersection.pdf", width = 4, height = 4)
+```
 
 
 # Clustering genes for RFs
