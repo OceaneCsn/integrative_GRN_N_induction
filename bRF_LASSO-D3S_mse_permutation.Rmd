@@ -180,12 +180,159 @@ save(edges, file = "results/100_permutations_lasso_edges_mda_shuffle.rdata")
 
 # Showing the MSE and effective data integration behaviors
 
+
+```{r}
+
+pwm_imputed <- pwm_occurrence
+pwm_imputed[is.na(pwm_imputed)] <- 0.5
+
+```
+
 ## weightedRF
 
 ```{r}
 # importance metrics and MSE for weightedRF
 load("results/brf_perumtations_mse_all_genes_predict.rdata")
 load("results/100_permutations_bRF_importances_inf.rdata")
+
+
+# needs an appropriate mats variable and a lmses variable to be loaded
+
+# plots the importance of TFs that have a specific prior value, here one,
+# as alpha is increased
+draw_gene_effective_integration <- function(gene, prior=1, type = "rank"){
+  tfs_with_motif <- names(which(pwm_imputed[gene,]== prior))
+  if(type == "rank")
+    data <- data.frame(lapply(mats, function(mat){mean(rank(mat[,gene])[tfs_with_motif])}))
+  if(type == "imp")
+    data <- data.frame(lapply(mats, function(mat){mean(mat[,gene][tfs_with_motif])}))
+  plot <- data %>%
+  gather(key = "setting", value = "summed_importance") %>%
+  separate(setting, into = c("method", "alpha", "dataset", "rep"), sep = "_") %>%
+  group_by(alpha, dataset) %>%
+  mutate(mean_imp = mean(summed_importance),
+            sd_imp = sd(summed_importance),
+         alpha = as.numeric(alpha))%>%
+  ggplot(aes(x=alpha, y = summed_importance, color = dataset, fill = dataset)) +
+  geom_point(alpha = 0.1) + geom_line(aes(y=mean_imp))+
+  geom_ribbon(aes(ymin = mean_imp - sd_imp , 
+                    ymax = mean_imp + sd_imp  ), 
+                alpha = .4)  +theme_pubr(legend = "none")+
+    ylab("Rank of TFs with a PWM in the target promoter")+
+    ggtitle("Effective data integration") + 
+    scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
+    scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))
+  plot + xlab(expression(alpha))
+}
+
+
+# plots the MSE as alpha is increased
+draw_gene_mse <- function(gene, title = NULL){
+  lmses[gene, ] %>%
+    gather() %>%
+    separate(key,
+             into = c("alpha", "rep", "MSEtype"),
+             sep = " ") %>%
+    group_by(alpha, MSEtype) %>%
+    mutate(mean_mse = mean(value, na.rm = T),
+           sd_mse = sd(value, na.rm = T),
+           dataset = str_replace(MSEtype, "_data", "Data")) %>%
+    ggplot(aes(
+      x = as.numeric(alpha),
+      y = value,
+      color = dataset,
+      fill = dataset
+    )) +ggtitle(paste("MSE"))+ylab("MSE/Var(gene)")+
+    geom_ribbon(aes(ymin = mean_mse - sd_mse , 
+                    ymax = mean_mse + sd_mse  ), 
+                alpha = .4)  +theme_pubr(legend = "top")+
+    geom_point(alpha = 0.1) + geom_line(aes(y=mean_mse))+xlab(expression(alpha))+ 
+    scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
+    scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))
+}
+
+
+# plots the MSE as a function of effective data integration
+get_opt_alpha_per_gene <- function(gene, type = "rank", return_cluster = F){
+  tfs_with_motif <- names(which(pwm_occurrence[gene,]==1))
+  # gene with no TFBS has an optimal alpha of 0
+  if(return_cluster & length(tfs_with_motif)==0) return(0)
+  # else
+  if(length(tfs_with_motif)>0){
+    
+  if(type == "rank")
+    data <- data.frame(lapply(mats, function(mat){mean(rank(mat[,gene])[tfs_with_motif])}))
+  if(type == "imp")
+    data <- data.frame(lapply(mats, function(mat){mean(mat[,gene][tfs_with_motif])}))
+  
+  inte <- data %>%
+  gather(key = "setting", value = "summed_importance") %>%
+  separate(setting, into = c("method", "alpha", "dataset", "rep"), sep = "_") %>%
+  group_by(alpha, dataset) %>%
+  mutate(mean_imp = mean(summed_importance, na.rm=T),
+            sd_imp = sd(summed_importance, na.rm=T),
+         alpha = as.numeric(alpha))
+  
+  curves <- lmses[gene, ] %>%
+    gather() %>%
+    separate(key,
+             into = c("alpha", "rep", "MSEtype"),
+             sep = " ") %>%
+    rename(dataset = MSEtype,)%>%
+    mutate(alpha = as.numeric(alpha),
+           dataset = str_replace(dataset, "true_data", "trueData"))%>%
+    full_join(inte, by = c("alpha", "dataset", "rep")) %>%
+    group_by(alpha, mean_imp, dataset) %>%
+    summarise(mean_mse = mean(value, na.rm = T),
+           sd_mse = sd(value, na.rm = T)) 
+  curves <- curves %>%
+  group_by(dataset) %>%
+    arrange(dataset, mean_imp)%>%
+      mutate(imps=curves[curves$dataset=="trueData", ]$mean_imp) %>%
+      mutate(approx_mse = approx(mean_imp,mean_mse,curves[curves$dataset=="trueData", ]$mean_imp, rule=2)$y,
+             approx_sd = approx(mean_imp,sd_mse,curves[curves$dataset=="trueData", ]$mean_imp, rule=2)$y) 
+  
+  
+  true <- curves[curves$dataset=="trueData",]
+  shuff <- curves[curves$dataset!="trueData",]
+  
+  true$div <- (shuff$approx_mse - shuff$approx_sd) - (true$mean_mse)
+  if(max(true$div)>0) alpha_opt <- true[true$div == max(true$div),]$alpha
+  else alpha_opt <- 0
+  
+  eff_opt = true[true$alpha==alpha_opt,]$mean_imp
+  padding = ifelse(alpha_opt<0.2, 10, -10)
+  if(return_cluster) return(alpha_opt)
+  
+  curves%>%
+    ggplot(aes(y=mean_mse, x = mean_imp, color = dataset, fill = dataset))+
+  # geom_ribbon(aes(ymin =mean_mse-sd_mse , 
+  #                 ymax = mean_mse + sd_mse),  alpha = .4)+ 
+    geom_ribbon(aes(x=imps,ymin =approx_mse-approx_sd ,
+                  ymax = approx_mse + approx_sd), alpha = .25)+
+    geom_point(alpha = 0.1, size = 0.5) +
+    geom_line(aes(x=mean_imp, y = mean_mse), size=1) + 
+      # geom_line(aes(x=imps, y = approx_mse), col="black")+
+  theme_pubr(legend = "none") +
+    ylab("MSE/Var(gene)") + xlab("Effective data integration") + ggtitle("MSE=f(effective integration)")+ 
+    scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
+    scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
+    geom_vline(xintercept = eff_opt, size = 2, col="#4670CD") +
+  annotate("text", x=eff_opt+padding, y=max(true$mean_mse), 
+           label=paste("Optimal data integration\nalpha =", alpha_opt), 
+           angle=90, col = "#4670CD", size =5 )
+  }
+  else ggplot()
+}
+draw_gene_effective_integration(gene, prior = 1) +
+  draw_gene_mse(gene)+
+  get_opt_alpha_per_gene(gene)+
+  plot_annotation(title = gene)
+
+gene_no_benefit <- "AT1G30270"
+gene_benefit <- "AT1G14720"
+
+gene <- gene_benefit
 ```
 
 
