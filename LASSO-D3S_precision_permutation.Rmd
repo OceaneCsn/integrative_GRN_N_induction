@@ -58,7 +58,6 @@ subset <- genes
 ```{r, eval=FALSE}
 nCores = 45
 mats <- list()
-
 nrep <- 100
 for(alpha in ALPHAS){ # exploring PWM integration strength
   for(rep in 1:nrep){ # exploring inherent variability
@@ -125,8 +124,7 @@ for(name in names(mats)){ # exploring importance threshold stringency
       }
 }
 
-save(edges, file = "results/100_permutations_lasso_edges_mda_shuffle_0.1.rdata")
-
+save(edges, file = "results/100_permutations_lasso_edges_mda_shuffle.rdata")
 ```
 
 

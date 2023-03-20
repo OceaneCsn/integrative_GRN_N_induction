@@ -1,5 +1,5 @@
 ---
-title: "Integrative GRN inference : permuting the expression and motifs of TFs: effect on expression prediction"
+title: "Integrative GRN inference : effect of permuting the expression and motifs of TFs on expression prediction"
 output: 
   html_document:
     df_print: paged
@@ -13,26 +13,20 @@ output:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, warning = F, message = F, fig.width = 10)
 
-source('inference_functions/bRF.R')
-source('inference_functions/LASSO-D3S.R')
+source('inference_functions/weightedRF.R')
+source('inference_functions/weightedLASSO.R')
 source('inference_functions/evaluateNetwork.R')
 source('inference_functions/MSE.R')
-# library(ComplexHeatmap)
 library(ggplot2)
 library(tidyverse)
 library(ggpubr)
 library(patchwork)
 library(ComplexHeatmap)
-
-
 ```
 
-This document demonstrates the use of the bRF and LASSO-D3S functions for integrative GRN inference.
+This document demonstrates the use of the weightedRF and weightedLASSO functions for integrative GRN inference.
 
-Those functions infer the regulatory pathways of *Arabidopsis thaliana*'s roots in response to nitrate (N) induction from [Varala et al., 2018](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE97500).
-
-They use as inputs the expression profiles of N-responsive genes and TFBS information. 
-Prior TFBS information was built by searching in the promoters of the N-responsive genes the PWM of the N-responsive regulators. 
+It shows how to select one optimal alpha value per gene, in order to apply data integration only to the target genes for which expression prediction error is reduced by using PWM prior information, significantly more than in a baseline model.
 
 # Data import
 
@@ -48,31 +42,28 @@ dim(pwm_occurrence)
 
 
 ALPHAS <- seq(0,1, by = 0.1)
-
-# subset <- sample(genes, replace = F, size = 20)
-subset <- genes
-
 ```
 
 
+# Prediction error as a function of data integration strengh (alpha) 
 
-# Is the mse variation worsened by unmapping prior values and expression profiles of TFs?
+The following steps are time and CPU intensive, so the result files can just be loaded to be analysed in further steps.
 
+## For weightedRF
 
-## For Rfs
-
+Generating 100 repetitions of weightedRF MSE estimation on true data, and on shuffled data.
 
 ```{r}
-lmses <- data.frame(row.names = subset)
+lmses <- data.frame(row.names = genes)
 N <-100
 for(alpha in ALPHAS){
   for(perm in 1:N){
-    lmses[,paste(as.character(alpha), perm, "true_data")] <- bRF_inference_MSE(counts, subset, tfs, alpha = alpha, nTrees = 2000,
+    lmses[,paste(as.character(alpha), perm, "true_data")] <- weightedRF_inference_MSE(counts, subset, tfs, alpha = alpha, nTrees = 2000,
                              pwm_occurrence = pwm_occurrence, nCores = 45, tf_expression_permutation = F)
   }
 
   for(perm in 1:N){
-    lmses[,paste(as.character(alpha), perm, "shuffled")] <- bRF_inference_MSE(counts, subset, tfs, alpha = alpha, nTrees = 2000,
+    lmses[,paste(as.character(alpha), perm, "shuffled")] <- weightedRF_inference_MSE(counts, subset, tfs, alpha = alpha, nTrees = 2000,
                            pwm_occurrence = pwm_occurrence, nCores = 45, tf_expression_permutation = T)
   }
 }
@@ -81,40 +72,127 @@ save(lmses, file = "results/brf_perumtations_mse_all_genes_predict.rdata")
 subset<-unique(rownames(lmses))
 ```
 
+
+## For weightedLASSO 
+
+Generating 100 repetitions of weightedLASSO MSE estimation on true data, and on shuffled data.
+
+```{r, eval=FALSE}
+lmses <- data.frame(row.names = subset)
+N<-100
+for(alpha in ALPHAS){
+  for(perm in 1:N){
+    lmses[,paste(as.character(alpha), perm, "true_data")] <- weightedLASSO_inference_MSE(counts, subset, tfs, alpha = alpha, N=100,
+                             pwm_occurrence = pwm_occurrence, nCores = 40, tf_expression_permutation = F)
+
+    lmses[,paste(as.character(alpha), perm, "shuffled")] <- weightedLASSO_inference_MSE(counts, subset, tfs, alpha = alpha, N=100,
+                           pwm_occurrence = pwm_occurrence, nCores = 40, tf_expression_permutation = T)
+  }
+}
+save(lmses, file = "results/lasso_perumtations_mse_all_genes.rdata")
+```
+
+
+# Getting the importance metrics of inferred edges in order to measure effective data integration and build inferred GRNs
+
+## For weightedRF
+
+```{r, eval=FALSE}
+nCores = 45
+mats <- list()
+nrep <- 100
+for(alpha in ALPHAS){ # exploring PWM integration strength
+  for(rep in 1:nrep){ # exploring inherent variability
+    
+    mat_rf <- weightedRF_inference(counts, genes, tfs, nTrees = 2000,
+                            alpha = alpha,
+                            pwm_occurrence = pwm_occurrence,
+                            nCores = nCores,
+                            importance = "%IncMSE")
+    
+    mat_rf_perm <- weightedRF_inference(counts, genes, tfs, nTrees = 2000,
+                            alpha = alpha, tf_expression_permutation = TRUE,
+                            pwm_occurrence = pwm_occurrence,
+                            nCores = nCores,
+                            importance = "%IncMSE")
+    
+    mats[[paste0("bRF_", as.character(alpha),  '_trueData_', rep)]] <- mat_rf
+    mats[[paste0("bRF_", as.character(alpha),  '_shuffled_', rep)]] <- mat_rf_perm
+    
+  }
+}
+save(mats, file = "results/100_permutations_bRF_importances_inf.rdata")
+
+# thresholds the regulatory weights at a certain density to build GRNs
+edges <- list()
+densities <- c(0.005, 0.01,0.05)
+for(name in names(mats)){ 
+      for(density in densities){# exploring importance threshold stringency
+        edges[[paste0(name, '_', density)]] <-
+        weightedRF_network(mats[[name]], density = density, pwm_occurrence, genes, tfs)
+      }
+}
+save(edges, file = "results/100_permutations_bRF_edges_inf.rdata")
+```
+
+## For weightedLASSO
+
+```{r, eval=FALSE}
+nCores = 45
+mats <- list()
+nrep <- 100
+for(alpha in ALPHAS){ # exploring PWM integration strength
+  for(rep in 1:nrep){ # exploring inherent variability
+    
+    mat_lasso <- weightedLASSO_inference(counts, genes, tfs,
+                                     alpha = alpha, N = 100, robustness = 0.2,
+                                     int_pwm_noise = 0, mda_type = "shuffle",
+                                     pwm_occurrence = pwm_occurrence,
+                                     nCores = nCores)
+    
+    mat_lasso_perm <- weightedLASSO_inference(counts, genes, tfs,
+                                     alpha = alpha, N = 100, robustness = 0.2,
+                                     tf_expression_permutation = TRUE,
+                                     int_pwm_noise = 0, mda_type = "shuffle",
+                                     pwm_occurrence = pwm_occurrence,
+                                     nCores = nCores)
+    
+    mats[[paste0("LASSO_", as.character(alpha),  '_trueData_', rep)]] <- mat_lasso
+    mats[[paste0("LASSO_", as.character(alpha),  '_shuffled_', rep)]] <- mat_lasso_perm
+    
+  }
+}
+save(mats, file = "results/100_permutations_lasso_importances_mda_shuffle.rdata")
+
+# thresholds the regulatory weights at a certain density to build GRNs
+edges <- list()
+densities <- c(0.005, 0.01,0.05)
+for(name in names(mats)){ 
+      for(density in densities){# exploring importance threshold stringency
+        edges[[paste0(name, '_', density)]] <-
+        weightedLASSO_network(mats[[name]], density = density, pwm_occurrence, 
+                          genes, tfs, decreasing = TRUE)
+      }
+}
+save(edges, file = "results/100_permutations_lasso_edges_mda_shuffle.rdata")
+```
+
+
+# Showing the MSE and effective data integration behaviors
+
+## weightedRF
+
+```{r}
+# importance metrics and MSE for weightedRF
+load("results/brf_perumtations_mse_all_genes_predict.rdata")
+load("results/100_permutations_bRF_importances_inf.rdata")
+```
+
+
+
+
 ```{r}
 
-draw_gene <- function(gene){
-  lmses[gene,] %>%
-    gather() %>%
-    separate(key, into = c("alpha", "rep", "MSEtype"), sep = " ") %>%
-    ggplot(aes(x=alpha, y=value, group =interaction(rep, MSEtype), 
-               color = MSEtype))+ggtitle(gene)+ylab("MSE/Var(gene)")+
-    xlab("alpha")+
-    geom_line()+ggtitle(gene)+theme_pubr(legend = "top")
-}
-
-
-draw_gene_mean_sd <- function(gene, title = NULL){
-  lmses[gene, ] %>%
-    gather() %>%
-    separate(key,
-             into = c("alpha", "rep", "MSEtype"),
-             sep = " ") %>%
-    group_by(alpha, MSEtype) %>%
-    mutate(mean_mse = mean(value, na.rm = T),
-           sd_mse = sd(value, na.rm = T)) %>%
-    ggplot(aes(
-      x = as.numeric(alpha),
-      y = value,
-      color = MSEtype,
-      fill = MSEtype
-    )) +ggtitle(paste(gene, title))+ylab("MSE/Var(gene)")+
-    geom_ribbon(aes(ymin = mean_mse - sd_mse , 
-                    ymax = mean_mse + sd_mse  ), 
-                alpha = .4)  +theme_pubr(legend = "top")+
-    geom_point(alpha = 0.1) + geom_smooth(se=F)+xlab("alpha")
-
-}
 
 get_diff_curves <- function(lmses){
   data <- lmses %>%
@@ -135,45 +213,10 @@ get_diff_curves <- function(lmses){
   data_true$sd_mse_perm <- data_perm$sd_mse
   return(data_true %>%
     mutate(mean_mse_diff = (mean_mse-mean_mse_perm)/sd_mse_perm))
-  # %>%
-  #   ggplot(aes(x=as.numeric(alpha), y=mean_mse_diff, color = gene))+
-  #   geom_line()
 }
 
 
-# for(gene in sample(genes,50, replace = F)){
-#     print(draw_gene(gene)+draw_gene_mean_sd(gene))
-# }
-
-
 ```
-
-## For lasso 
-
-```{r, eval=FALSE}
-lmses <- data.frame(row.names = subset)
-N<-100
-for(alpha in ALPHAS){
-  # set.seed(121314)
-  for(perm in 1:N){
-    lmses[,paste(as.character(alpha), perm, "true_data")] <- LASSO.D3S_inference_MSE(counts, subset, tfs, alpha = alpha, N=100,
-                             pwm_occurrence = pwm_occurrence, nCores = 40, tf_expression_permutation = F)
-
-    lmses[,paste(as.character(alpha), perm, "shuffled")] <- LASSO.D3S_inference_MSE(counts, subset, tfs, alpha = alpha, N=100,
-                           pwm_occurrence = pwm_occurrence, nCores = 40, tf_expression_permutation = T)
-  }
-
-}
-save(lmses, file = "results/lasso_perumtations_mse_all_genes.rdata")
-
-# load("results/lasso_perumtations_mse_all_genes.rdata")
-# for(gene in subset){
-#     print(draw_gene(gene) +draw_gene_mean_sd(gene))
-# }
-```
-
-
-
 
 
 
@@ -183,14 +226,9 @@ Based on the difference curves between true and permuted data
 
 
 ```{r}
-load("results/brf_perumtations_mse_all_genes.rdata")
-
+load("results/brf_perumtations_mse_all_genes_predict.rdata")
 
 diffs <- get_diff_curves(lmses)
-diffs %>%
-  ggplot(aes(x=as.numeric(alpha), y=mean_mse_diff, group = gene))+
-  geom_line(alpha = 0.2)
-
 
 fractions_out <- diffs %>%
   mutate(diff_greater_than_sd = ifelse(abs(mean_mse_diff)>1, 1, 0)) %>%
@@ -207,9 +245,6 @@ diff_curves <- diffs[c("gene", "alpha", "mean_mse_diff")] %>%
 diff_curves<-diff_curves[fractions_out[rownames(diff_curves)] > 0,]
   
 cor_clust = function(x) hclust(as.dist(1-cor(t(x))), method = "average")
-
-Heatmap(diff_curves, cluster_rows = cor_clust,
-        cluster_columns = F, show_row_names = F)
 
 
 clusters_rf <- cutree(cor_clust(diff_curves), k = 2)

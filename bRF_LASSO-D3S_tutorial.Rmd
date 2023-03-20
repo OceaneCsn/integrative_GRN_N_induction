@@ -21,7 +21,7 @@ source('inference_functions/evaluateNetwork.R')
 source('inference_functions/MSE.R')
 ```
 
-This document demonstrates the use of the bRF and LASSO-D3S functions for integrative GRN inference.
+This document demonstrates the use of the weightedRF and weightedLASSO functions for integrative GRN inference.
 
 Those functions infer the regulatory pathways of *Arabidopsis thaliana*'s roots in response to nitrate (N) induction from [Varala et al., 2018](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE97500).
 
@@ -54,7 +54,7 @@ dim(pwm_occurrence)
 
 ### weightedRF : weighted Random Forests
 
-Let's infer a GRN using weightedRF with $\alpha=1$ and $D = 0.005$.
+Let's infer a GRN using weightedRF with $\alpha=1$ and a density $D = 0.005$.
 
 ```{r}
 importances <- weightedRF_inference(counts, genes, tfs, alpha = 1, nTrees = 1000,
@@ -69,7 +69,7 @@ mean(grn_RF$pwm)
 
 ### weightedLASSO : LASSO with Differential Shrinkage and Stability Selection
 
-Let's infer a GRN using weightedLASSO with $\alpha=1$ and $D = 0.005$.
+Let's infer a GRN using weightedLASSO with $\alpha=1$ and a density $D = 0.005$.
 
 ```{r}
 importances_lasso <- weightedLASSO_inference(counts, genes, tfs, alpha = 1, N = 50,
@@ -114,7 +114,5 @@ dapseq_validation <- evaluate_networks(list("bRF" = grn_RF, "LASSO-D3S" = grn_la
 
 In this example, approximately approximately 40% of predicted edges by weightedRF and 45% of weightedLASSO are supported by DAPSeq experiments.
 
-
-
-In agreement with the paper results, we encourage the use of gene-specific alphas, that can be determined by finding the values of alpha offering low prediction error as data integration increases, significantly more than on shuffled data.
+> In agreement with the paper results, we encourage the use of gene-specific alphas, that can be determined by finding for each gene the value of alpha offering low prediction error as a function data integration, as comapred to baseline (shuffled) data. This is demonstrated in other scripts of this repository, namely XXX.
 
