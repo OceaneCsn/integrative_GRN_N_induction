@@ -182,13 +182,24 @@ save(edges, file = "results/100_permutations_lasso_edges_mda_shuffle.rdata")
 
 
 ```{r}
-
+# prior values
 pwm_imputed <- pwm_occurrence
 pwm_imputed[is.na(pwm_imputed)] <- 0.5
 
+# parallel sapply to parallelise the computing of optimal alphas
+mcsapply <- function (X, FUN, ..., simplify = TRUE, USE.NAMES = TRUE) {
+  FUN <- match.fun(FUN)
+  answer <- parallel::mclapply(X = X, FUN = FUN, ...)
+  if (USE.NAMES && is.character(X) && is.null(names(answer))) 
+    names(answer) <- X
+  if (!isFALSE(simplify) && length(answer)) 
+    simplify2array(answer, higher = (simplify == "array"))
+  else answer
+}
 ```
 
 ## weightedRF
+
 
 ```{r, fig.width=9, fig.height=8}
 # importance metrics and MSE for weightedRF
@@ -220,6 +231,7 @@ draw_gene_effective_integration <- function(gene, prior=1, type = "rank"){
                 alpha = .4)  +theme_pubr(legend = "none")+
     ylab("Rank of TFs with Pi=1")+
     ggtitle("Effective data integration") + 
+    labs(subtitle = gene)+
     scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
     scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))
   plot + xlab(expression(alpha))
@@ -345,12 +357,63 @@ p <- draw_gene_effective_integration(gene_benefit, prior = 1) +
 
 
 figure <- n/o/p
-ggexport(figure, filename = "results/gene_examples_weightedRF.pdf", width = 10, height = 8)
+ggexport(figure, filename = "results/gene_examples_weightedRF.pdf", width = 10, height = 9)
+
+
+# value of alpha per genes:
+alphas_rf <- mcsapply(genes, get_opt_alpha_per_gene, type = "rank", 
+                          return_cluster=T, mc.cores=34)
+save(alphas_rf, file = "results/alpha_per_gene_weighted_RF.rdata")
+
+
+load("results/alpha_per_gene_weighted_RF.rdata")
+
 
 ```
 
 
+Doing the same for weightedLASSO:
 
+
+```{r}
+
+# for the lasso
+load("results/lasso_perumtations_mse_all_genes.rdata")
+load("results/100_permutations_lasso_importances_mda_shuffle.rdata")
+
+
+gene_no_benefit <- "AT1G30270"
+gene_benefit_optimum <- "AT1G14720"
+gene_benefit <- "AT1G30080"
+
+n <- draw_gene_effective_integration(gene_no_benefit, prior = 1) +
+  draw_gene_mse(gene_no_benefit)+
+  get_opt_alpha_per_gene(gene_no_benefit)+
+  plot_annotation(title = gene_no_benefit) 
+o <- draw_gene_effective_integration(gene_benefit_optimum, prior = 1) +
+  draw_gene_mse(gene_benefit_optimum)+theme(legend.position = "none")+
+  get_opt_alpha_per_gene(gene_benefit_optimum)+
+  plot_annotation(title = gene_benefit_optimum) 
+p <- draw_gene_effective_integration(gene_benefit, prior = 1) +
+  draw_gene_mse(gene_benefit)+theme(legend.position = "none")+
+  get_opt_alpha_per_gene(gene_benefit)+
+  plot_annotation(title = gene_benefit)
+
+
+figure <- n/o/p
+ggexport(figure, filename = "results/gene_examples_weightedLASSO.pdf", width = 10, height = 9)
+
+
+# value of alpha per genes:
+alphas_lasso <- mcsapply(genes, get_opt_alpha_per_gene, type = "rank", 
+                          return_cluster=T, mc.cores=34)
+save(alphas_lasso, file = "results/alpha_per_gene_weighted_LASSO.rdata")
+
+```
+
+# Plotting MSE behaviour for all genes
+
+Depending on their 
 
 ```{r}
 
