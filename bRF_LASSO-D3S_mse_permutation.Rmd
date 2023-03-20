@@ -190,7 +190,7 @@ pwm_imputed[is.na(pwm_imputed)] <- 0.5
 
 ## weightedRF
 
-```{r}
+```{r, fig.width=9, fig.height=8}
 # importance metrics and MSE for weightedRF
 load("results/brf_perumtations_mse_all_genes_predict.rdata")
 load("results/100_permutations_bRF_importances_inf.rdata")
@@ -218,7 +218,7 @@ draw_gene_effective_integration <- function(gene, prior=1, type = "rank"){
   geom_ribbon(aes(ymin = mean_imp - sd_imp , 
                     ymax = mean_imp + sd_imp  ), 
                 alpha = .4)  +theme_pubr(legend = "none")+
-    ylab("Rank of TFs with a PWM in the target promoter")+
+    ylab("Rank of TFs with Pi=1")+
     ggtitle("Effective data integration") + 
     scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
     scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))
@@ -301,7 +301,7 @@ get_opt_alpha_per_gene <- function(gene, type = "rank", return_cluster = F){
   else alpha_opt <- 0
   
   eff_opt = true[true$alpha==alpha_opt,]$mean_imp
-  padding = ifelse(alpha_opt<0.2, 10, -10)
+  padding = ifelse(alpha_opt<0.2, 17, -17)
   if(return_cluster) return(alpha_opt)
   
   curves%>%
@@ -318,21 +318,35 @@ get_opt_alpha_per_gene <- function(gene, type = "rank", return_cluster = F){
     scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
     scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
     geom_vline(xintercept = eff_opt, size = 2, col="#4670CD") +
-  annotate("text", x=eff_opt+padding, y=max(true$mean_mse), 
-           label=paste("Optimal data integration\nalpha =", alpha_opt), 
-           angle=90, col = "#4670CD", size =5 )
+  annotate("text", x=eff_opt+padding, y=max(shuff$mean_mse), 
+           label=paste("Optimal\nintegration:\nalpha =", alpha_opt), 
+           angle=0, col = "#4670CD", size =3.5 )
   }
   else ggplot()
 }
-draw_gene_effective_integration(gene, prior = 1) +
-  draw_gene_mse(gene)+
-  get_opt_alpha_per_gene(gene)+
-  plot_annotation(title = gene)
+
 
 gene_no_benefit <- "AT1G30270"
-gene_benefit <- "AT1G14720"
+gene_benefit_optimum <- "AT1G14720"
+gene_benefit <- "AT1G30080"
 
-gene <- gene_benefit
+n <- draw_gene_effective_integration(gene_no_benefit, prior = 1) +
+  draw_gene_mse(gene_no_benefit)+
+  get_opt_alpha_per_gene(gene_no_benefit)+
+  plot_annotation(title = gene_no_benefit) 
+o <- draw_gene_effective_integration(gene_benefit_optimum, prior = 1) +
+  draw_gene_mse(gene_benefit_optimum)+theme(legend.position = "none")+
+  get_opt_alpha_per_gene(gene_benefit_optimum)+
+  plot_annotation(title = gene_benefit_optimum) 
+p <- draw_gene_effective_integration(gene_benefit, prior = 1) +
+  draw_gene_mse(gene_benefit)+theme(legend.position = "none")+
+  get_opt_alpha_per_gene(gene_benefit)+
+  plot_annotation(title = gene_benefit)
+
+
+figure <- n/o/p
+ggexport(figure, filename = "results/gene_examples_weightedRF.pdf", width = 10, height = 8)
+
 ```
 
 
