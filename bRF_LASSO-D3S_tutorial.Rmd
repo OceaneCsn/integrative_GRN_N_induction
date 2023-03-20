@@ -116,5 +116,5 @@ In this example, approximately approximately 40% of predicted edges by weightedR
 
 
 
-
+In agreement with the paper results, we encourage the use of gene-specific alphas, that can be determined by finding the values of alpha offering low prediction error as data integration increases, significantly more than on shuffled data.
 
