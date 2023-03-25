@@ -151,7 +151,7 @@ weightedLASSO_inference_MSE <- function(counts, genes, tfs, alpha=0.25,
   
   # parallel computing of the lasso
   registerDoParallel(cores = nCores)
-  message(paste("\nUsing LASSO-D3S with", foreach::getDoParWorkers(), "cores. alpha =", alpha))
+  message(paste("\nUsing weightedLASSO with", foreach::getDoParWorkers(), "cores. alpha =", alpha))
   "%dopar%" <- foreach::"%dopar%"
   tic()
   suppressPackageStartupMessages(result.reg <-
@@ -188,10 +188,10 @@ weightedLASSO_inference_MSE <- function(counts, genes, tfs, alpha=0.25,
                                                         if(length(oob)>1){ #ensures a test set of sufficient size
                                                           
                                                           # perturbating differential shrinkage
-                                                          noisy_penalty_factor <- pmax(pmin(penalty_factor + 
-                                                                                              runif(n=length(penalty_factor),
-                                                                                                    min = -int_pwm_noise*alpha, 
-                                                                                                    max = int_pwm_noise*alpha), 1),0)
+                                                          # noisy_penalty_factor <- pmax(pmin(penalty_factor + 
+                                                          #                                     runif(n=length(penalty_factor),
+                                                          #                                           min = -int_pwm_noise*alpha, 
+                                                          #                                           max = int_pwm_noise*alpha), 1),0)
                                                           
                                                           # models are try-catched because in rare cases glmnet
                                                           # crashes for convergence issues
@@ -199,26 +199,24 @@ weightedLASSO_inference_MSE <- function(counts, genes, tfs, alpha=0.25,
                                                             error = function(cnd) "cv.glmnet internal error due to convergence issues",
                                                             
                                                             # model training on sampled observations
-                                                            {mymodels_pen = glmnet(
+                                                            # estimating lambda by a 5 fold CV
+                                                            {mymodels_pen = cv.glmnet(
                                                               x_target[sampled,],
                                                               y[sampled],
                                                               maxit=maxit,
                                                               family = "poisson",
-                                                              penalty.factor = noisy_penalty_factor)
+                                                              nfolds = 5,
+                                                              penalty.factor = penalty_factor)
+                                                            
+                                                            # value of lambda 1se
+                                                            ilambda.1se <- which(mymodels_pen$lambda == mymodels_pen$lambda.1se)
                                                             
                                                             # model predictions on OOB observations
-                                                            y_hat <- exp(predict.glmnet(mymodels_pen, newx = x_target[oob,],
-                                                                                        type = "link"))
-                                                            
-                                                            # getting lambda value granting minimal MSE 
-                                                            # on OOB observations
-                                                            mses_oob <- c()
-                                                            for(s in colnames(y_hat)){
-                                                              mses_oob <- c(mses_oob, mean((y[oob] - y_hat[,s])^2))
-                                                            }
-                                                            iLambdaMin = which(mses_oob == min(mses_oob))
-
-                                                            mse_gene <- mse_gene + min(mses_oob)
+                                                            y_hat <- exp(predict(mymodels_pen, newx = x_target[oob,],
+                                                                                        type = "link", s= ilambda.1se))
+                                                            # prediction MSE on OOB data
+                                                            mse_oob <- mean((y_hat - y[oob])^2)
+                                                            mse_gene <- mse_gene + mse_oob
                                                             
                                                             # selection frequency
                                                             n_actual = n_actual+1
@@ -226,6 +224,7 @@ weightedLASSO_inference_MSE <- function(counts, genes, tfs, alpha=0.25,
                                                           )
                                                         }
                                                       }
+                                                      # the mse is normalized by the gene variance
                                                       mse_gene/(n_actual*sd(y)^2)
                                                     }))
   attr(result.reg, "rng") <- NULL # It contains the whole sequence of RNG seeds

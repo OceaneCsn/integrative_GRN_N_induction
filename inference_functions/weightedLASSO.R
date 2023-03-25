@@ -36,7 +36,7 @@ weightedLASSO_inference <- function(counts, genes, tfs, alpha=0.25,
                                 pwm_occurrence, int_pwm_noise = 0,
                                 N = 100, mda_type="shuffle",
                                 tf_expression_permutation = FALSE,
-                                robustness = 0.2,
+                                nfolds.cv=5,
                                 nCores = ifelse(is.na(detectCores()),1,
                                                 max(detectCores() - 1, 1))){
   
@@ -92,9 +92,24 @@ weightedLASSO_inference <- function(counts, genes, tfs, alpha=0.25,
                                                       
                                                       ######### Stability Selection
                                                       n_actual = 0
+                                                      mse_gene = c()
                                                       for(n in 1:N) {
                                                         # bootstrapping observations
-                                                        sampled <- sample(1:nrow(x), replace = T, size = nrow(x))
+                                                        # sampled <- sample(1:nrow(x), replace = T, size = nrow(x))
+                                                        
+                                                        # bootstrapping observations and controlling that
+                                                        # duplicated observations are in the same fold
+                                                        idx <- sample(1:length(y), replace = F)
+                                                        folds_bg <- split(idx, ceiling(seq_along(idx)/(length(y)/nfolds.cv)))
+                                                        breaks <- c(0,cumsum(lengths(folds_bg)))
+                                                        
+                                                        sampled <- rep(0, length(y))
+                                                        foldid <- rep(0, length(y))
+                                                        for(fold in 1:length(folds_bg)){
+                                                          sampled[(breaks[fold]+1):(breaks[fold+1])] <- 
+                                                            sample(folds_bg[[fold]], replace = T, size = lengths(folds_bg)[fold])
+                                                          foldid[(breaks[fold]+1):(breaks[fold+1])] <- fold
+                                                        }
                                                         oob <- setdiff(1:nrow(x), sampled)
                                                         
                                                         if(length(oob)>1){ #ensures a test set of sufficient size
@@ -111,87 +126,68 @@ weightedLASSO_inference <- function(counts, genes, tfs, alpha=0.25,
                                                             error = function(cnd) "cv.glmnet internal error due to convergence issues",
                                                             
                                                             # model training on sampled observations
-                                                            {mymodels_pen = glmnet(
+                                                            {mymodels_pen = cv.glmnet(
                                                               x_target[sampled,],
                                                               y[sampled],
                                                               maxit=maxit,
                                                               family = "poisson",
+                                                              nfolds = nfolds.cv,
+                                                              foldid = foldid,
                                                               penalty.factor = penalty_factor)
                                                             
-                                                            # model predictions on OOB observations
-                                                            y_hat <- exp(predict.glmnet(mymodels_pen, newx = x_target[oob,],
-                                                                                        type = "link"))
-                                                            
-                                                            # getting lambda value granting minimal MSE 
-                                                            # on OOB observations
-                                                            mses_oob <- c()
-                                                            for(s in colnames(y_hat)){
-                                                              mses_oob <- c(mses_oob, mean((y[oob] - y_hat[,s])^2))
-                                                            }
-                                                            iLambdaMin = which(mses_oob == min(mses_oob))
+                                                            # value of lambda 1se
+                                                            ilambda.1se <- which(mymodels_pen$lambda == mymodels_pen$lambda.1se)
                                                             
                                                             # feature selection for optimal lambda
-                                                            selected_tfs <- names(which(mymodels_pen$beta[, iLambdaMin] != 0))
+                                                            selected_tfs <- names(which(mymodels_pen$glmnet.fit$beta[, ilambda.1se] != 0))
                                                             
                                                             # selection frequency
-                                                            importances[selected_tfs] <- importances[selected_tfs]+1
+                                                            # importances[selected_tfs] <- importances[selected_tfs]+1
+                                                            
+                                                            # model predictions on OOB observations
+                                                            y_hat <- exp(predict(mymodels_pen, newx = x_target[oob,],
+                                                                                 type = "link", s= ilambda.1se))
+                                                            # prediction of MSE on OOB data
+                                                            mse_oob <- mean((y_hat - y[oob])^2)
+                                                            mse_gene <- c(mse_gene, mse_oob)
                                                             n_actual = n_actual+1
+                                                            # computing MDA on OOB data
+                                                            for(sel_tf in selected_tfs){
+                                                              x_target_rand <- x_target[oob,]
+
+                                                              # randomizes the conditions to break the link
+                                                              # between regulator and target
+                                                              if(mda_type == "shuffle")
+                                                                x_target_rand[,sel_tf] <- sample(x_target_rand[,sel_tf],
+                                                                                                 size = nrow(x_target_rand),
+                                                                                                 replace = F)
+                                                              # alternative mda : removes the variable from predictors
+                                                              if(mda_type == "zero")
+                                                                x_target_rand[,sel_tf] <- 0
+
+                                                              y_hat_rand <- exp(predict(mymodels_pen, newx = x_target_rand,
+                                                                                               type = "link", s = ilambda.1se))
+
+                                                              mse_rand <- mean((y_hat_rand - y[oob])^2)
+                                                              
+                                                              importances[sel_tf] <- importances[sel_tf] +
+                                                                max(0,(mse_rand - mse_oob)/mse_rand)
+                                                            }
+                                                            
+                                                            
                                                             }
                                                           )
                                                         }
                                                       }
                                                       
-                                                      robust_tfs  = NULL
-                                                      ###### Unpenalized regression on robust TFs
-                                                      to_return <- setNames(rep(0, length(tfs)), tfs)
-                                                      tryCatch(
-                                                        error = function(cnd) "a problem occurred in the unpenalized regressions for this gene.",
-                                                        
-                                                        # model training on sampled observations
-                                                        {
-                                                          robust_tfs <- names(importances[importances>=n_actual*robustness])
-                                                        # non penalized models with only robustly selected TFs
-                                                        if(length(robust_tfs)>0){
-                                                          lm_target <- glm(
-                                                            formula = paste(paste0("`", target, "`"), '~', 
-                                                                            paste(paste0("`", robust_tfs, "`"), 
-                                                                                  collapse = '+')), 
-                                                            data = data.frame(t(counts), check.names = F), 
-                                                            family = "poisson")
-                                                          
-                                                          mse <- mean((lm_target$fitted.values - y)^2)
-                                                          
-                                                          for(sel_tf in robust_tfs){
-                                                            x_target_rand <- x_target
-                                                            
-                                                            # randomizes the conditions to break the link
-                                                            # between regulator and target
-                                                            if(mda_type == "shuffle")
-                                                              x_target_rand[,sel_tf] <- sample(x_target_rand[,sel_tf], 
-                                                                                               size = nrow(x_target_rand), 
-                                                                                               replace = F)
-                                                            # alternative mda : removes the variable from predictors
-                                                            if(mda_type == "zero")
-                                                              x_target_rand[,sel_tf] <- 0
-                                                            
-                                                            y_hat_rand <- exp(predict.glm(lm_target, newdata = data.frame(x_target_rand),
-                                                                                             type = "link"))
-                                                            
-                                                            mse_rand <- mean((y_hat_rand - y)^2)
-                                                            
-                                                            to_return[sel_tf] <- to_return[sel_tf] + 
-                                                              (mse_rand - mse )/ mse_rand
-                                                            
-                                                          }
-                                                        }
-                                                        })
-                                                      to_return[tfs]
+                                                      c(importances[tfs]/N, setNames(median(mse_gene)/(sd(y)^2), "mse"))
                                                     }))
   attr(result.reg, "rng") <- NULL # It contains the whole sequence of RNG seeds
   edges <- result.reg
   toc()
   return(edges)
 }
+
 
 
 
@@ -210,6 +206,7 @@ weightedLASSO_network <- function(mat, density, pwm_occurrence, genes, tfs, decr
   # getting the number of genes for a desired density
   nEdges = round(density * (length(genes) - 1) * length(tfs), 0)
   
+  mat <- mat[!str_detect(rownames(mat), 'mse'),]
   # getting the ranked list of edges
   links <- getLinkListLasso(mat, reportMax = nEdges, decreasing=decreasing)
   network <- graph_from_data_frame(links, directed = T)
@@ -547,4 +544,194 @@ getLinkListLasso <- function (weightMatrix, reportMax = NULL, threshold = 0, dec
 #   return(edges)
 # }
 
+# 
+# 
+
+
+#' 
+#' 
+#' #' weightedLASSO GRN inference
+#' #'
+#' #' @param counts Expression matrix (genes in rownames, conditions in columns)
+#' #' @param genes Vector of genes (in the rownames of counts) to be used in GRN inference as target genes
+#' #' @param tfs vector of genes (in the rownames of counts) that are transcriptional regulators
+#' #' to be used a predictors in the regressions for GRN inference
+#' #' @param alpha The strength of data integration.
+#' #' Numeric value (e.g 0, 1) or a named vector giving the value of alpha for each target gene
+#' #' @param pwm_occurrence Prior matrix Pi, giving PWM presence scores for TFs in rows
+#' #' and genes in columns. Can contain NAs for TFs that do not have a PWM available.
+#' #' @param int_pwm_noise Random perturbation applied to PWM priors in pwm_occurrence.
+#' #' Defalut is none, experimental.
+#' #' @param N Number of iterations of Stability selection
+#' #' @param mda_type value between "shuffle" or "zero" (weather to randomize a TF or put it to zero in 
+#' #' feature importance estimation)
+#' #' @param tf_expression_permutation weather or not to shuffle the expression of TFs between each other.
+#' #' @param robustness Rate of selection for a TF to be considered for feature importance estimation
+#' #' @param nCores Number of cores for multithreading
+#' #'
+#' #' @return a matrix of feature importances for each TF-target pairs
+#' #' @export
+#' #'
+#' #' @examples
+#' weightedLASSO_inference_stable <- function(counts, genes, tfs, alpha=0.25, 
+#'                                            pwm_occurrence, int_pwm_noise = 0,
+#'                                            N = 100, mda_type="shuffle",
+#'                                            tf_expression_permutation = FALSE,
+#'                                            robustness = 0.2,
+#'                                            nCores = ifelse(is.na(detectCores()),1,
+#'                                                            max(detectCores() - 1, 1))){
+#'   
+#'   
+#'   counts <- round(counts, 0)
+#'   x <- t(counts[tfs,])
+#'   
+#'   gene_specific = length(alpha) > 1
+#'   
+#'   # pwm scores to bias variable selection toward pairs supported by a TFBS
+#'   pwm_imputed <- pwm_occurrence
+#'   pwm_imputed[is.na(pwm_imputed)] <- 0.5
+#'   
+#'   # parallel computing of the lasso
+#'   registerDoParallel(cores = nCores)
+#'   message(paste("\n weightedLASSO is running using", foreach::getDoParWorkers(), "cores."))
+#'   "%dopar%" <- foreach::"%dopar%"
+#'   tic()
+#'   suppressPackageStartupMessages(result.reg <-
+#'                                    doRNG::"%dorng%"(foreach::foreach(target = genes, .combine = cbind, 
+#'                                                                      .final = function(x) {colnames(x) <- genes; x}, 
+#'                                                                      .inorder = TRUE),
+#'                                                     {
+#'                                                       # getting rid of the TF variable on which the regression is made
+#'                                                       # if needed
+#'                                                       target_tfs <- setdiff(tfs, target)
+#'                                                       x_target <- x[, target_tfs]
+#'                                                       if(tf_expression_permutation){
+#'                                                         # randomises the expression rows of TFs but not their ID
+#'                                                         x_target <- x_target[,sample(target_tfs, replace = F, 
+#'                                                                                      size = length(target_tfs))]
+#'                                                         colnames(x_target) <- target_tfs
+#'                                                       }
+#'                                                       y <- t(counts[target, ])
+#'                                                       
+#'                                                       if(gene_specific)
+#'                                                         alpha_gene = alpha[target]
+#'                                                       else
+#'                                                         alpha_gene = alpha
+#'                                                       
+#'                                                       # to avoid convergence issues : "inner loop 3; cannot correct step size"
+#'                                                       maxit = 1e+05
+#'                                                       
+#'                                                       if(alpha_gene==1){
+#'                                                         alpha=1-1e-8
+#'                                                         maxit = 1e+07
+#'                                                       }
+#'                                                       
+#'                                                       # weights for differential shrinkage
+#'                                                       penalty_factor <- 1 - pwm_imputed[target, target_tfs] * alpha_gene
+#'                                                       
+#'                                                       importances <- setNames(rep(0, length(tfs)), tfs)
+#'                                                       
+#'                                                       ######### Stability Selection
+#'                                                       n_actual = 0
+#'                                                       for(n in 1:N) {
+#'                                                         # bootstrapping observations
+#'                                                         sampled <- sample(1:nrow(x), replace = T, size = nrow(x))
+#'                                                         oob <- setdiff(1:nrow(x), sampled)
+#'                                                         
+#'                                                         if(length(oob)>1){ #ensures a test set of sufficient size
+#'                                                           
+#'                                                           # perturbating differential shrinkage
+#'                                                           # noisy_penalty_factor <- pmax(pmin(penalty_factor + 
+#'                                                           #                                     runif(n=length(penalty_factor),
+#'                                                           #                                           min = -int_pwm_noise*alpha, 
+#'                                                           #                                           max = int_pwm_noise*alpha), 1),0)
+#'                                                           
+#'                                                           # models are try-catched because in rare cases glmnet
+#'                                                           # crashes for convergence issues
+#'                                                           tryCatch(
+#'                                                             error = function(cnd) "cv.glmnet internal error due to convergence issues",
+#'                                                             
+#'                                                             # model training on sampled observations
+#'                                                             {mymodels_pen = cv.glmnet(
+#'                                                               x_target[sampled,],
+#'                                                               y[sampled],
+#'                                                               maxit=maxit,
+#'                                                               family = "poisson",
+#'                                                               nfolds = 5,
+#'                                                               penalty.factor = penalty_factor)
+#'                                                             
+#'                                                             # value of lambda 1se
+#'                                                             ilambda.1se <- which(mymodels_pen$lambda == mymodels_pen$lambda.1se)
+#'                                                             
+#'                                                             # feature selection for optimal lambda
+#'                                                             selected_tfs <- names(which(mymodels_pen$glmnet.fit$beta[, ilambda.1se] != 0))
+#'                                                             
+#'                                                             # selection frequency
+#'                                                             # importances[selected_tfs] <- importances[selected_tfs]+1
+#'                                                             
+#'                                                             mse_initial <- mean((exp(predict(mymodels_pen, newx = x_target[oob,],
+#'                                                                                              type = "link", s = ilambda.1se))-y[oob])^2)
+#'                                                             
+#'                                                             
+#'                                                             
+#'                                                             n_actual = n_actual+1
+#'                                                             }
+#'                                                             
+#'                                                           )
+#'                                                           
+#'                                                           
+#'                                                         }
+#'                                                       }
+#'                                                       
+#'                                                       ###### Unpenalized regression on robust TFs
+#'                                                       to_return <- setNames(rep(0, length(tfs)), tfs)
+#'                                                       tryCatch(
+#'                                                         error = function(cnd) "a problem occurred in the unpenalized regressions for this gene.",
+#'                                                         
+#'                                                         # model training on sampled observations
+#'                                                         {
+#'                                                           robust_tfs <- names(importances[importances>=n_actual*robustness])
+#'                                                           # non penalized models with only robustly selected TFs
+#'                                                           if(length(robust_tfs)>0){
+#'                                                             lm_target <- glm(
+#'                                                               formula = paste(paste0("`", target, "`"), '~',
+#'                                                                               paste(paste0("`", robust_tfs, "`"),
+#'                                                                                     collapse = '+')),
+#'                                                               data = data.frame(t(counts), check.names = F),
+#'                                                               family = "poisson")
+#'                                                             
+#'                                                             mse <- mean((lm_target$fitted.values - y)^2)
+#'                                                             
+#'                                                             for(sel_tf in robust_tfs){
+#'                                                               x_target_rand <- x_target
+#'                                                               
+#'                                                               # randomizes the conditions to break the link
+#'                                                               # between regulator and target
+#'                                                               if(mda_type == "shuffle")
+#'                                                                 x_target_rand[,sel_tf] <- sample(x_target_rand[,sel_tf],
+#'                                                                                                  size = nrow(x_target_rand),
+#'                                                                                                  replace = F)
+#'                                                               # alternative mda : removes the variable from predictors
+#'                                                               if(mda_type == "zero")
+#'                                                                 x_target_rand[,sel_tf] <- 0
+#'                                                               
+#'                                                               y_hat_rand <- exp(predict.glm(lm_target, newdata = data.frame(x_target_rand),
+#'                                                                                             type = "link"))
+#'                                                               
+#'                                                               mse_rand <- mean((y_hat_rand - y)^2)
+#'                                                               
+#'                                                               to_return[sel_tf] <- to_return[sel_tf] +
+#'                                                                 (mse_rand - mse )/ mse_rand
+#'                                                               
+#'                                                             }
+#'                                                           }
+#'                                                         })
+#'                                                       
+#'                                                       importances[tfs]/n_actual
+#'                                                     }))
+#'   attr(result.reg, "rng") <- NULL # It contains the whole sequence of RNG seeds
+#'   edges <- result.reg
+#'   toc()
+#'   return(edges)
+#' }
 

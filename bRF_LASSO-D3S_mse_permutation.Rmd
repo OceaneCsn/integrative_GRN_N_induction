@@ -58,12 +58,12 @@ lmses <- data.frame(row.names = genes)
 N <-100
 for(alpha in ALPHAS){
   for(perm in 1:N){
-    lmses[,paste(as.character(alpha), perm, "true_data")] <- weightedRF_inference_MSE(counts, subset, tfs, alpha = alpha, nTrees = 2000,
+    lmses[,paste(as.character(alpha), perm, "true_data")] <- weightedRF_inference_MSE(counts, genes, tfs, alpha = alpha, nTrees = 2000,
                              pwm_occurrence = pwm_occurrence, nCores = 45, tf_expression_permutation = F)
   }
 
   for(perm in 1:N){
-    lmses[,paste(as.character(alpha), perm, "shuffled")] <- weightedRF_inference_MSE(counts, subset, tfs, alpha = alpha, nTrees = 2000,
+    lmses[,paste(as.character(alpha), perm, "shuffled")] <- weightedRF_inference_MSE(counts, genes, tfs, alpha = alpha, nTrees = 2000,
                            pwm_occurrence = pwm_occurrence, nCores = 45, tf_expression_permutation = T)
   }
 }
@@ -78,18 +78,18 @@ subset<-unique(rownames(lmses))
 Generating 100 repetitions of weightedLASSO MSE estimation on true data, and on shuffled data.
 
 ```{r, eval=FALSE}
-lmses <- data.frame(row.names = subset)
-N<-100
-for(alpha in ALPHAS){
-  for(perm in 1:N){
-    lmses[,paste(as.character(alpha), perm, "true_data")] <- weightedLASSO_inference_MSE(counts, subset, tfs, alpha = alpha, N=100,
-                             pwm_occurrence = pwm_occurrence, nCores = 40, tf_expression_permutation = F)
-
-    lmses[,paste(as.character(alpha), perm, "shuffled")] <- weightedLASSO_inference_MSE(counts, subset, tfs, alpha = alpha, N=100,
-                           pwm_occurrence = pwm_occurrence, nCores = 40, tf_expression_permutation = T)
-  }
-}
-save(lmses, file = "results/lasso_perumtations_mse_all_genes.rdata")
+# lmses <- data.frame(row.names = genes)
+# N<-50
+# for(alpha in ALPHAS){
+#   for(perm in 1:N){
+#     lmses[,paste(as.character(alpha), perm, "true_data")] <- weightedLASSO_inference_MSE(counts, genes, tfs, alpha = alpha, N=50,
+#                              pwm_occurrence = pwm_occurrence, nCores = 40, tf_expression_permutation = F)
+# 
+#     lmses[,paste(as.character(alpha), perm, "shuffled")] <- weightedLASSO_inference_MSE(counts, genes, tfs, alpha = alpha, N=50,
+#                            pwm_occurrence = pwm_occurrence, nCores = 40, tf_expression_permutation = T)
+#   }
+# }
+# save(lmses, file = "results/lasso_perumtations_mse_all_genes_test.rdata")
 ```
 
 
@@ -138,20 +138,21 @@ save(edges, file = "results/100_permutations_bRF_edges_inf.rdata")
 ## For weightedLASSO
 
 ```{r, eval=FALSE}
-nCores = 45
+nCores = 40
 mats <- list()
-nrep <- 100
+nrep <- 50
 for(alpha in ALPHAS){ # exploring PWM integration strength
   for(rep in 1:nrep){ # exploring inherent variability
     
-    mat_lasso <- weightedLASSO_inference(counts, genes, tfs,
-                                     alpha = alpha, N = 100, robustness = 0.2,
+    mat_lasso1 <- weightedLASSO_inference(counts, genes, tfs,
+                                     alpha = alpha, N = 50, 
+                                     tf_expression_permutation = FALSE,
                                      int_pwm_noise = 0, mda_type = "shuffle",
                                      pwm_occurrence = pwm_occurrence,
                                      nCores = nCores)
     
     mat_lasso_perm <- weightedLASSO_inference(counts, genes, tfs,
-                                     alpha = alpha, N = 100, robustness = 0.2,
+                                     alpha = alpha, N = 50, 
                                      tf_expression_permutation = TRUE,
                                      int_pwm_noise = 0, mda_type = "shuffle",
                                      pwm_occurrence = pwm_occurrence,
@@ -162,19 +163,40 @@ for(alpha in ALPHAS){ # exploring PWM integration strength
     
   }
 }
-save(mats, file = "results/100_permutations_lasso_importances_mda_shuffle.rdata")
+save(mats, file = "results/100_permutations_lasso_mda_shuffle.rdata")
 
 # thresholds the regulatory weights at a certain density to build GRNs
 edges <- list()
+lmses <- data.frame(row.names = genes)
 densities <- c(0.005, 0.01,0.05)
 for(name in names(mats)){ 
       for(density in densities){# exploring importance threshold stringency
         edges[[paste0(name, '_', density)]] <-
         weightedLASSO_network(mats[[name]], density = density, pwm_occurrence, 
                           genes, tfs, decreasing = TRUE)
+        
+        lmses[,name] <- mats[[name]]["mse",]
       }
+  
 }
-save(edges, file = "results/100_permutations_lasso_edges_mda_shuffle.rdata")
+save(edges, file = "results/100_permutations_lasso_edges.rdata")
+save(edges, file = "results/lasso_perumtations_mse_all_genes_test.rdata")
+
+```
+
+
+
+```{r}
+
+grn <- weightedLASSO_network(mat_lasso1, density = 0.005, pwm_occurrence,
+                          genes, tfs, decreasing = TRUE)
+median(mat_lasso1["mse",])
+mean(mat_lasso1["mse",])
+summary(mat_lasso1["mse",])
+
+mean(grn$pwm)
+evaluate_network(grn, genes, tfs, validation = "DAPSeq")[c("tpr", "recall")]
+
 ```
 
 
