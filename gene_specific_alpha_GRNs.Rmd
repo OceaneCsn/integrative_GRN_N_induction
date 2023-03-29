@@ -879,7 +879,8 @@ val_lasso_all <- val_dap
 #   plot_layout(widths = c(2,1))
 # 
 
-plot_all_lasso <- val_lasso_all[(val_lasso_all$alpha == "0"|val_lasso_all$alpha == "1") & 
+plot_all_lasso <- val_lasso_all[(val_lasso_all$alpha == "0"|
+                                   val_lasso_all$alpha == "1") & 
              as.numeric(val_lasso_all$rep) <=20 & val_rf_all$density == 0.005 &
              val_lasso_all$method == "LASSO",] %>%
   ggplot(aes(x=dataset, color = dataset, y = precision)) + 
