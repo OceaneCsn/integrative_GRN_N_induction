@@ -105,11 +105,13 @@ weightedRF_inference <- function(counts, genes, tfs, alpha=0.25,
                                                         # get relative increase in MSE instead of absolute increase
                                                         if(importance == "%IncMSE"){
                                                           #im <- im/mean(rf_weighted$mse)
-                                                          im <- im/(mean(rf_weighted$mse)+im)
+                                                          im <- im/(mean((rf_weighted$predicted - y)^2)+im)
                                                         }
-                                                        c(setNames(0, target), setNames(im, names(im)))[tfs]
+                                                        c(c(setNames(0, target), setNames(im, names(im)))[tfs],
+                                                          setNames(mean((rf_weighted$predicted - y)^2)/(sd(y)^2), "mse"))
                                                       } else {
-                                                        setNames(rep(0, length(tfs)), tfs)
+                                                        c(setNames(rep(0, length(tfs)), tfs), 
+                                                          setNames(mean((rf_weighted$predicted - y)^2)/(sd(y)^2), "mse"))
                                                       }
                                                       
                                                     }))
@@ -137,7 +139,7 @@ weightedRF_inference <- function(counts, genes, tfs, alpha=0.25,
 weightedRF_network <- function(mat, density, pwm_occurrence, genes, tfs){
   # getting the number of genes for a desired density
   nEdges = round(density * (length(genes) - 1) * length(tfs), 0)
-  
+  mat <- mat[!str_detect(rownames(mat), 'mse'),]
   # getting the ranked list of edges
   links <- getLinkList(mat, reportMax = nEdges)
   network <- graph_from_data_frame(links, directed = T)

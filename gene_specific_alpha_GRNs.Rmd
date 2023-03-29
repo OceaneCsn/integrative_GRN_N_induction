@@ -424,8 +424,6 @@ get_number_of_motifs_per_tfs <- function(genes){
   table(pwm_prom[pwm_prom$target %in% genes & pwm_prom$TF %in% tfs,"TF"])[known_tfs]
 }
 
-
-
 gene_list <- common
 enrichments_per_pwm <- setNames(rep(1, length(known_tfs)), known_tfs)
 n_targets_lasso_in_all <- get_number_of_motifs_per_tfs(genes)

@@ -81,8 +81,8 @@ weightedLASSO_inference <- function(counts, genes, tfs, alpha=0.25,
                                                       maxit = 1e+05
                                                       
                                                       if(alpha_gene==1){
-                                                        alpha=1-1e-8
-                                                        maxit = 1e+07
+                                                        alpha=1-1e-4
+                                                        #maxit = 1e+07
                                                       }
                                                       
                                                       # weights for differential shrinkage

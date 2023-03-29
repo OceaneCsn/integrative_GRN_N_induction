@@ -1,6 +1,5 @@
 # What is the precision and recall on the different validation datasets of the prior PWM network?
 source("inference_functions/evaluateNetwork.R")
-source("inference_functions/bRF.R")
 
 load('rdata/pwm_prom_jaspar_dap.rdata')
 load(file = "rdata/inference_input_N_response_varala.rdata")
