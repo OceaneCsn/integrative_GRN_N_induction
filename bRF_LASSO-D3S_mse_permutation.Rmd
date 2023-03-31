@@ -156,13 +156,13 @@ save(val_dap, file = "results/100_permutations_rf_validation_dap_inf.rdata")
 
 ```{r, eval=FALSE}
 nCores = 40
-mats <- list()
+# mats <- list()
 nrep <- 50
-for(alpha in ALPHAS){ # exploring PWM integration strength
+for(alpha in c(1)){ # exploring PWM integration strength
   for(rep in 1:nrep){ # exploring inherent variability
     
-    mat_lasso <- weightedLASSO_inference(counts, genes, tfs,
-                                     alpha = alpha, N = 10, 
+    mat_lasso <- weightedLASSO_inference(counts = counts, genes = genes, tfs = tfs,
+                                     alpha = alpha, N = 50, 
                                      tf_expression_permutation = FALSE,
                                      int_pwm_noise = 0, mda_type = "shuffle",
                                      pwm_occurrence = pwm_occurrence,
@@ -180,6 +180,17 @@ for(alpha in ALPHAS){ # exploring PWM integration strength
     
   }
 }
+
+# grn <- weightedLASSO_network(mat_lasso, density = 0.005, 
+#                              pwm_occurrence = pwm_occurrence, 
+#                              genes = genes, tfs = tfs, decreasing = T)
+# median(mat_lasso["mse",])
+# 
+# mean(grn$pwm)
+# evaluate_network(grn, genes, tfs, validation = "DAPSeq")[c("tpr", "recall")]
+# 
+# median(mats$LASSO_1_trueData_1["mse",])
+
 save(mats, file = "results/100_permutations_lasso_mda_shuffle.rdata")
 
 # thresholds the regulatory weights at certain densities to build GRNs
@@ -250,16 +261,22 @@ load("results/100_permutations_bRF_importances_inf.rdata")
 
 # plots the importance of TFs that have a specific prior value, here one,
 # as alpha is increased
-draw_gene_effective_integration <- function(gene, prior=1, type = "rank"){
+draw_gene_effective_integration <- function(gene, prior=1, type = "rank", without_1 = F){
   tfs_with_motif <- names(which(pwm_imputed[gene,]== prior))
   if(type == "rank")
     data <- data.frame(lapply(mats, function(mat){mean(rank(mat[,gene])[tfs_with_motif])}))
   if(type == "imp")
     data <- data.frame(lapply(mats, function(mat){mean(mat[,gene][tfs_with_motif])}))
-  plot <- data %>%
+  data <- data %>%
   gather(key = "setting", value = "summed_importance") %>%
-  separate(setting, into = c("method", "alpha", "dataset", "rep"), sep = "_") %>%
-  group_by(alpha, dataset) %>%
+  separate(setting, into = c("method", "alpha", "dataset", "rep"), sep = "_")
+  
+  if(without_1)
+    data <- data %>%
+    filter(alpha != "1")
+  
+  plot <- data %>%
+    group_by(alpha, dataset) %>%
   mutate(mean_imp = mean(summed_importance),
             sd_imp = sd(summed_importance),
          alpha = as.numeric(alpha))%>%
@@ -278,12 +295,18 @@ draw_gene_effective_integration <- function(gene, prior=1, type = "rank"){
 
 
 # plots the MSE as alpha is increased
-draw_gene_mse <- function(gene, title = NULL){
-  lmses[gene, ] %>%
+draw_gene_mse <- function(gene, title = NULL, without_1 = F){
+  data <-
+    lmses[gene, ] %>%
     gather() %>%
     separate(key,
              into = c("model", "alpha", "dataset",  "rep"),
-             sep = "_") %>%
+             sep = "_") 
+  if(without_1)
+    data <- data %>%
+    filter(alpha != "1")
+  
+  data %>%
     group_by(alpha, dataset) %>%
     mutate(mean_mse = mean(value, na.rm = T),
            sd_mse = sd(value, na.rm = T)) %>%
@@ -303,7 +326,7 @@ draw_gene_mse <- function(gene, title = NULL){
 
 
 # plots the MSE as a function of effective data integration
-get_opt_alpha_per_gene <- function(gene, type = "rank", return_cluster = F){
+get_opt_alpha_per_gene <- function(gene, type = "rank", return_cluster = F, without_1 = F){
   tfs_with_motif <- names(which(pwm_occurrence[gene,]==1))
   # gene with no TFBS has an optimal alpha of 0
   if(return_cluster & length(tfs_with_motif)==0) return(0)
@@ -323,6 +346,7 @@ get_opt_alpha_per_gene <- function(gene, type = "rank", return_cluster = F){
             sd_imp = sd(summed_importance, na.rm=T),
          alpha = as.numeric(alpha))
   
+  
   curves <- lmses[gene, ] %>%
     gather() %>%
    separate(key,
@@ -336,6 +360,11 @@ get_opt_alpha_per_gene <- function(gene, type = "rank", return_cluster = F){
     group_by(alpha, mean_imp, dataset) %>%
     summarise(mean_mse = mean(value, na.rm = T),
            sd_mse = sd(value, na.rm = T)) 
+  
+  if(without_1)
+    curves <- curves %>%
+    filter(alpha != 1)
+  
   curves <- curves %>%
   group_by(dataset) %>%
     arrange(dataset, mean_imp)%>%
@@ -430,10 +459,10 @@ load("results/lasso_perumtations_mse_all_genes_test.rdata")
 load("results/100_permutations_lasso_mda_shuffle.rdata")
 # load("results/100_permutations_lasso_edges.rdata")
 
-gene_no_benefit <- "AT5G66850"
-# the same as RFs
-gene_benefit_optimum <- "AT1G14720"
-gene_benefit <- "AT2G38180"
+# gene_no_benefit <- "AT5G66850"
+# # the same as RFs
+# gene_benefit_optimum <- "AT1G14720"
+# gene_benefit <- "AT2G38180"
 
 
 n <- draw_gene_effective_integration(gene_no_benefit, prior = 1) +
@@ -475,7 +504,6 @@ save(alphas_lasso, file = "results/alpha_per_gene_weighted_LASSO_test.rdata")
 
 
 
-
 ### test of specific alphas
 # mat_lasso <- weightedLASSO_inference(counts, genes, tfs,
 #                                      alpha = alphas_lasso, N = 50, 
@@ -499,29 +527,50 @@ save(alphas_lasso, file = "results/alpha_per_gene_weighted_LASSO_test.rdata")
 # 
 # 
 # median(mats$LASSO_1_trueData_1["mse",])
-# median(mat_lasso["mse",])
-# median(mat_lasso_perm["mse",])
+
+median(mat_lasso_perm["mse",])
 # median(mats$LASSO_0_trueData_10["mse",])
 # 
 # mean(mats$LASSO_1_trueData_1["mse",])
 # mean(mat_lasso_perm["mse",])
 # mean(mats$LASSO_0_trueData_10["mse",])
 # 
-# mean(grn$pwm)
-# evaluate_network(grn, genes, tfs, validation = "DAPSeq")[c("tpr", "recall")]
+
 # evaluate_network(grn_perm, genes, tfs, validation = "DAPSeq")[c("tpr", "recall")]
 ```
+## examples at alpha optimal at 0.9
+
+With alpha = 1
+
+```{r}
+lasso_1<- names(alphas_lasso[alphas_lasso==0.9])
+subset <- sample(lasso_1, size = 8, replace = F)
+
+wo1 <- F 
+for(nrt in subset ){
+  print(draw_gene_effective_integration(nrt, prior = 1, without_1 = wo1) +
+  draw_gene_mse(nrt, without_1 = wo1)+theme(legend.position = "none")+
+  get_opt_alpha_per_gene(nrt, without_1 = wo1)+
+  plot_annotation(title = nrt))
+}
+```
+Without alpha = 1
 
 
 ```{r}
-########## tests 
-lasso_1<- names(alphas_lasso[alphas_lasso==0.9])
-for(nrt in sample(lasso_1, size = 15, replace = F)){
-  print(draw_gene_effective_integration(nrt, prior = 1) +
-  draw_gene_mse(nrt)+theme(legend.position = "none")+
-  get_opt_alpha_per_gene(nrt)+
+wo1 <- T 
+for(nrt in subset ){
+  print(draw_gene_effective_integration(nrt, prior = 1, without_1 = wo1) +
+  draw_gene_mse(nrt, without_1 = wo1)+theme(legend.position = "none")+
+  get_opt_alpha_per_gene(nrt, without_1 = wo1)+
   plot_annotation(title = nrt))
 }
+```
+
+
+## examples at alpha optimal at 1
+
+```{r}
 
 lasso_1<- names(alphas_lasso[alphas_lasso==1])
 for(nrt in sample(lasso_1, size = 10, replace = F)){
@@ -532,6 +581,101 @@ for(nrt in sample(lasso_1, size = 10, replace = F)){
 }
 ```
 
+# Examples of rank and mean importance in effective integration
+
+In alphas opt at 0.9
+
+with alpha = 1
+
+```{r}
+wo1 <-F
+for(nrt in subset){
+  print(draw_gene_effective_integration(nrt, prior = 1, without_1 = wo1) + ggtitle("Pi=1, rank")+
+          draw_gene_effective_integration(nrt, prior = 1, type="imp", without_1 = wo1) +ggtitle("Pi=1")+
+                  draw_gene_effective_integration(nrt, prior = 0.5, without_1 = wo1) +ggtitle("Pi=1/2, rank")+
+          draw_gene_effective_integration(nrt, prior = 0.5, type="imp", without_1 = wo1) +ggtitle("Pi=1/2")+
+                  draw_gene_effective_integration(nrt, prior = 0, without_1 = wo1) +ggtitle("Pi=0, rank")+
+          draw_gene_effective_integration(nrt, prior = 0, type="imp", without_1 = wo1) +ggtitle("Pi=0")+
+  get_opt_alpha_per_gene(nrt, without_1 = wo1)+
+    get_opt_alpha_per_gene(nrt, type = "imp", without_1 = wo1)+
+  plot_annotation(title = nrt)+plot_layout(ncol=4))
+}
+```
+Without alpha = 1
+
+```{r}
+wo1 <- T
+for(nrt in subset){
+  print(draw_gene_effective_integration(nrt, prior = 1, without_1 = wo1) + ggtitle("Pi=1, rank")+
+          draw_gene_effective_integration(nrt, prior = 1, type="imp", without_1 = wo1) +ggtitle("Pi=1")+
+                  draw_gene_effective_integration(nrt, prior = 0.5, without_1 = wo1) +ggtitle("Pi=1/2, rank")+
+          draw_gene_effective_integration(nrt, prior = 0.5, type="imp", without_1 = wo1) +ggtitle("Pi=1/2")+
+                  draw_gene_effective_integration(nrt, prior = 0, without_1 = wo1) +ggtitle("Pi=0, rank")+
+          draw_gene_effective_integration(nrt, prior = 0, type="imp", without_1 = wo1) +ggtitle("Pi=0")+
+  get_opt_alpha_per_gene(nrt, without_1 = wo1)+
+    get_opt_alpha_per_gene(nrt, type = "imp", without_1 = wo1)+
+  plot_annotation(title = nrt)+plot_layout(ncol=4))
+}
+```
+
+
+Comparison with the forests (is it the same order of mangitude for variable importance?)
+
+
+```{r}
+load("results/brf_perumtations_mse_all_genes_predict.rdata")
+load("results/100_permutations_bRF_importances_inf.rdata")
+wo1 <- F
+for(nrt in subset){
+  print(draw_gene_effective_integration(nrt, prior = 1, without_1 = wo1) + ggtitle("Pi=1, rank")+
+          draw_gene_effective_integration(nrt, prior = 1, type="imp", without_1 = wo1) +ggtitle("Pi=1")+
+                  draw_gene_effective_integration(nrt, prior = 0.5, without_1 = wo1) +ggtitle("Pi=1/2, rank")+
+          draw_gene_effective_integration(nrt, prior = 0.5, type="imp", without_1 = wo1) +ggtitle("Pi=1/2")+
+                  draw_gene_effective_integration(nrt, prior = 0, without_1 = wo1) +ggtitle("Pi=0, rank")+
+          draw_gene_effective_integration(nrt, prior = 0, type="imp", without_1 = wo1) +ggtitle("Pi=0")+
+  get_opt_alpha_per_gene(nrt, without_1 = wo1)+
+    get_opt_alpha_per_gene(nrt, type = "imp", without_1 = wo1)+
+  plot_annotation(title = nrt)+plot_layout(ncol=4))
+}
+load("results/lasso_perumtations_mse_all_genes_test.rdata")
+load("results/100_permutations_lasso_mda_shuffle.rdata")
+```
+In alphas opt at 1
+
+```{r}
+lasso_1<- names(alphas_lasso[alphas_lasso==1])
+for(nrt in sample(lasso_1, size = 8, replace = F)){
+  print(draw_gene_effective_integration(nrt, prior = 1) + ggtitle("Pi=1, rank")+
+          draw_gene_effective_integration(nrt, prior = 1, type="imp") +ggtitle("Pi=1")+
+                  draw_gene_effective_integration(nrt, prior = 0.5) +ggtitle("Pi=1/2, rank")+
+          draw_gene_effective_integration(nrt, prior = 0.5, type="imp") +ggtitle("Pi=1/2")+
+                  draw_gene_effective_integration(nrt, prior = 0) +ggtitle("Pi=0, rank")+
+          draw_gene_effective_integration(nrt, prior = 0, type="imp") +ggtitle("Pi=0")+
+  get_opt_alpha_per_gene(nrt)+
+    get_opt_alpha_per_gene(nrt, type = "imp")+
+  plot_annotation(title = nrt)+plot_layout(ncol=4))
+}
+
+```
+
+In alphas opt at 0
+
+
+```{r}
+lasso_1<- names(alphas_lasso[alphas_lasso==0])
+
+for(nrt in sample(lasso_1, size = 8, replace = F)){
+  print(draw_gene_effective_integration(nrt, prior = 1) + ggtitle("Pi=1, rank")+
+          draw_gene_effective_integration(nrt, prior = 1, type="imp") +ggtitle("Pi=1")+
+                  draw_gene_effective_integration(nrt, prior = 0.5) +ggtitle("Pi=1/2, rank")+
+          draw_gene_effective_integration(nrt, prior = 0.5, type="imp") +ggtitle("Pi=1/2")+
+                  draw_gene_effective_integration(nrt, prior = 0) +ggtitle("Pi=0, rank")+
+          draw_gene_effective_integration(nrt, prior = 0, type="imp") +ggtitle("Pi=0")+
+  get_opt_alpha_per_gene(nrt)+
+    get_opt_alpha_per_gene(nrt, type = "imp")+
+  plot_annotation(title = nrt)+plot_layout(ncol=4))
+}
+```
 
 # Plotting MSE behaviour for all genes
 
