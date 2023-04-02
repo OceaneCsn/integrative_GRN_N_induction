@@ -411,7 +411,7 @@ get_opt_alpha_per_gene <- function(gene, type = "rank", return_cluster = F, with
 
 gene_no_benefit <- "AT1G30270"
 gene_benefit_optimum <- "AT1G14720"
-gene_benefit <- "AT2G24120"
+gene_benefit <- "AT5G48970"
 
 n <- draw_gene_effective_integration(gene_no_benefit, prior = 1) +
   draw_gene_mse(gene_no_benefit)+
@@ -501,46 +501,43 @@ alphas_lasso <- mcsapply(genes, get_opt_alpha_per_gene, type = "rank",
 hist(alphas_lasso)
 save(alphas_lasso, file = "results/alpha_per_gene_weighted_LASSO_test.rdata")
 
-
-
-
-### test of specific alphas
-# mat_lasso <- weightedLASSO_inference(counts, genes, tfs,
-#                                      alpha = alphas_lasso, N = 50, 
-#                                      tf_expression_permutation = FALSE,
-#                                      int_pwm_noise = 0, mda_type = "shuffle",
-#                                      pwm_occurrence = pwm_occurrence,
-#                                      nCores = nCores)
-# 
-# mat_lasso_perm <- weightedLASSO_inference(counts, genes, tfs,
-#                                  alpha = alphas_lasso, N = 50, 
-#                                  tf_expression_permutation = TRUE,
-#                                  int_pwm_noise = 0, mda_type = "shuffle",
-#                                  pwm_occurrence = pwm_occurrence,
-#                                  nCores = nCores)
-# 
-# 
-# grn <- weightedLASSO_network(mat_lasso, density = 0.005, pwm_occurrence,
-#                           genes, tfs, decreasing = TRUE)
-# grn_perm <- weightedLASSO_network(mat_lasso_perm, density = 0.005, pwm_occurrence,
-#                           genes, tfs, decreasing = TRUE)
-# 
-# 
-# median(mats$LASSO_1_trueData_1["mse",])
-
-median(mat_lasso_perm["mse",])
-# median(mats$LASSO_0_trueData_10["mse",])
-# 
-# mean(mats$LASSO_1_trueData_1["mse",])
-# mean(mat_lasso_perm["mse",])
-# mean(mats$LASSO_0_trueData_10["mse",])
-# 
-
-# evaluate_network(grn_perm, genes, tfs, validation = "DAPSeq")[c("tpr", "recall")]
 ```
+
+```{r}
+
+
+data.frame(weightedLASSO = alphas_lasso, weightedRF = alphas_rf) %>%
+  gather(key = "model", value = "alpha") %>%
+ggplot(aes(x = alpha, fill = model)) +
+  geom_histogram()+
+  facet_wrap(~model)+
+  theme(axis.title.y = element_blank(), legend.position = "none")+
+  scale_fill_manual( values = c("#C55A11","#E67F87"))+theme_pubr()
+
+
+```
+
+```{r, fig.height=5, fig.width=7}
+p<-data.frame(weightedLASSO = alphas_lasso, weightedRF = alphas_rf) %>%
+  rownames_to_column("gene") %>%
+  mutate(gene_type=gene %in% tfs) %>%
+  ggplot(aes(x=weightedLASSO, y=weightedRF)) +
+  geom_point(alpha = 0)+
+  geom_bin2d(bins=11)+ 
+  scale_fill_gradient(name = "count", trans = "log",
+                      low = "white", high = "#4670CD",
+                      breaks = c(2,10,50,250,700), 
+                      labels = c(2,10,50,250,700))+
+  theme_pubclean() + theme(legend.position = "right", 
+                           axis.text = element_text(size = 15),
+                           axis.title = element_text(size = 20))
+
+ggExtra::ggMarginal(p, type = "histogram", fill = "#C55A11", size = 1)
+```
+
+
 ## examples at alpha optimal at 0.9
 
-With alpha = 1
 
 ```{r}
 lasso_1<- names(alphas_lasso[alphas_lasso==0.9])
@@ -554,26 +551,15 @@ for(nrt in subset ){
   plot_annotation(title = nrt))
 }
 ```
-Without alpha = 1
 
 
-```{r}
-wo1 <- T 
-for(nrt in subset ){
-  print(draw_gene_effective_integration(nrt, prior = 1, without_1 = wo1) +
-  draw_gene_mse(nrt, without_1 = wo1)+theme(legend.position = "none")+
-  get_opt_alpha_per_gene(nrt, without_1 = wo1)+
-  plot_annotation(title = nrt))
-}
-```
+## examples of alpha optimal at 1 for lasso and rf
 
 
-## examples at alpha optimal at 1
 
 ```{r}
-
-lasso_1<- names(alphas_lasso[alphas_lasso==1])
-for(nrt in sample(lasso_1, size = 10, replace = F)){
+both1<-c("AT3G16560", "AT5G48970" ,"AT3G16350", "AT1G22500" ,"AT3G06110" ,"AT2G46790" ,"AT5G52860")
+for(nrt in both1){
   print(draw_gene_effective_integration(nrt, prior = 1) +
   draw_gene_mse(nrt)+theme(legend.position = "none")+
   get_opt_alpha_per_gene(nrt)+
@@ -581,30 +567,28 @@ for(nrt in sample(lasso_1, size = 10, replace = F)){
 }
 ```
 
+
+```{r}
+load("results/brf_perumtations_mse_all_genes_predict.rdata")
+load("results/100_permutations_bRF_importances_inf.rdata")
+both1<-c("AT3G16560", "AT5G48970" ,"AT3G16350", "AT1G22500" ,"AT3G06110" ,"AT2G46790" ,"AT5G52860")
+for(nrt in both1){
+  print(draw_gene_effective_integration(nrt, prior = 1) +
+  draw_gene_mse(nrt)+theme(legend.position = "none")+
+  get_opt_alpha_per_gene(nrt)+
+  plot_annotation(title = nrt))
+}
+load("results/lasso_perumtations_mse_all_genes_test.rdata")
+load("results/100_permutations_lasso_mda_shuffle.rdata")
+```
+
 # Examples of rank and mean importance in effective integration
 
 In alphas opt at 0.9
 
-with alpha = 1
 
 ```{r}
 wo1 <-F
-for(nrt in subset){
-  print(draw_gene_effective_integration(nrt, prior = 1, without_1 = wo1) + ggtitle("Pi=1, rank")+
-          draw_gene_effective_integration(nrt, prior = 1, type="imp", without_1 = wo1) +ggtitle("Pi=1")+
-                  draw_gene_effective_integration(nrt, prior = 0.5, without_1 = wo1) +ggtitle("Pi=1/2, rank")+
-          draw_gene_effective_integration(nrt, prior = 0.5, type="imp", without_1 = wo1) +ggtitle("Pi=1/2")+
-                  draw_gene_effective_integration(nrt, prior = 0, without_1 = wo1) +ggtitle("Pi=0, rank")+
-          draw_gene_effective_integration(nrt, prior = 0, type="imp", without_1 = wo1) +ggtitle("Pi=0")+
-  get_opt_alpha_per_gene(nrt, without_1 = wo1)+
-    get_opt_alpha_per_gene(nrt, type = "imp", without_1 = wo1)+
-  plot_annotation(title = nrt)+plot_layout(ncol=4))
-}
-```
-Without alpha = 1
-
-```{r}
-wo1 <- T
 for(nrt in subset){
   print(draw_gene_effective_integration(nrt, prior = 1, without_1 = wo1) + ggtitle("Pi=1, rank")+
           draw_gene_effective_integration(nrt, prior = 1, type="imp", without_1 = wo1) +ggtitle("Pi=1")+
@@ -622,7 +606,7 @@ for(nrt in subset){
 Comparison with the forests (is it the same order of mangitude for variable importance?)
 
 
-```{r}
+```{r, eval=T}
 load("results/brf_perumtations_mse_all_genes_predict.rdata")
 load("results/100_permutations_bRF_importances_inf.rdata")
 wo1 <- F
@@ -640,42 +624,8 @@ for(nrt in subset){
 load("results/lasso_perumtations_mse_all_genes_test.rdata")
 load("results/100_permutations_lasso_mda_shuffle.rdata")
 ```
-In alphas opt at 1
-
-```{r}
-lasso_1<- names(alphas_lasso[alphas_lasso==1])
-for(nrt in sample(lasso_1, size = 8, replace = F)){
-  print(draw_gene_effective_integration(nrt, prior = 1) + ggtitle("Pi=1, rank")+
-          draw_gene_effective_integration(nrt, prior = 1, type="imp") +ggtitle("Pi=1")+
-                  draw_gene_effective_integration(nrt, prior = 0.5) +ggtitle("Pi=1/2, rank")+
-          draw_gene_effective_integration(nrt, prior = 0.5, type="imp") +ggtitle("Pi=1/2")+
-                  draw_gene_effective_integration(nrt, prior = 0) +ggtitle("Pi=0, rank")+
-          draw_gene_effective_integration(nrt, prior = 0, type="imp") +ggtitle("Pi=0")+
-  get_opt_alpha_per_gene(nrt)+
-    get_opt_alpha_per_gene(nrt, type = "imp")+
-  plot_annotation(title = nrt)+plot_layout(ncol=4))
-}
-
-```
-
-In alphas opt at 0
 
 
-```{r}
-lasso_1<- names(alphas_lasso[alphas_lasso==0])
-
-for(nrt in sample(lasso_1, size = 8, replace = F)){
-  print(draw_gene_effective_integration(nrt, prior = 1) + ggtitle("Pi=1, rank")+
-          draw_gene_effective_integration(nrt, prior = 1, type="imp") +ggtitle("Pi=1")+
-                  draw_gene_effective_integration(nrt, prior = 0.5) +ggtitle("Pi=1/2, rank")+
-          draw_gene_effective_integration(nrt, prior = 0.5, type="imp") +ggtitle("Pi=1/2")+
-                  draw_gene_effective_integration(nrt, prior = 0) +ggtitle("Pi=0, rank")+
-          draw_gene_effective_integration(nrt, prior = 0, type="imp") +ggtitle("Pi=0")+
-  get_opt_alpha_per_gene(nrt)+
-    get_opt_alpha_per_gene(nrt, type = "imp")+
-  plot_annotation(title = nrt)+plot_layout(ncol=4))
-}
-```
 
 # Plotting MSE behaviour for all genes
 
@@ -730,7 +680,7 @@ Heatmap((mse_other-rowMeans(mse_other))/matrixStats::rowSds(mse_other),
 
 # For the lasso
 
-```{r, fig.height=7}
+```{r, fig.height=10}
 
 load("results/lasso_perumtations_mse_all_genes_test.rdata")
 load("results/alpha_per_gene_weighted_LASSO_test.rdata")
@@ -824,8 +774,9 @@ Heatmap((mse_other-rowMeans(mse_other))/matrixStats::rowSds(mse_other),
 
 ```{r}
 venn <- ggVennDiagram(list("weightedRF" = names(alphas_rf[alphas_rf!=0]),
-                   "weightedLASSO" = names(alphas_lasso[alphas_lasso!=0])), color="black")+ 
-  scale_fill_gradient(low = "#EEEEEE", high = "#4670CD")+scale_color_manual(values = c("grey", "grey"))+
+                   "weightedLASSO" = names(alphas_lasso[alphas_lasso!=0])), edge_size = 2)+ 
+  scale_color_manual( values = c("#C55A11","#E67F87"))+
+  scale_fill_gradient(high="#e6f2ff", low="#e6f2ff")+
   theme(legend.position = "none");venn
 
 # hypergeometric test to assess the significance of the intersect
@@ -1136,7 +1087,7 @@ spec_rf <- val_specific %>%
     legend.text = element_text(size = 15),
     axis.text = element_blank(),
     legend.position = 'none'
-  ) + xlab("") + ylim(c(0.2,0.45))+ ylab("")
+  ) + xlab("") + ylim(c(0.2,0.46))+ ylab("")
 
 spec_lasso <- val_specific %>%
   separate(network_name, into = settings, sep = "_") %>%
@@ -1158,7 +1109,7 @@ spec_lasso <- val_specific %>%
     legend.text = element_text(size = 15),
     axis.text = element_blank(),
     legend.position = 'none'
-  )+ xlab("")+ ylim(c(0.2,0.45))+ ylab("")
+  )+ xlab("")+ ylim(c(0.2,0.46))+ ylab("")
 
 ```
 
@@ -1257,14 +1208,14 @@ mse_lasso <- draw_mse("LASSO")
 load("results/brf_perumtations_mse_all_genes_predict.rdata")
 mse_rf <- draw_mse("RF")
 
-mse_lasso + ylim(c(0.195,0.25))  +labs(subtitle = "LASSO")+ ggtitle("MSE") + 
-  mse_lasso_spec+ ylim(c(0.195,0.25)) +labs(subtitle = "LASSO")+
-  mse_rf +  ylim(c(0.195,0.25)) +labs(subtitle = "RF") +
-  mse_rf_spec+ ylim(c(0.195,0.25))  +labs(subtitle = "RF")+
-  precision_lasso + ylim(c(0.2,0.45)) + ggtitle("Precision") + labs(subtitle = "LASSO")+
+mse_lasso + ylim(c(0.195,0.265)) +labs(subtitle = "LASSO")+ ggtitle("MSE") + 
+  mse_lasso_spec+ ylim(c(0.195,0.265)) +labs(subtitle = "LASSO")+
+  mse_rf +  ylim(c(0.195,0.265)) +labs(subtitle = "RF") +
+  mse_rf_spec+ ylim(c(0.195,0.265))  +labs(subtitle = "RF")+
+  precision_lasso + ylim(c(0.2,0.46)) + ggtitle("Precision") + labs(subtitle = "LASSO")+
   theme(legend.position = 'none') + 
   spec_lasso + labs(subtitle = "LASSO")+
-  precision_rf + labs(subtitle = "RF") +ylim(c(0.2,0.45))+theme(legend.position = 'none')+ggtitle("") + 
+  precision_rf + labs(subtitle = "RF") +ylim(c(0.2,0.46))+theme(legend.position = 'none')+ggtitle("") + 
   spec_rf +labs(subtitle = "RF") +
 plot_layout(guides = "collect", ncol = 4, widths = c(1,1,1,1))
 
@@ -1423,148 +1374,198 @@ plot_layout(guides = "collect", ncol = 4, widths = c(1,1,1,1))
 
 <!-- # Functional study of those groups -->
 
-<!-- ```{r} -->
-<!-- load("rdata/pwm_prom_jaspar_dap.rdata") -->
-<!-- load("rdata/gene_structure.rdata") -->
+```{r}
+load("rdata/pwm_prom_jaspar_dap.rdata")
+load("rdata/gene_structure.rdata")
 
-<!-- mean_expr <- rowMeans(counts)[genes] -->
-<!-- var_expr <- matrixStats::rowSds(counts[genes,])*matrixStats::rowSds(counts[genes,]) -->
-<!-- pwm_prom_n_TFs <- pwm_prom[pwm_prom$TF %in% tfs,] -->
+mean_expr <- rowMeans(counts)[genes]
+var_expr <- matrixStats::rowSds(counts[genes,])*matrixStats::rowSds(counts[genes,])
+pwm_prom_n_TFs <- pwm_prom[pwm_prom$TF %in% tfs,]
 
-<!-- library(patchwork) -->
+library(patchwork)
 
-<!-- # to comment for new version where mse is already normalized per genes -->
-<!-- # norm_mse <- exp(as.matrix(cbind(lmses, lmses_lasso)))/var_expr -->
-<!-- genes_info <- data.frame(genes = genes,  -->
-<!--                          cluster_rf = clusters_rf[genes], -->
-<!--                          cluster_lasso = clusters_lasso[genes]) -->
+# to comment for new version where mse is already normalized per genes
+# norm_mse <- exp(as.matrix(cbind(lmses, lmses_lasso)))/var_expr
+genes_info <- data.frame(genes = genes,
+                         cluster_rf = alphas_rf,
+                         cluster_lasso = alphas_lasso)
 
-<!-- genes_info$is_tf <- genes %in% tfs -->
-<!-- genes_info$var <- var_expr -->
-<!-- genes_info$expr <- mean_expr -->
-<!-- genes_info$min_mse <- matrixStats::rowMins(as.matrix(true_mse)) -->
-<!-- genes_info$nb_motifs <- table(pwm_prom$target)[genes] -->
-<!-- genes_info$nb_motifs_n_tfs <- table(pwm_prom_n_TFs$target)[genes] -->
+genes_info$is_tf <- genes %in% tfs
+genes_info$var <- var_expr
+genes_info$expr <- mean_expr
+genes_info$nb_motifs <- table(pwm_prom$target)[genes]
+genes_info$nb_motifs_n_tfs <- table(pwm_prom_n_TFs$target)[genes]
+genes_info$common <- genes %in% common
 
-<!-- genes_info[,c("n_introns", "n_transcripts")] <-  -->
-<!--   gene_structure[match(genes_info$gene, gene_structure$gene), -->
-<!--                  c("n_introns", "n_transcripts")] -->
-
-<!-- genes_info%>% -->
-<!--   ggplot(aes(x=cluster_rf, y=log(n_introns))) +  -->
-<!--   geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+ -->
-<!--   geom_boxplot(width=0.1, fill = "white")+ -->
-<!--   ggtitle(("Number of introns for RF groups")) + -->
-<!-- genes_info%>% -->
-<!--   ggplot(aes(x=cluster_rf, y=n_transcripts)) +  -->
-<!--   geom_boxplot(width=0.1, fill = "white")+ -->
-<!--   geom_violin(fill="darkblue", alpha=0.2)+ -->
-<!--   ggtitle(("Number of transcripts for RF groups")) +  -->
-<!--   stat_compare_means() -->
-
-<!-- genes_info%>% -->
-<!--   ggplot(aes(x=cluster_rf, y=nb_motifs)) +  -->
-<!--   geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+ -->
-<!--   geom_boxplot(width=0.1, fill = "white")+ -->
-<!--   ggtitle(("Number of motifs in promoter for RF groups")) +  -->
-<!--   genes_info%>% -->
-<!--   ggplot(aes(x=cluster_rf, y=nb_motifs_n_tfs)) +  -->
-<!--   geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+ -->
-<!--   geom_boxplot(width=0.1, fill = "white")+ -->
-<!--   ggtitle(("Number of motifs of N-responsive TFs in promoter for RF groups")) +  -->
-<!--   stat_compare_means() + genes_info%>% -->
-<!--   ggplot(aes(x=cluster_rf, y=min_mse)) +  -->
-<!--   geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+ -->
-<!--   geom_boxplot(width=0.1, fill = "white")+ -->
-<!--   ggtitle(("Min mse for RF groups")) +  -->
-<!--   stat_compare_means()  -->
+genes_info[,c("n_introns", "n_transcripts")] <-
+  gene_structure[match(genes_info$gene, gene_structure$gene),
+                 c("n_introns", "n_transcripts")]
 
 
-<!-- genes_info%>% -->
-<!--   ggplot(aes(x=cluster_rf, y=var)) +  -->
-<!--   geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+ -->
-<!--   geom_boxplot(width=0.1, fill = "white")+ -->
-<!--   ggtitle(("Gene variance for RF groups")) + scale_y_log10()+ -->
-<!--   stat_compare_means()+ genes_info%>% -->
-<!--   ggplot(aes(x=cluster_rf, y=expr)) +  -->
-<!--   geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+ -->
-<!--   geom_boxplot(width=0.1, fill = "white")+ -->
-<!--   ggtitle(("Gene expression for RF groups")) + scale_y_log10()+ -->
-<!--   stat_compare_means() -->
+# for rf
+genes_info%>%
+  ggplot(aes(x=factor(cluster_rf), y=log(n_introns))) +
+  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  ggtitle(("Number of introns for RF groups")) +
+genes_info%>%
+  ggplot(aes(x=factor(cluster_rf), y=n_transcripts)) +
+  geom_boxplot(width=0.1, fill = "white")+
+  geom_violin(fill="darkblue", alpha=0.2)+
+  ggtitle(("Number of transcripts for RF groups")) +
+  stat_compare_means()
+
+genes_info%>%
+  ggplot(aes(x=factor(cluster_rf), y=nb_motifs)) +
+  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  ggtitle(("Number of motifs in promoter for RF groups")) +
+  genes_info%>%
+  ggplot(aes(x=factor(cluster_rf), y=nb_motifs_n_tfs)) +
+  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  ggtitle(("Number of motifs of N-responsive TFs in promoter for RF groups")) +
+  stat_compare_means() 
 
 
-<!-- genes_info %>% -->
-<!--   group_by(cluster_rf) %>% -->
-<!--   summarise(n=n(),  -->
-<!--             tf_frac=sum(is_tf)/n()) %>% -->
-<!--   ggplot(aes(x=cluster_rf, y=tf_frac,  -->
-<!--                           label = paste("n=",n))) +  -->
-<!--   geom_bar(stat = "identity", aes(fill=tf_frac), alpha = 1)+ -->
-<!--   geom_hline(yintercept = length(tfs)/length(genes)) +  -->
-<!--   geom_text(y=0.2) + xlab("cluster RF") + -->
-<!--   ggtitle("Fraction of TFs in RF groups")+ylim(c(0,0.2)) -->
+genes_info%>%
+  ggplot(aes(x=factor(cluster_rf), y=var)) +
+  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  ggtitle(("Gene variance for RF groups")) + scale_y_log10()+
+  stat_compare_means()+ genes_info%>%
+  ggplot(aes(x=factor(cluster_rf), y=expr)) +
+  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  ggtitle(("Gene expression for RF groups")) + scale_y_log10()+
+  stat_compare_means()
+
+
+genes_info %>%
+  group_by(cluster_rf) %>%
+  summarise(n=n(),
+            tf_frac=sum(is_tf)/n()) %>%
+  ggplot(aes(x=cluster_rf, y=tf_frac,
+                          label = paste("n=",n))) +
+  geom_bar(stat = "identity", aes(fill=tf_frac), alpha = 1)+
+  geom_hline(yintercept = length(tfs)/length(genes)) +
+  geom_text(y=0.2) + xlab("cluster RF") +
+  ggtitle("Fraction of TFs in RF groups")+ylim(c(0,0.2))
 
 
 
 
 
+###########" for lasso
+
+genes_info%>%
+  ggplot(aes(x=factor(cluster_lasso), y=log(n_introns))) +
+  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  ggtitle(("Number of introns for LASSO groups")) +
+genes_info%>%
+  ggplot(aes(x=factor(cluster_lasso), y=n_transcripts)) +
+  geom_boxplot(width=0.1, fill = "white")+
+  geom_violin(fill="darkblue", alpha=0.2)+
+  ggtitle(("Number of transcripts for LASSO groups")) +
+  stat_compare_means()
+
+genes_info%>%
+  ggplot(aes(x=factor(cluster_lasso), y=nb_motifs)) +
+  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  ggtitle(("Number of motifs in promoter for LASSO groups")) +
+  genes_info%>%
+  ggplot(aes(x=factor(cluster_lasso), y=nb_motifs_n_tfs)) +
+  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  ggtitle(("Number of motifs of N-responsive TFs in promoter for LASSO groups")) +
+  stat_compare_means() 
 
 
-<!-- genes_info%>% -->
-<!--   ggplot(aes(x=cluster_lasso, y=log(n_introns))) +  -->
-<!--   geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+ -->
-<!--   geom_boxplot(width=0.1, fill = "white")+ -->
-<!--   ggtitle(("Number of introns for LASSO groups")) + -->
-<!-- genes_info%>% -->
-<!--   ggplot(aes(x=cluster_lasso, y=n_transcripts)) +  -->
-<!--   geom_boxplot(width=0.1, fill = "white")+ -->
-<!--   geom_violin(fill="darkblue", alpha=0.2)+ -->
-<!--   ggtitle(("Number of transcripts for LASSO groups")) +  -->
-<!--   stat_compare_means() -->
-
-<!-- genes_info%>% -->
-<!--   ggplot(aes(x=cluster_lasso, y=nb_motifs)) +  -->
-<!--   geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+ -->
-<!--   geom_boxplot(width=0.1, fill = "white")+ -->
-<!--   ggtitle(("Number of motifs in promoter for LASSO groups")) +  -->
-<!--   genes_info%>% -->
-<!--   ggplot(aes(x=cluster_lasso, y=nb_motifs_n_tfs)) +  -->
-<!--   geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+ -->
-<!--   geom_boxplot(width=0.1, fill = "white")+ -->
-<!--   ggtitle(("Number of motifs of N-responsive TFs in promoter for LASSO groups")) +  -->
-<!--   stat_compare_means() + genes_info%>% -->
-<!--   ggplot(aes(x=cluster_lasso, y=min_mse)) +  -->
-<!--   geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+ -->
-<!--   geom_boxplot(width=0.1, fill = "white")+ -->
-<!--   ggtitle(("Min mse for LASSO groups")) +  -->
-<!--   stat_compare_means()  -->
+genes_info%>%
+  ggplot(aes(x=factor(cluster_lasso), y=var)) +
+  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  ggtitle(("Gene variance for LASSO groups")) + scale_y_log10()+
+  stat_compare_means()+ genes_info%>%
+  ggplot(aes(x=factor(cluster_lasso), y=expr)) +
+  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  ggtitle(("Gene expression for LASSO groups")) + scale_y_log10()+
+  stat_compare_means()
 
 
-<!-- genes_info%>% -->
-<!--   ggplot(aes(x=cluster_lasso, y=var)) +  -->
-<!--   geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+ -->
-<!--   geom_boxplot(width=0.1, fill = "white")+ -->
-<!--   ggtitle(("Gene variance for LASSO groups")) + scale_y_log10()+ -->
-<!--   stat_compare_means()+ genes_info%>% -->
-<!--   ggplot(aes(x=cluster_lasso, y=expr)) +  -->
-<!--   geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+ -->
-<!--   geom_boxplot(width=0.1, fill = "white")+ -->
-<!--   ggtitle(("Gene expression for LASSO groups")) + scale_y_log10()+ -->
-<!--   stat_compare_means() -->
+genes_info %>%
+  group_by(cluster_lasso) %>%
+  summarise(n=n(),
+            tf_frac=sum(is_tf)/n()) %>%
+  ggplot(aes(x=cluster_lasso, y=tf_frac,
+                          label = paste("n=",n))) +
+  geom_bar(stat = "identity", aes(fill=tf_frac), alpha = 1)+
+  geom_hline(yintercept = length(tfs)/length(genes)) +
+  geom_text(y=0.2) + xlab("cluster RF") +
+  ggtitle("Fraction of TFs in RF groups")+ylim(c(0,0.2))
+
+######## common classes of interest as compared to the rest
+length(intersect(common, tfs))/length(common)
 
 
-<!-- genes_info %>% -->
-<!--   group_by(cluster_lasso) %>% -->
-<!--   summarise(n=n(),  -->
-<!--             tf_frac=sum(is_tf)/n()) %>% -->
-<!--   ggplot(aes(x=cluster_lasso, y=tf_frac,  -->
-<!--                           label = paste("n=",n))) +  -->
-<!--   geom_bar(stat = "identity", aes(fill=tf_frac), alpha = 1)+ -->
-<!--   geom_hline(yintercept = length(tfs)/length(genes)) +  -->
-<!--   geom_text(y=0.2) + xlab("cluster RF") + -->
-<!--   ggtitle("Fraction of TFs in RF groups")+ylim(c(0,0.2)) -->
+genes_info%>%
+  ggplot(aes(x=common, y=log(n_introns))) +
+  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  ggtitle(("Number of introns for common genes of interest")) +
+genes_info%>%
+  ggplot(aes(x=common, y=n_transcripts)) +
+  geom_boxplot(width=0.1, fill = "white")+
+  geom_violin(fill="darkblue", alpha=0.2)+
+  ggtitle(("Number of transcripts for common groups")) +
+  stat_compare_means()
 
-<!-- ``` -->
+genes_info%>%
+  ggplot(aes(x=common, y=nb_motifs)) +
+  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  ggtitle(("Number of motifs in promoter for common groups")) +
+  genes_info%>%
+  ggplot(aes(x=common, y=nb_motifs_n_tfs)) +
+  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  ggtitle(("Number of motifs of N-responsive TFs in promoter for common groups")) +
+  stat_compare_means() 
+
+
+genes_info%>%
+  ggplot(aes(x=common, y=var)) +
+  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  ggtitle(("Gene variance for common groups")) + scale_y_log10()+
+  stat_compare_means()+ genes_info%>%
+  ggplot(aes(x=common, y=expr)) +
+  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
+  geom_boxplot(width=0.1, fill = "white")+
+  ggtitle(("Gene expression for common groups")) + scale_y_log10()+
+  stat_compare_means()
+
+
+genes_info %>%
+  group_by(common) %>%
+  summarise(n=n(),
+            tf_frac=sum(is_tf)/n()) %>%
+  ggplot(aes(x=common, y=tf_frac,
+                          label = paste("n=",n))) +
+  geom_bar(stat = "identity", aes(fill=tf_frac), alpha = 1)+
+  geom_hline(yintercept = length(tfs)/length(genes)) +
+  geom_text(y=0.2) + xlab("cluster common") +
+  ggtitle("Fraction of TFs in common groups")+ylim(c(0,0.22))
+
+
+phyper(q=length(intersect(common, tfs)), 
+       m = length(tfs), 
+       n = length(genes) - length(tfs),
+       k = length(common), lower.tail = F)
+```
 
 
 
@@ -1754,7 +1755,9 @@ plot_layout(guides = "collect", ncol = 4, widths = c(1,1,1,1))
 <!--   go_rf <- enrich_go(genes_i, background) -->
 <!--   DIANE::draw_enrich_go(go_rf) -->
 <!--   print(go_rf) -->
-<!-- } -->
+<!-- } 
+
+-->
 
 
 
