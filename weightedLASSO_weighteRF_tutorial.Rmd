@@ -1,0 +1,118 @@
+---
+title: "Integrative GRN inference tutorial"
+output: html_document
+---
+
+Before being able to use weighteRF, the modified C++ Random Forest implementation have to be set up on your computer. To do so, run in your system terminal :
+
+```R CMD SHLIB inference_functions/Cpp_dependencies/rfutils.c```
+```R CMD SHLIB inference_functions/Cpp_dependencies/regTree.c```
+```R CMD SHLIB inference_functions/Cpp_dependencies/regrf_mse.c```
+
+The R packages that you will need to install are :
+doParallel, parallel, foreach, doRNG, randomForest, igraph, boot, stringr, tictoc, GENIE3
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+source('inference_functions/weightedRF.R')
+source('inference_functions/weightedLASSO.R')
+source('inference_functions/evaluateNetwork.R')
+source('inference_functions/MSE.R')
+```
+
+This document demonstrates the use of the weightedRF and weightedLASSO functions for integrative GRN inference.
+
+Those functions infer the regulatory pathways of *Arabidopsis thaliana*'s roots in response to nitrate (N) induction from [Varala et al., 2018](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE97500).
+
+They use as inputs the expression profiles of N-responsive genes and TFBS information. 
+Prior TFBS information was built by searching in the promoters of the N-responsive genes the PWM of the N-responsive regulators. 
+
+## Data import
+
+### Expression data
+
+Import of the expression data and the N-responsive genes and regulators :
+
+```{r}
+load('rdata/inference_input_N_response_varala.rdata')
+genes <- input_data$grouped_genes; length(genes)
+tfs <- input_data$grouped_regressors; length(tfs)
+counts <- input_data$counts; dim(counts)
+```
+
+### TFBS data
+
+
+```{r}
+load("rdata/pwm_occurrences_N_response_varala.rdata")
+dim(pwm_occurrence)
+```
+
+## GRN inference
+
+
+### weightedRF : weighted Random Forests
+
+Let's infer a GRN using weightedRF with $\alpha=1$ and a density $D = 0.005$.
+
+```{r}
+importances <- weightedRF_inference(counts, genes, tfs, alpha = 1, nTrees = 1000,
+                             pwm_occurrence = pwm_occurrence, nCores = 25)
+
+grn_RF <- weightedRF_network(importances, density = 0.005, pwm_occurrence, genes, tfs)
+  
+head(grn_RF); dim(grn_RF)
+mean(grn_RF$pwm)
+```
+
+
+### weightedLASSO : LASSO with Differential Shrinkage and Stability Selection
+
+Let's infer a GRN using weightedLASSO with $\alpha=1$ and a density $D = 0.005$.
+
+```{r}
+importances_lasso <- weightedLASSO_inference(counts, genes, tfs, alpha = 1, N = 50,
+                               pwm_occurrence = pwm_occurrence, nCores = 30, 
+                               robustness = 0.2)
+grn_lasso <- weightedLASSO_network(importances_lasso, density = 0.005, 
+                                       pwm_occurrence, genes, tfs, decreasing = TRUE)
+head(grn_lasso); dim(grn_lasso)
+mean(grn_lasso$pwm)
+```
+
+
+### Getting prediction error on target genes (MSE)
+
+The error in predicting the expression of target genes during regressions in GRN inference can be assessed on test examples via these functions :
+
+```{r}
+mse_RF <- weightedRF_inference_MSE(counts, genes, tfs, alpha = 1, nTrees = 1000,
+                             pwm_occurrence = pwm_occurrence, nCores = 25)
+mse_lasso <- weightedLASSO_inference_MSE(counts, genes, tfs, alpha = 1, N = 50,
+                               pwm_occurrence = pwm_occurrence, nCores = 30)
+
+data.frame(weightedRF = mse_RF,
+                  weightedLASSO = mse_lasso) %>%
+  reshape2::melt() %>%
+  rename(normalized_mse = value, model = variable) %>%
+  ggplot(aes(x= normalized_mse, fill = model)) +
+  geom_histogram(alpha = 0.5)
+
+```
+
+### Validating the GRNs against DAPSeq
+
+The following function computes precision and recall on experimental TF-DNA interactions in Arabidopsis:
+
+```{r}
+dapseq_validation <- evaluate_networks(list("bRF" = grn_RF, "LASSO-D3S" = grn_lasso), 
+                                         input_genes = genes, input_tfs = tfs, 
+                                         validation = c("DAPSeq"),
+                                         nCores =2);dapseq_validation
+```
+
+In this example, approximately approximately 40% of predicted edges by weightedRF and 45% of weightedLASSO are supported by DAPSeq experiments.
+
+> In agreement with the paper results, we encourage the use of gene-specific alphas, that can be determined by finding for each gene the value of alpha offering low prediction error as a function data integration, as comapred to baseline (shuffled) data. This is demonstrated in other scripts of this repository, namely XXX.
+

@@ -3,7 +3,7 @@ title: "Integrative GRN inference tutorial"
 output: html_document
 ---
 
-Before being able to use bRF, the modified C++ Random Forest implementation have to be set up on your computer. To do so, run in your system terminal :
+Before being able to use weightedRF, the modified C++ Random Forest implementation have to be set up on your computer. To do so, run in your system terminal :
 
 ```R CMD SHLIB inference_functions/Cpp_dependencies/rfutils.c```
 ```R CMD SHLIB inference_functions/Cpp_dependencies/regTree.c```
