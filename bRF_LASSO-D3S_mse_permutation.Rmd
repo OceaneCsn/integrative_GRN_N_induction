@@ -326,7 +326,8 @@ draw_gene_mse <- function(gene, title = NULL, without_1 = F){
 
 
 # plots the MSE as a function of effective data integration
-get_opt_alpha_per_gene <- function(gene, type = "rank", return_cluster = F, without_1 = F){
+get_opt_alpha_per_gene <- function(gene, type = "rank", 
+                                   return_cluster = F, metric = 'div'){
   tfs_with_motif <- names(which(pwm_occurrence[gene,]==1))
   # gene with no TFBS has an optimal alpha of 0
   if(return_cluster & length(tfs_with_motif)==0) return(0)
@@ -361,10 +362,6 @@ get_opt_alpha_per_gene <- function(gene, type = "rank", return_cluster = F, with
     summarise(mean_mse = mean(value, na.rm = T),
            sd_mse = sd(value, na.rm = T)) 
   
-  if(without_1)
-    curves <- curves %>%
-    filter(alpha != 1)
-  
   curves <- curves %>%
   group_by(dataset) %>%
     arrange(dataset, mean_imp)%>%
@@ -380,10 +377,18 @@ get_opt_alpha_per_gene <- function(gene, type = "rank", return_cluster = F, with
   true$div <- ifelse((shuff$approx_mse - true$mean_mse)/shuff$approx_sd>1, 
                      (shuff$approx_mse - true$mean_mse)/shuff$approx_sd, 
                      0)
-  if(max(true$div)>0) alpha_opt <- true[true$div == max(true$div),]$alpha
-  else alpha_opt <- 0
   
+  if(metric == "div"){
+    if(max(true$div)>0) alpha_opt <- true[true$div == max(true$div),]$alpha
+    else alpha_opt <- 0
+  }
+  
+  if(metric == "min"){
+    alpha_opt <- true[true$mean_mse == min(true$mean_mse),]$alpha
+  }
+    
   eff_opt = true[true$alpha==alpha_opt,]$mean_imp
+  
   padding = ifelse(type=="rank", ifelse(alpha_opt<0.2, 17, -17), 0)
   if(return_cluster) return(alpha_opt)
   
@@ -430,14 +435,22 @@ p <- draw_gene_effective_integration(gene_benefit, prior = 1) +
 figure <- n/o/p;figure
 ggexport(figure, filename = "results/gene_examples_weightedRF.pdf", width = 10, height = 9)
 
+```
 
+
+```{r, eval=F}
 # value of alpha per genes:
 alphas_rf <- mcsapply(genes, get_opt_alpha_per_gene, type = "rank", 
                           return_cluster=T, mc.cores=34)
 hist(alphas_rf)
-
 save(alphas_rf, file = "results/alpha_per_gene_weighted_RF.rdata")
+
+alphas_rf <- mcsapply(genes, get_opt_alpha_per_gene, type = "rank", metric = "min",
+                          return_cluster=T, mc.cores=34)
+hist(alphas_rf)
+save(alphas_rf, file = "results/alpha_per_gene_weighted_RF_min.rdata")
 ```
+
 
 ```{r, eval=FALSE}
 #turns old mse of RF into new format returned by inference
@@ -484,27 +497,33 @@ figure <- n/o/p
 ggexport(figure, filename = "results/gene_examples_weightedLASSO.pdf", width = 10, height = 9)
 
 
-# 
 # nrt <- sample(int, size = 1)
 # draw_gene_effective_integration(nrt, prior = 1, type = "imp")
 # draw_gene_effective_integration(nrt, prior = 0.5, type = "imp")
 # draw_gene_effective_integration(nrt, prior = 0, type = "imp")
 # get_opt_alpha_per_gene(nrt, type = "imp")
+```
 
 
-
-
-
+```{r, eval=FALSE}
 # value of alpha per genes:
 alphas_lasso <- mcsapply(genes, get_opt_alpha_per_gene, type = "rank", 
                           return_cluster=T, mc.cores=34)
 hist(alphas_lasso)
 save(alphas_lasso, file = "results/alpha_per_gene_weighted_LASSO_test.rdata")
 
+alphas_lasso <- mcsapply(genes, get_opt_alpha_per_gene, type = "rank", 
+                          return_cluster=T, metric = "min", mc.cores=34)
+hist(alphas_lasso)
+save(alphas_lasso, file = "results/alpha_per_gene_weighted_LASSO_min.rdata")
 ```
+
+For divergence from permutation criteria :
 
 ```{r}
 
+load("results/alpha_per_gene_weighted_LASSO_test.rdata")
+load("results/alpha_per_gene_weighted_RF.rdata")
 
 data.frame(weightedLASSO = alphas_lasso, weightedRF = alphas_rf) %>%
   gather(key = "model", value = "alpha") %>%
@@ -514,10 +533,11 @@ ggplot(aes(x = alpha, fill = model)) +
   theme(axis.title.y = element_blank(), legend.position = "none")+
   scale_fill_manual( values = c("#C55A11","#E67F87"))+theme_pubr()
 
-
 ```
 
 ```{r, fig.height=5, fig.width=7}
+
+
 p<-data.frame(weightedLASSO = alphas_lasso, weightedRF = alphas_rf) %>%
   rownames_to_column("gene") %>%
   mutate(gene_type=gene %in% tfs) %>%
@@ -536,6 +556,99 @@ ggExtra::ggMarginal(p, type = "histogram", fill = "#C55A11", size = 1)
 ```
 
 
+For minimum MSE criteria :
+
+
+```{r, fig.height=5, fig.width=7}
+
+load("results/alpha_per_gene_weighted_LASSO_min.rdata")
+load("results/alpha_per_gene_weighted_RF_min.rdata")
+
+data.frame(weightedLASSO = alphas_lasso, weightedRF = alphas_rf) %>%
+  gather(key = "model", value = "alpha") %>%
+ggplot(aes(x = alpha, fill = model)) +
+  geom_histogram()+
+  facet_wrap(~model)+
+  theme(axis.title.y = element_blank(), legend.position = "none")+
+  scale_fill_manual( values = c("#C55A11","#E67F87"))+theme_pubr()
+
+```
+
+```{r, fig.height=5, fig.width=7}
+
+p<-data.frame(weightedLASSO = alphas_lasso, weightedRF = alphas_rf) %>%
+  rownames_to_column("gene") %>%
+  mutate(gene_type=gene %in% tfs) %>%
+  ggplot(aes(x=weightedLASSO, y=weightedRF)) +
+  geom_point(alpha = 0)+
+  geom_bin2d(bins=11)+ 
+  scale_fill_gradient(name = "count", trans = "log",
+                      low = "white", high = "#4670CD",
+                      breaks = c(2,10,50,250,700), 
+                      labels = c(2,10,50,250,700))+
+  theme_pubclean() + theme(legend.position = "right", 
+                           axis.text = element_text(size = 15),
+                           axis.title = element_text(size = 20))
+
+ggExtra::ggMarginal(p, type = "histogram", fill = "#C55A11", size = 1)
+```
+
+
+## Differences between gene lists for the two criteria 
+
+For the lasso : 
+
+```{r}
+
+load("results/alpha_per_gene_weighted_LASSO_min.rdata")
+load("results/alpha_per_gene_weighted_RF_min.rdata")
+
+alphas_lasso_min <- alphas_lasso
+alphas_rf_min <- alphas_rf
+
+load("results/alpha_per_gene_weighted_LASSO_test.rdata")
+load("results/alpha_per_gene_weighted_RF.rdata")
+
+alphas_lasso_div <- alphas_lasso
+alphas_rf_div <- alphas_rf
+
+saved_lasso <- setdiff(names(alphas_lasso_div[alphas_lasso_div > 0]), 
+                             names(alphas_lasso_min[alphas_lasso_min > 0]))
+
+saved_rf <- setdiff(names(alphas_rf_div[alphas_rf_div > 0]), 
+                             names(alphas_rf_min[alphas_rf_min > 0]))
+
+same_rf <- intersect(names(alphas_rf_div[alphas_rf_div > 0]), 
+                             names(alphas_rf_min[alphas_rf_min > 0]))
+
+lost_lasso <- setdiff(names(alphas_lasso_min[alphas_lasso_min > 0]),
+                            names(alphas_lasso_div[alphas_lasso_div > 0]))
+
+lost_rf <- setdiff(names(alphas_rf_min[alphas_rf_min > 0]),
+                         names(alphas_rf_div[alphas_rf_div > 0]))
+
+same_lasso <- intersect(names(alphas_lasso_min[alphas_lasso_min > 0]),
+                        names(alphas_lasso_div[alphas_lasso_div > 0]))
+
+matrix(c(length(same_lasso), length(lost_lasso), length(saved_lasso), 
+         length(genes) - length(same_lasso) - length(lost_lasso) - length(saved_lasso)), 
+       nrow = 2, byrow = F, dimnames = list(c("data integration div", "no data integration div"),
+                                            c("data integration min", "no data integration min")))
+
+
+```
+
+
+
+For the RFs :
+
+```{r}
+matrix(c(length(same_rf), length(lost_rf), length(saved_rf), 
+         length(genes) - length(same_rf) - length(lost_rf) - length(saved_rf)), 
+       nrow = 2, byrow = F, dimnames = list(c("data integration div", "no data integration div"),
+                                            c("data integration min", "no data integration min")))
+```
+
 ## examples at alpha optimal at 0.9
 
 
@@ -545,17 +658,15 @@ subset <- sample(lasso_1, size = 8, replace = F)
 
 wo1 <- F 
 for(nrt in subset ){
-  print(draw_gene_effective_integration(nrt, prior = 1, without_1 = wo1) +
-  draw_gene_mse(nrt, without_1 = wo1)+theme(legend.position = "none")+
-  get_opt_alpha_per_gene(nrt, without_1 = wo1)+
+  print(draw_gene_effective_integration(nrt, prior = 1) +
+  draw_gene_mse(nrt)+theme(legend.position = "none")+
+  get_opt_alpha_per_gene(nrt)+
   plot_annotation(title = nrt))
 }
 ```
 
 
 ## examples of alpha optimal at 1 for lasso and rf
-
-
 
 ```{r}
 both1<-c("AT3G16560", "AT5G48970" ,"AT3G16350", "AT1G22500" ,"AT3G06110" ,"AT2G46790" ,"AT5G52860")
@@ -587,17 +698,16 @@ load("results/100_permutations_lasso_mda_shuffle.rdata")
 In alphas opt at 0.9
 
 
-```{r}
-wo1 <-F
+```{r, eval = F}
 for(nrt in subset){
-  print(draw_gene_effective_integration(nrt, prior = 1, without_1 = wo1) + ggtitle("Pi=1, rank")+
-          draw_gene_effective_integration(nrt, prior = 1, type="imp", without_1 = wo1) +ggtitle("Pi=1")+
-                  draw_gene_effective_integration(nrt, prior = 0.5, without_1 = wo1) +ggtitle("Pi=1/2, rank")+
-          draw_gene_effective_integration(nrt, prior = 0.5, type="imp", without_1 = wo1) +ggtitle("Pi=1/2")+
-                  draw_gene_effective_integration(nrt, prior = 0, without_1 = wo1) +ggtitle("Pi=0, rank")+
-          draw_gene_effective_integration(nrt, prior = 0, type="imp", without_1 = wo1) +ggtitle("Pi=0")+
-  get_opt_alpha_per_gene(nrt, without_1 = wo1)+
-    get_opt_alpha_per_gene(nrt, type = "imp", without_1 = wo1)+
+  print(draw_gene_effective_integration(nrt, prior = 1) + ggtitle("Pi=1, rank")+
+          draw_gene_effective_integration(nrt, prior = 1, type="imp") +ggtitle("Pi=1")+
+                  draw_gene_effective_integration(nrt, prior = 0.5) +ggtitle("Pi=1/2, rank")+
+          draw_gene_effective_integration(nrt, prior = 0.5, type="imp") +ggtitle("Pi=1/2")+
+                  draw_gene_effective_integration(nrt, prior = 0) +ggtitle("Pi=0, rank")+
+          draw_gene_effective_integration(nrt, prior = 0, type="imp") +ggtitle("Pi=0")+
+  get_opt_alpha_per_gene(nrt)+
+    get_opt_alpha_per_gene(nrt, type = "imp")+
   plot_annotation(title = nrt)+plot_layout(ncol=4))
 }
 ```
@@ -606,19 +716,19 @@ for(nrt in subset){
 Comparison with the forests (is it the same order of mangitude for variable importance?)
 
 
-```{r, eval=T}
+```{r, eval=F}
 load("results/brf_perumtations_mse_all_genes_predict.rdata")
 load("results/100_permutations_bRF_importances_inf.rdata")
 wo1 <- F
 for(nrt in subset){
-  print(draw_gene_effective_integration(nrt, prior = 1, without_1 = wo1) + ggtitle("Pi=1, rank")+
-          draw_gene_effective_integration(nrt, prior = 1, type="imp", without_1 = wo1) +ggtitle("Pi=1")+
-                  draw_gene_effective_integration(nrt, prior = 0.5, without_1 = wo1) +ggtitle("Pi=1/2, rank")+
-          draw_gene_effective_integration(nrt, prior = 0.5, type="imp", without_1 = wo1) +ggtitle("Pi=1/2")+
-                  draw_gene_effective_integration(nrt, prior = 0, without_1 = wo1) +ggtitle("Pi=0, rank")+
-          draw_gene_effective_integration(nrt, prior = 0, type="imp", without_1 = wo1) +ggtitle("Pi=0")+
-  get_opt_alpha_per_gene(nrt, without_1 = wo1)+
-    get_opt_alpha_per_gene(nrt, type = "imp", without_1 = wo1)+
+  print(draw_gene_effective_integration(nrt, prior = 1) + ggtitle("Pi=1, rank")+
+          draw_gene_effective_integration(nrt, prior = 1, type="imp") +ggtitle("Pi=1")+
+                  draw_gene_effective_integration(nrt, prior = 0.5) +ggtitle("Pi=1/2, rank")+
+          draw_gene_effective_integration(nrt, prior = 0.5, type="imp") +ggtitle("Pi=1/2")+
+                  draw_gene_effective_integration(nrt, prior = 0) +ggtitle("Pi=0, rank")+
+          draw_gene_effective_integration(nrt, prior = 0, type="imp") +ggtitle("Pi=0")+
+  get_opt_alpha_per_gene(nrt)+
+    get_opt_alpha_per_gene(nrt, type = "imp")+
   plot_annotation(title = nrt)+plot_layout(ncol=4))
 }
 load("results/lasso_perumtations_mse_all_genes_test.rdata")
@@ -771,8 +881,14 @@ Heatmap((mse_other-rowMeans(mse_other))/matrixStats::rowSds(mse_other),
 
 # Intersection between classes
 
+Divergence from perm :
+
 
 ```{r}
+
+load("results/alpha_per_gene_weighted_LASSO_test.rdata")
+load("results/alpha_per_gene_weighted_RF.rdata")
+
 venn <- ggVennDiagram(list("weightedRF" = names(alphas_rf[alphas_rf!=0]),
                    "weightedLASSO" = names(alphas_lasso[alphas_lasso!=0])), edge_size = 2)+ 
   scale_color_manual( values = c("#C55A11","#E67F87"))+
@@ -787,11 +903,33 @@ p_enrich
 ggexport(venn, filename = "results/classes_intersection.pdf", width = 4, height = 4)
 ```
 
+Min MSE :
+
+```{r}
+
+load("results/alpha_per_gene_weighted_LASSO_min.rdata")
+load("results/alpha_per_gene_weighted_RF_min.rdata")
+
+venn <- ggVennDiagram(list("weightedRF" = names(alphas_rf[alphas_rf!=0]),
+                   "weightedLASSO" = names(alphas_lasso[alphas_lasso!=0])), edge_size = 2)+ 
+  scale_color_manual( values = c("#C55A11","#E67F87"))+
+  scale_fill_gradient(high="#e6f2ff", low="#e6f2ff")+
+  theme(legend.position = "none");venn
+
+# hypergeometric test to assess the significance of the intersect
+p_enrich <- phyper(q=220, m = length(names(alphas_rf[alphas_rf!=0])), 
+                   n = length(genes) - length(names(alphas_rf[alphas_rf!=0])), 
+                   k = length( names(alphas_lasso[alphas_lasso!=0])), lower.tail = F)
+p_enrich
+ggexport(venn, filename = "results/classes_intersection_min.pdf", width = 4, height = 4)
+```
 
 # Motif enrichment in gene lists
 
 
 ```{r}
+load("results/alpha_per_gene_weighted_LASSO_test.rdata")
+load("results/alpha_per_gene_weighted_RF.rdata")
 load("rdata/pwm_prom_jaspar_dap.rdata")
 
 pos_class_rf <- names(alphas_rf[alphas_rf!=0])
@@ -880,13 +1018,7 @@ DIANE::get_gene_information(enriched_tfs, organism = "Arabidopsis thaliana")
 ```
 
 
-
-
-
-
-# precision curves
-
-
+# Precision curves
 
 
 ```{r, fig.width=10, fig.height=10}
@@ -915,7 +1047,7 @@ precision <- data_val %>%
     geom_ribbon(aes(ymin = mean_precision - sd_precision , 
                     ymax = mean_precision + sd_precision  ), 
                 alpha = .4) + theme_pubr(legend = "top")+
-    geom_point(alpha = 0.1) + xlab("alpha") +
+    geom_point(alpha = 0.1) +
   xlab(expression(alpha)) + ylab("Precision") +
   ggtitle(paste("Precision against DAP-Seq")) +
   geom_line(aes(group = dataset, y = mean_precision)) +
@@ -972,17 +1104,20 @@ draw_validation(validation = val_rf)
 ```
 
 
-
-
 # Gene specific GRNs
 
 ```{r, eval = F}
-load("results/alpha_per_gene_weighted_LASSO_test.rdata")
-load("results/alpha_per_gene_weighted_RF.rdata")
+# load("results/alpha_per_gene_weighted_LASSO_test.rdata")
+# load("results/alpha_per_gene_weighted_RF.rdata")
+
+
+load("results/alpha_per_gene_weighted_LASSO_min.rdata")
+load("results/alpha_per_gene_weighted_RF_min.rdata")
+
 hist(alphas_lasso)
 hist(alphas_rf)
 
-nCores = 45
+nCores = 40
 mats <- list()
 nrep <- 10
 for(rep in 1:nrep){ # exploring inherent variability
@@ -1020,7 +1155,7 @@ for(rep in 1:nrep){ # exploring inherent variability
   mats[[paste0("RF_trueData_", rep)]] <- mat_rf
   mats[[paste0("RF_shuffled_", rep)]] <- mat_rf_perm
 }
-save(mats, file = "results/gene_specific_grns.rdata")
+save(mats, file = "results/gene_specific_grns_min.rdata")
 
 
 edges <- list()
@@ -1039,9 +1174,11 @@ for(name in names(mats)){
         lmses[,name] <- mats[[name]]["mse",]
       }
 }
-save(lmses, file = "results/gene_specific_mse.rdata") 
-save(edges, file = "results/gene_specific_edges.rdata") 
+save(lmses, file = "results/gene_specific_mse_min.rdata") 
+save(edges, file = "results/gene_specific_edges_min.rdata") 
 ```
+
+## For the max divergence to permutations metric
 
 ```{r}
 load("results/gene_specific_grns.rdata")
@@ -1049,22 +1186,208 @@ load("results/gene_specific_mse.rdata")
 load("results/gene_specific_edges.rdata")
 
 settings <- c("model", "dataset", "rep", "density")
-val_specific <-
-  evaluate_networks(
-    edges,
-    validation = c("DAPSeq"),
-    nCores = 30,
-    input_genes = genes,
-    input_tfs = tfs
-  )
-val_specific[, settings] <-
-  str_split_fixed(val_specific$network_name, '_', length(settings))
-save(val_specific, file = "results/gene_specific_validation.rdata")
+# val_specific <-
+#   evaluate_networks(
+#     edges,
+#     validation = c("DAPSeq"),
+#     nCores = 30,
+#     input_genes = genes,
+#     input_tfs = tfs
+#   )
+# val_specific[, settings] <-
+#   str_split_fixed(val_specific$network_name, '_', length(settings))
+# save(val_specific, file = "results/gene_specific_validation_min.rdata")
+load("results/gene_specific_validation.rdata")
+
 
 precision_rf <- draw_validation(validation = val_rf, 
                                    densities = c(0.005), precision_only = T)
 precision_lasso <- draw_validation(validation = val_lasso, 
                                    densities = c(0.005), precision_only = T)
+
+
+spec_rf <- val_specific %>%
+  separate(network_name, into = settings, sep = "_") %>%
+    filter(density == 0.005 & model == "RF") %>%
+  mutate(density = paste("D =", density),
+           model = str_replace(model, "RF", "weightedRF"),
+           model = str_replace(model, "LASSO", "weightedLASSO"))%>%
+  ggplot(aes(x=dataset, y = precision, color = dataset, fill = dataset)) + 
+  scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
+    scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData"))) +
+  geom_hline(color = "#C55A11", yintercept = 0.331042, size= 1.5, show.legend = T) + 
+  geom_boxplot(size = 1, alpha = 0.5, outlier.alpha = 0) +
+  theme_pubr() + geom_jitter(width = 0.2, size = 2)+
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    axis.ticks.x = element_blank(),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text.x = element_blank(),
+    legend.position = 'none'
+  ) + xlab("") + ylim(c(0.2,0.46))+ ylab("")
+
+spec_lasso <- val_specific %>%
+  separate(network_name, into = settings, sep = "_") %>%
+    filter(density == 0.005 & model == "LASSO") %>%
+  mutate(density = paste("D =", density),
+           model = str_replace(model, "RF", "weightedRF"),
+           model = str_replace(model, "LASSO", "weightedLASSO"))%>%
+  ggplot(aes(x=dataset, y = precision, color = dataset, fill = dataset)) + 
+  scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
+    scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData"))) +
+  geom_hline(color = "#C55A11", yintercept = 0.331042, size= 1.5, show.legend = T) + 
+  geom_boxplot(size = 1, alpha = 0.5, outlier.alpha = 0) +
+  theme_pubr() + geom_jitter(width = 0.2, size = 2)+
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    axis.ticks.x = element_blank(),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text.x = element_blank(),
+    legend.position = 'none'
+  )+ xlab("")+ ylim(c(0.2,0.46))+ ylab("")
+
+```
+
+```{r, fig.width=12, fig.height=10}
+# gene specific MSE
+mse_lasso_spec <- lmses %>%
+rownames_to_column("gene") %>%
+reshape2::melt()%>%
+  separate(variable,
+           into = c("model", "dataset",  "rep"),
+           sep = "_") %>%
+filter(model == "LASSO") %>%
+group_by(dataset, rep) %>%
+summarise(median_MSE = median(value, na.rm=T))%>%
+  ggplot(aes(x=dataset, y = median_MSE, color = dataset, fill = dataset)) + 
+scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
+  scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData"))) +
+geom_boxplot(size = 1, alpha = 0.5, outlier.alpha = 0) +
+theme_pubr() + geom_jitter(width = 0.2, size = 2)+
+theme(
+  strip.background = element_blank(),
+  axis.title.x = element_text(size = 22),
+  title = element_text(size = 16),
+  axis.ticks.x = element_blank(),
+  strip.text = element_text(size = 16),
+  legend.text = element_text(size = 15),
+  axis.text.x = element_blank(),
+  legend.position = 'none'
+)+ xlab("")+ ylab("MSE")
+
+mse_rf_spec <- lmses %>%
+rownames_to_column("gene") %>%
+reshape2::melt()%>%
+  separate(variable,
+           into = c("model", "dataset",  "rep"),
+           sep = "_") %>%
+filter(model == "RF") %>%
+group_by(dataset, rep) %>%
+summarise(median_MSE = median(value, na.rm=T))%>%
+  ggplot(aes(x=dataset, y = median_MSE, color = dataset, fill = dataset)) + 
+scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
+  scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData"))) +
+geom_boxplot(size = 1, alpha = 0.5, outlier.alpha = 0) +
+theme_pubr() + geom_jitter(width = 0.2, size = 2)+
+theme(
+  strip.background = element_blank(),
+  axis.ticks.x = element_blank(),
+  axis.title.x = element_text(size = 22),
+  title = element_text(size = 16),
+  strip.text = element_text(size = 16),
+  legend.text = element_text(size = 15),
+  axis.text.x = element_blank(),
+  legend.position = 'none'
+)+ xlab("")+ ylab("MSE") 
+
+
+# MSE for global alphas
+draw_mse <- function(model){
+data <- lmses[as.numeric(str_split_fixed(colnames(lmses), '_', 4)[,4]) <=10] %>%
+rownames_to_column("gene") %>%
+reshape2::melt()%>%
+  separate(variable,
+           into = c("model", "alpha", "dataset",  "rep"),
+           sep = "_") %>%
+filter(model == model) %>%
+group_by(dataset, rep, alpha) %>%
+summarise(median_MSE = median(value, na.rm=T))%>%
+  group_by(alpha, dataset) %>%
+  mutate(mean_median_mse = mean(median_MSE),
+         sd_median_mse = sd(median_MSE)) %>%
+  mutate(alpha = as.numeric(alpha))
+data %>%
+  ggplot(aes(x=alpha, y = median_MSE, color = dataset, fill = dataset)) + 
+scale_color_manual(values = setNames(c("grey", "#70AD47"),
+                                     c("shuffled", "trueData")))+
+  scale_fill_manual(values = setNames(c("grey", "#70AD47"), 
+                                      c("shuffled", "trueData"))) +
+  geom_line(aes(y=mean_median_mse, group = dataset)) +
+  geom_ribbon(aes(ymin = mean_median_mse - sd_median_mse , 
+                    ymax = mean_median_mse + sd_median_mse), 
+                alpha = .4)+ xlab(expression(alpha)) +
+theme_pubr() + geom_point(width = 0.2, size = 2)+
+theme(
+  strip.background = element_blank(),
+  axis.title.x = element_text(size = 22),
+  title = element_text(size = 16),
+  strip.text = element_text(size = 16),
+  legend.text = element_text(size = 15),
+  legend.position = 'none'
+)+ ylab("MSE")
+}
+
+load("results/lasso_perumtations_mse_all_genes_test.rdata")
+mse_lasso <- draw_mse("LASSO")
+
+load("results/brf_perumtations_mse_all_genes_predict.rdata")
+mse_rf <- draw_mse("RF")
+x_min <- 0.19
+plot <- mse_lasso + ylim(c(x_min,0.265)) +labs(subtitle = "Global\ndata integration")+ 
+  mse_lasso_spec+ ylim(c(x_min,0.265)) +labs(subtitle = "Gene-specific\ndata integration")+ylab("") +
+  mse_rf +  ylim(c(x_min,0.265)) +labs(subtitle = "Global\ndata integration")+ ylab("") +
+  mse_rf_spec+ ylim(c(x_min,0.265))  +labs(subtitle = "Gene-specific\ndata integration")+ylab("") +
+  precision_lasso + ylim(c(0.2,0.46)) +ggtitle("")+ labs(subtitle = "Global\ndata integration")+
+  theme(legend.position = 'none') + 
+  spec_lasso + labs(subtitle = "Gene-specific\ndata integration")+
+  precision_rf +labs(subtitle = "Global\ndata integration")+ ylab("") +ylim(c(0.2,0.46))+
+  theme(legend.position = 'none')+ggtitle("") + 
+  spec_rf +labs(subtitle = "Gene-specific\ndata integration")+
+plot_layout(guides = "collect", ncol = 4, widths = c(1.5,1,1.5,1))& theme(legend.position = 'bottom');plot
+
+ggexport(plot, filename = "results/specific_grns.pdf", width = 10, height = 8)
+
+
+```
+
+## For the min MSE  criteria
+
+
+
+```{r, fig.width=10, fig.height=10}
+load("results/gene_specific_grns_min.rdata")
+load("results/gene_specific_mse_min.rdata")
+load("results/gene_specific_edges_min.rdata")
+
+# settings <- c("model", "dataset", "rep", "density")
+# val_specific <-
+#   evaluate_networks(
+#     edges,
+#     validation = c("DAPSeq"),
+#     nCores = 30,
+#     input_genes = genes,
+#     input_tfs = tfs
+#   )
+# val_specific[, settings] <-
+#   str_split_fixed(val_specific$network_name, '_', length(settings))
+load("results/gene_specific_validation_min.rdata")
+# save(val_specific, file = "results/gene_specific_validation_min.rdata")
 
 
 spec_rf <- val_specific %>%
@@ -1111,11 +1434,7 @@ spec_lasso <- val_specific %>%
     legend.position = 'none'
   )+ xlab("")+ ylim(c(0.2,0.46))+ ylab("")
 
-```
 
-```{r, fig.width=10, fig.height=10}
-# gene specific MSE
-load("results/gene_specific_mse.rdata")
 mse_lasso_spec <- lmses %>%
 rownames_to_column("gene") %>%
 reshape2::melt()%>%
@@ -1165,63 +1484,450 @@ theme(
 )+ xlab("")+ ylab("") 
 
 
-# MSE for global alphas
-draw_mse <- function(model){
-data <- lmses[as.numeric(str_split_fixed(colnames(lmses), '_', 4)[,4]) <=10] %>%
-rownames_to_column("gene") %>%
-reshape2::melt()%>%
-  separate(variable,
-           into = c("model", "alpha", "dataset",  "rep"),
-           sep = "_") %>%
-filter(model == model) %>%
-group_by(dataset, rep, alpha) %>%
-summarise(median_MSE = median(value, na.rm=T))%>%
-  group_by(alpha, dataset) %>%
-  mutate(mean_median_mse = mean(median_MSE),
-         sd_median_mse = sd(median_MSE)) %>%
-  mutate(alpha = as.numeric(alpha))
-data %>%
-  ggplot(aes(x=alpha, y = median_MSE, color = dataset, fill = dataset)) + 
-scale_color_manual(values = setNames(c("grey", "#70AD47"),
-                                     c("shuffled", "trueData")))+
-  scale_fill_manual(values = setNames(c("grey", "#70AD47"), 
-                                      c("shuffled", "trueData"))) +
-  geom_line(aes(y=mean_median_mse, group = dataset)) +
-  geom_ribbon(aes(ymin = mean_median_mse - sd_median_mse , 
-                    ymax = mean_median_mse + sd_median_mse), 
-                alpha = .4)+ 
-theme_pubr() + geom_point(width = 0.2, size = 2)+
-theme(
-  strip.background = element_blank(),
-  axis.title.x = element_text(size = 22),
-  title = element_text(size = 16),
-  strip.text = element_text(size = 16),
-  legend.text = element_text(size = 15),
-  axis.text.x = element_blank(),
-  legend.position = 'none'
-)+ xlab("")+ ylab("")
-}
-
-load("results/lasso_perumtations_mse_all_genes_test.rdata")
-mse_lasso <- draw_mse("LASSO")
-
-load("results/brf_perumtations_mse_all_genes_predict.rdata")
-mse_rf <- draw_mse("RF")
-
-mse_lasso + ylim(c(0.195,0.265)) +labs(subtitle = "LASSO")+ ggtitle("MSE") + 
-  mse_lasso_spec+ ylim(c(0.195,0.265)) +labs(subtitle = "LASSO")+
-  mse_rf +  ylim(c(0.195,0.265)) +labs(subtitle = "RF") +
-  mse_rf_spec+ ylim(c(0.195,0.265))  +labs(subtitle = "RF")+
+mse_lasso + ylim(c(0.17,0.265)) +labs(subtitle = "LASSO")+ ggtitle("MSE") + 
+  mse_lasso_spec+ ylim(c(0.17,0.265)) +labs(subtitle = "LASSO")+
+  mse_rf +  ylim(c(0.17,0.265)) +labs(subtitle = "RF") +
+  mse_rf_spec+ ylim(c(0.17,0.265))  +labs(subtitle = "RF")+
   precision_lasso + ylim(c(0.2,0.46)) + ggtitle("Precision") + labs(subtitle = "LASSO")+
   theme(legend.position = 'none') + 
   spec_lasso + labs(subtitle = "LASSO")+
   precision_rf + labs(subtitle = "RF") +ylim(c(0.2,0.46))+theme(legend.position = 'none')+ggtitle("") + 
   spec_rf +labs(subtitle = "RF") +
-plot_layout(guides = "collect", ncol = 4, widths = c(1,1,1,1))
+plot_layout(guides = "collect", ncol = 4, widths = c(1,1,1,1)) 
 
 
 ```
 
+# Do genes lost by our metric have a lower precision?
+
+Showing the precision of grns with min method and D=0.005 
+
++ only on the genes not present with our divergence metric
++ for all genes
+
+
+```{r}
+load("results/gene_specific_grns_min.rdata")
+edges <- list()
+# lmses <- data.frame(row.names = genes)
+for(name in names(mats)){ 
+      for(density in c(0.005)){# exploring importance threshold stringency
+        
+        if(str_detect(name, "LASSO"))
+          edges[[paste0(name, '_', density)]] <-
+        weightedLASSO_network(mats[[name]][,lost_lasso], density = density, pwm_occurrence, 
+                          lost_lasso, tfs, decreasing = TRUE)
+        else
+          edges[[paste0(name, '_', density)]] <-
+        weightedRF_network(mats[[name]][,lost_rf], density = density, pwm_occurrence, 
+                          lost_rf, tfs)
+        # lmses[,name] <- mats[[name]]["mse",]
+      }
+}
+
+
+
+settings <- c("model", "dataset", "rep", "density")
+val_specific_lost <-
+  evaluate_networks(
+    edges,
+    validation = c("DAPSeq"),
+    nCores = 30,
+    input_genes = genes,
+    input_tfs = tfs
+  )
+val_specific_lost[, settings] <-
+  str_split_fixed(val_specific_lost$network_name, '_', length(settings))
+
+load("results/gene_specific_validation_min.rdata")
+
+spec_rf <- val_specific %>%
+  separate(network_name, into = settings, sep = "_") %>%
+    filter(density == 0.005 & model == "RF") %>%
+  mutate(density = paste("D =", density),
+           model = str_replace(model, "RF", "weightedRF"),
+           model = str_replace(model, "LASSO", "weightedLASSO"))%>%
+  ggplot(aes(x=dataset, y = precision, color = dataset, fill = dataset)) + 
+  scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
+    scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData"))) +
+  geom_hline(color = "#C55A11", yintercept = 0.331042, size= 1.5, show.legend = T) + 
+  geom_boxplot(size = 1, alpha = 0.5, outlier.alpha = 0) +
+  theme_pubr() + geom_jitter(width = 0.2, size = 2)+
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    axis.ticks.x = element_blank(),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text.x = element_blank(),
+    legend.position = 'none'
+  ) + xlab("") + ylim(c(0.2,0.46))+ ylab("")
+
+spec_lasso <- val_specific %>%
+  separate(network_name, into = settings, sep = "_") %>%
+    filter(density == 0.005 & model == "LASSO") %>%
+  mutate(density = paste("D =", density),
+           model = str_replace(model, "RF", "weightedRF"),
+           model = str_replace(model, "LASSO", "weightedLASSO"))%>%
+  ggplot(aes(x=dataset, y = precision, color = dataset, fill = dataset)) + 
+  scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
+    scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData"))) +
+  geom_hline(color = "#C55A11", yintercept = 0.331042, size= 1.5, show.legend = T) + 
+  geom_boxplot(size = 1, alpha = 0.5, outlier.alpha = 0) +
+  theme_pubr() + geom_jitter(width = 0.2, size = 2)+
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    axis.ticks.x = element_blank(),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text.x = element_blank(),
+    legend.position = 'none'
+  )+ xlab("")+ ylim(c(0.2,0.46))+ ylab("")
+
+
+spec_rf_lost <- val_specific_lost %>%
+  separate(network_name, into = settings, sep = "_") %>%
+    filter(density == 0.005 & model == "RF") %>%
+  mutate(density = paste("D =", density),
+           model = str_replace(model, "RF", "weightedRF"),
+           model = str_replace(model, "LASSO", "weightedLASSO"))%>%
+  ggplot(aes(x=dataset, y = precision, color = dataset, fill = dataset)) + 
+  scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
+    scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData"))) +
+  geom_hline(color = "#C55A11", yintercept = 0.331042, size= 1.5, show.legend = T) + 
+  geom_boxplot(size = 1, alpha = 0.5, outlier.alpha = 0) +
+  theme_pubr() + geom_jitter(width = 0.2, size = 2)+
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_blank(),
+    legend.position = 'none'
+  ) + xlab("") + ylim(c(0.2,0.46))+ ylab("")
+
+spec_lasso_lost <- val_specific_lost %>%
+  separate(network_name, into = settings, sep = "_") %>%
+    filter(density == 0.005 & model == "LASSO") %>%
+  mutate(density = paste("D =", density),
+           model = str_replace(model, "RF", "weightedRF"),
+           model = str_replace(model, "LASSO", "weightedLASSO"))%>%
+  ggplot(aes(x=dataset, y = precision, color = dataset, fill = dataset)) + 
+  scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
+    scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData"))) +
+  geom_hline(color = "#C55A11", yintercept = 0.331042, size= 1.5, show.legend = T) + 
+  geom_boxplot(size = 1, alpha = 0.5, outlier.alpha = 0) +
+  theme_pubr() + geom_jitter(width = 0.2, size = 2)+
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_blank(),
+    legend.position = 'none'
+  )+ xlab("")+ ylim(c(0.2,0.46))+ ylab("")
+
+
+
+spec_lasso_lost + ggtitle("genes lost lasso") + spec_lasso + ggtitle("all genes lasso") +
+spec_rf_lost + ggtitle("genes lost rf") +spec_rf+ ggtitle("all genes rf") + plot_layout(ncol = 4)
+
+# save(val_specific, file = "results/gene_specific_validation_min.rdata")
+# save(lmses, file = "results/gene_specific_mse_min.rdata") 
+# save(edges, file = "results/gene_specific_edges_min.rdata") 
+```
+
+
+
+Showing the precision of grns with max div method and D=0.005 
+
++ only on the genes not present with min mse method, gained by our metric
++ for all genes
+
+
+```{r, fig.width=10}
+load("results/gene_specific_grns.rdata")
+edges <- list()
+# lmses <- data.frame(row.names = genes)
+for(name in names(mats)){ 
+      for(density in c(0.005)){# exploring importance threshold stringency
+        
+        if(str_detect(name, "LASSO"))
+          edges[[paste0(name, '_', density)]] <-
+        weightedLASSO_network(mats[[name]][,saved_lasso], density = density, pwm_occurrence, 
+                          saved_lasso, tfs, decreasing = TRUE)
+        else
+          edges[[paste0(name, '_', density)]] <-
+        weightedRF_network(mats[[name]][,saved_rf], density = density, pwm_occurrence, 
+                          saved_rf, tfs)
+        # lmses[,name] <- mats[[name]]["mse",]
+      }
+}
+
+
+
+settings <- c("model", "dataset", "rep", "density")
+val_specific_gain <-
+  evaluate_networks(
+    edges,
+    validation = c("DAPSeq"),
+    nCores = 30,
+    input_genes = genes,
+    input_tfs = tfs
+  )
+val_specific_gain[, settings] <-
+  str_split_fixed(val_specific_gain$network_name, '_', length(settings))
+
+load("results/gene_specific_validation.rdata")
+
+spec_rf <- val_specific %>%
+  separate(network_name, into = settings, sep = "_") %>%
+    filter(density == 0.005 & model == "RF") %>%
+  mutate(density = paste("D =", density),
+           model = str_replace(model, "RF", "weightedRF"),
+           model = str_replace(model, "LASSO", "weightedLASSO"))%>%
+  ggplot(aes(x=dataset, y = precision, color = dataset, fill = dataset)) + 
+  scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
+    scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData"))) +
+  geom_hline(color = "#C55A11", yintercept = 0.331042, size= 1.5, show.legend = T) + 
+  geom_boxplot(size = 1, alpha = 0.5, outlier.alpha = 0) +
+  theme_pubr() + geom_jitter(width = 0.2, size = 2)+
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    axis.ticks.x = element_blank(),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text.x = element_blank(),
+    legend.position = 'none'
+  )+ xlab("")+ ylim(c(0,1))+ ylab("")
+
+spec_lasso <- val_specific %>%
+  separate(network_name, into = settings, sep = "_") %>%
+    filter(density == 0.005 & model == "LASSO") %>%
+  mutate(density = paste("D =", density),
+           model = str_replace(model, "RF", "weightedRF"),
+           model = str_replace(model, "LASSO", "weightedLASSO"))%>%
+  ggplot(aes(x=dataset, y = precision, color = dataset, fill = dataset)) + 
+  scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
+    scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData"))) +
+  geom_hline(color = "#C55A11", yintercept = 0.331042, size= 1.5, show.legend = T) + 
+  geom_boxplot(size = 1, alpha = 0.5, outlier.alpha = 0) +
+  theme_pubr() + geom_jitter(width = 0.2, size = 2)+
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    axis.ticks.x = element_blank(),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text.x = element_blank(),
+    legend.position = 'none'
+  )+ xlab("")+ ylim(c(0,1))+ ylab("")
+
+
+spec_rf_gain <- val_specific_gain %>%
+  separate(network_name, into = settings, sep = "_") %>%
+    filter(density == 0.005 & model == "RF") %>%
+  mutate(density = paste("D =", density),
+           model = str_replace(model, "RF", "weightedRF"),
+           model = str_replace(model, "LASSO", "weightedLASSO"))%>%
+  ggplot(aes(x=dataset, y = precision, color = dataset, fill = dataset)) + 
+  scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
+    scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData"))) +
+  geom_hline(color = "#C55A11", yintercept = 0.331042, size= 1.5, show.legend = T) + 
+  geom_boxplot(size = 1, alpha = 0.5, outlier.alpha = 0) +
+  theme_pubr() + geom_jitter(width = 0.2, size = 2)+
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_blank(),
+    legend.position = 'none'
+  )+ xlab("")+ ylim(c(0,1))+ ylab("")
+
+spec_lasso_gain <- val_specific_gain %>%
+  separate(network_name, into = settings, sep = "_") %>%
+    filter(density == 0.005 & model == "LASSO") %>%
+  mutate(density = paste("D =", density),
+           model = str_replace(model, "RF", "weightedRF"),
+           model = str_replace(model, "LASSO", "weightedLASSO"))%>%
+  ggplot(aes(x=dataset, y = precision, color = dataset, fill = dataset)) + 
+  scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
+    scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData"))) +
+  geom_hline(color = "#C55A11", yintercept = 0.331042, size= 1.5, show.legend = T) + 
+  geom_boxplot(size = 1, alpha = 0.5, outlier.alpha = 0) +
+  theme_pubr() + geom_jitter(width = 0.2, size = 2)+
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_blank(),
+    legend.position = 'none'
+  )+ xlab("")+ ylim(c(0,1))+ ylab("")
+
+
+
+spec_lasso_gain + ggtitle("saved lasso") + spec_lasso + ggtitle("all genes lasso") +
+spec_rf_gain+ ggtitle("saved rf") +spec_rf+ ggtitle("all genes rf") + plot_layout(ncol = 4)
+
+# save(val_specific, file = "results/gene_specific_validation_min.rdata")
+# save(lmses, file = "results/gene_specific_mse_min.rdata") 
+# save(edges, file = "results/gene_specific_edges_min.rdata") 
+```
+
+
+Showing the precision of grns with max div method and D=0.05 
+
++ only on the genes not present with min mse method, gained by our metric
++ for all genes
+
+
+```{r, fig.width=10}
+load("results/gene_specific_grns.rdata")
+edges <- list()
+# lmses <- data.frame(row.names = genes)
+for(name in names(mats)){ 
+      for(density in c(0.01)){# exploring importance threshold stringency
+        
+        if(str_detect(name, "LASSO"))
+          edges[[paste0(name, '_', density)]] <-
+        weightedLASSO_network(mats[[name]][,saved_lasso], density = density, pwm_occurrence, 
+                          saved_lasso, tfs, decreasing = TRUE)
+        else
+          edges[[paste0(name, '_', density)]] <-
+        weightedRF_network(mats[[name]][,saved_rf], density = density, pwm_occurrence, 
+                          saved_rf, tfs)
+        # lmses[,name] <- mats[[name]]["mse",]
+      }
+}
+
+
+
+settings <- c("model", "dataset", "rep", "density")
+val_specific_gain <-
+  evaluate_networks(
+    edges,
+    validation = c("DAPSeq"),
+    nCores = 30,
+    input_genes = genes,
+    input_tfs = tfs
+  )
+val_specific_gain[, settings] <-
+  str_split_fixed(val_specific_gain$network_name, '_', length(settings))
+
+load("results/gene_specific_validation.rdata")
+
+spec_rf <- val_specific %>%
+  separate(network_name, into = settings, sep = "_") %>%
+    filter(density == 0.01 & model == "RF") %>%
+  mutate(density = paste("D =", density),
+           model = str_replace(model, "RF", "weightedRF"),
+           model = str_replace(model, "LASSO", "weightedLASSO"))%>%
+  ggplot(aes(x=dataset, y = precision, color = dataset, fill = dataset)) + 
+  scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
+    scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData"))) +
+  geom_hline(color = "#C55A11", yintercept = 0.331042, size= 1.5, show.legend = T) + 
+  geom_boxplot(size = 1, alpha = 0.5, outlier.alpha = 0) +
+  theme_pubr() + geom_jitter(width = 0.2, size = 2)+
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    axis.ticks.x = element_blank(),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text.x = element_blank(),
+    legend.position = 'none'
+  )+ xlab("")+ ylim(c(0,0.7))+ ylab("")
+
+spec_lasso <- val_specific %>%
+  separate(network_name, into = settings, sep = "_") %>%
+    filter(density == 0.01 & model == "LASSO") %>%
+  mutate(density = paste("D =", density),
+           model = str_replace(model, "RF", "weightedRF"),
+           model = str_replace(model, "LASSO", "weightedLASSO"))%>%
+  ggplot(aes(x=dataset, y = precision, color = dataset, fill = dataset)) + 
+  scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
+    scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData"))) +
+  geom_hline(color = "#C55A11", yintercept = 0.331042, size= 1.5, show.legend = T) + 
+  geom_boxplot(size = 1, alpha = 0.5, outlier.alpha = 0) +
+  theme_pubr() + geom_jitter(width = 0.2, size = 2)+
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    axis.ticks.x = element_blank(),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text.x = element_blank(),
+    legend.position = 'none'
+  )+ xlab("")+ ylim(c(0,0.7))+ ylab("")
+
+
+spec_rf_gain <- val_specific_gain %>%
+  separate(network_name, into = settings, sep = "_") %>%
+    filter(density == 0.01 & model == "RF") %>%
+  mutate(density = paste("D =", density),
+           model = str_replace(model, "RF", "weightedRF"),
+           model = str_replace(model, "LASSO", "weightedLASSO"))%>%
+  ggplot(aes(x=dataset, y = precision, color = dataset, fill = dataset)) + 
+  scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
+    scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData"))) +
+  geom_hline(color = "#C55A11", yintercept = 0.331042, size= 1.5, show.legend = T) + 
+  geom_boxplot(size = 1, alpha = 0.5, outlier.alpha = 0) +
+  theme_pubr() + geom_jitter(width = 0.2, size = 2)+
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_blank(),
+    legend.position = 'none'
+  )+ xlab("")+ ylim(c(0,0.7))+ ylab("")
+
+spec_lasso_gain <- val_specific_gain %>%
+  separate(network_name, into = settings, sep = "_") %>%
+    filter(density == 0.01 & model == "LASSO") %>%
+  mutate(density = paste("D =", density),
+           model = str_replace(model, "RF", "weightedRF"),
+           model = str_replace(model, "LASSO", "weightedLASSO"))%>%
+  ggplot(aes(x=dataset, y = precision, color = dataset, fill = dataset)) + 
+  scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
+    scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData"))) +
+  geom_hline(color = "#C55A11", yintercept = 0.331042, size= 1.5, show.legend = T) + 
+  geom_boxplot(size = 1, alpha = 0.5, outlier.alpha = 0) +
+  theme_pubr() + geom_jitter(width = 0.2, size = 2)+
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text = element_blank(),
+    legend.position = 'none'
+  )+ xlab("")+ ylim(c(0,0.7))+ ylab("")
+
+
+
+spec_lasso_gain + ggtitle("saved lasso") + spec_lasso + ggtitle("all genes lasso") +
+spec_rf_gain+ ggtitle("saved rf") +spec_rf+ ggtitle("all genes rf") + plot_layout(ncol = 4)
+
+# save(val_specific, file = "results/gene_specific_validation_min.rdata")
+# save(lmses, file = "results/gene_specific_mse_min.rdata") 
+# save(edges, file = "results/gene_specific_edges_min.rdata") 
+```
 
 
 <!-- # Clustering genes for RFs -->
@@ -1374,9 +2080,372 @@ plot_layout(guides = "collect", ncol = 4, widths = c(1,1,1,1))
 
 <!-- # Functional study of those groups -->
 
+## TARGET
+
+```{r}
+load(file = "results/100_permutations_bRF_edges_inf.rdata")
+
+# validation of GRN edges against DAP-Seq
+settings <- c("model", "alpha", "dataset", "rep", "density")
+val_targ <-
+  evaluate_networks(
+    edges,
+    validation = c("TARGET"),
+    nCores = 35,
+    input_genes = genes,
+    input_tfs = tfs
+  )
+val_targ[, settings] <-
+  str_split_fixed(val_targ$network_name, '_', length(settings))
+save(val_targ, file = "results/100_permutations_rf_validation_target_inf.rdata")
+```
+
+
+```{r, eval=F}
+load(file = "results/100_permutations_lasso_edges.rdata")
+
+# validation of GRN edges against DAP-Seq
+settings <- c("model", "alpha", "dataset", "rep", "density")
+val_targ <-
+  evaluate_networks(
+    edges,
+    validation = c("TARGET"),
+    nCores = 35,
+    input_genes = genes,
+    input_tfs = tfs
+  )
+val_targ[, settings] <-
+  str_split_fixed(val_targ$network_name, '_', length(settings))
+save(val_targ, file = "results/100_permutations_lasso_validation_target.rdata")
+```
+
+
+```{r}
+load(file = "results/100_permutations_lasso_validation_target.rdata")
+
+lasso_targ <- draw_validation(validation = val_targ, precision_only = T, densities = 0.005)
+load(file = "results/100_permutations_rf_validation_target_inf.rdata")
+
+rf_targ <- draw_validation(validation = val_targ, precision_only = T, densities = 0.005)
+
+load("results/gene_specific_edges.rdata")
+settings <- c("model", "dataset", "rep", "density")
+val_specific <-
+  evaluate_networks(
+    edges,
+    validation = c("TARGET"),
+    nCores = 30,
+    input_genes = genes,
+    input_tfs = tfs
+  )
+val_specific[, settings] <-
+  str_split_fixed(val_specific$network_name, '_', length(settings))
+save(val_specific, file = "results/gene_specific_validation_target.rdata")
+
+spec_rf <- val_specific %>%
+  separate(network_name, into = settings, sep = "_") %>%
+    filter(density == 0.005 & model == "RF") %>%
+  mutate(density = paste("D =", density),
+           model = str_replace(model, "RF", "weightedRF"),
+           model = str_replace(model, "LASSO", "weightedLASSO"))%>%
+  ggplot(aes(x=dataset, y = precision, color = dataset, fill = dataset)) + 
+  scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
+    scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData"))) +
+  geom_hline(color = "#C55A11", yintercept = 0.331042, size= 1.5, show.legend = T) + 
+  geom_boxplot(size = 1, alpha = 0.5, outlier.alpha = 0) +
+  theme_pubr() + geom_jitter(width = 0.2, size = 2)+
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    axis.ticks.x = element_blank(),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text.x = element_blank(),
+    legend.position = 'none'
+  ) + xlab("") + ylim(c(0.2,0.46))+ ylab("")
+
+spec_lasso <- val_specific %>%
+  separate(network_name, into = settings, sep = "_") %>%
+    filter(density == 0.005 & model == "LASSO") %>%
+  mutate(density = paste("D =", density),
+           model = str_replace(model, "RF", "weightedRF"),
+           model = str_replace(model, "LASSO", "weightedLASSO"))%>%
+  ggplot(aes(x=dataset, y = precision, color = dataset, fill = dataset)) + 
+  scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
+    scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData"))) +
+  geom_hline(color = "#C55A11", yintercept = 0.331042, size= 1.5, show.legend = T) + 
+  geom_boxplot(size = 1, alpha = 0.5, outlier.alpha = 0) +
+  theme_pubr() + geom_jitter(width = 0.2, size = 2)+
+  theme(
+    strip.background = element_blank(),
+    axis.title.x = element_text(size = 22),
+    title = element_text(size = 16),
+    axis.ticks.x = element_blank(),
+    strip.text = element_text(size = 16),
+    legend.text = element_text(size = 15),
+    axis.text.x = element_blank(),
+    legend.position = 'none'
+  )+ xlab("")+ ylim(c(0.2,0.46))+ ylab("")
+
+
+spec_lasso+ylim(0.1, 0.26)+ lasso_targ+ylim(0.1, 0.26) + 
+  spec_rf +ylim(0.1, 0.26) + rf_targ +ylim(0.1, 0.26) + plot_layout(ncol = 4)+plot_annotation("TARGET validation")
+```
+
+# Validation of TGA1 targets in inferred GRNs
+
+Differentially expressed targets of TGA1 (35S:TGA1 vs Col-0) identified in whole roots obtained from (https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6451032/#MOESM7) (Varala)
+
+
+```{r}
+load("results/gene_specific_grns.rdata")
+load("results/gene_specific_mse.rdata")
+load("results/gene_specific_edges.rdata")
+
+get_hubs <- function(net){
+  hubs <- names(table(net$from)[order(table(net$from), decreasing = T)])[1:15]
+  DIANE::get_gene_information(hubs, organism = "Arabidopsis thaliana")
+}
+
+get_hubs(edges$RF_trueData_1_0.005)
+get_hubs(edges$LASSO_trueData_1_0.005)
+
+tga1_oe <- read.table("data/tga1_overexpression.tsv", h=T, sep = '\t') %>%
+    mutate(ifelse(is.na(Log2FC), 0, Log2FC)) %>%
+    mutate(ifelse(is.na(padj), 1, padj)) %>%
+    mutate(ALog2FC = abs(Log2FC), pval = -log10(padj)) %>%
+  rename(genes = Target)
+
+tga1 <- "AT5G65210"
+
+draw_oeScore_in_targets <- function(model, density){
+  
+  nets <- edges[paste0(model, '_trueData_',1:10, '_', density)]
+  df <- data.frame(tga1_target = logical(0), median_oe = double(0))
+  
+  for(net in nets){
+    targs <- net %>% filter(from == tga1)
+  targs <- targs$to
+  
+  df <- rbind.data.frame(df, data.frame(genes = unique(net$to), 
+             tga1_target = unique(net$to) %in% targs)%>%
+    left_join(tga1_oe, by = c("genes"))%>%
+    group_by(tga1_target) %>%
+    summarize(median_oe = median(pval, na.rm=T)))
+  }
+  
+  df %>%
+    ggplot(aes(x=tga1_target, y=median_oe, fill = tga1_target))+
+    geom_boxplot(width = 0.25, outlier.alpha = 0) + 
+    stat_compare_means() + geom_jitter(width = 0.05)+ 
+    theme_pubr()
+}
+
+
+draw_oeScore_in_targets("RF", 0.005)+
+draw_oeScore_in_targets("LASSO", 0.005)
+
+draw_oeScore_in_targets("RF", 0.01)+
+draw_oeScore_in_targets("LASSO", 0.01)
+
+draw_oeScore_in_targets("RF", 0.05)+
+draw_oeScore_in_targets("LASSO", 0.05)
+
+
+draw_importance_vs_oescore <- function(model){
+  mat_ <- mats[paste0(model, '_trueData_',1:10)]
+  df <- data.frame(importance = logical(0), ALog2FC = double(0))
+  
+  for(mat in mat_){
+    mat <- mat_[[1]]
+    targs <- net %>% filter(from == tga1)
+  targs <- targs$to
+  
+  df <- rbind.data.frame(df, 
+                         data.frame(genes = genes, 
+             importance = mat[tga1,genes])%>%
+    left_join(tga1_oe, by = c("genes"))  %>%
+      select(genes, importance, pval))
+  }
+  
+  df %>%
+    group_by(genes) %>%
+    summarise(mean_importance = mean(importance, na.rm=T),
+              pval=mean(pval))%>%
+    ggplot(aes(x=mean_importance, y=pval))+
+    geom_point() + 
+    stat_cor() + 
+    theme_pubr() + scale_y_log10() + scale_x_log10()
+}
+
+draw_importance_vs_oescore("RF")+
+  draw_importance_vs_oescore("LASSO")
+
+draw_ALFC_in_targets("RF", 0.01)+
+  draw_ALFC_in_targets("LASSO", 0.01)
+
+```
+
+# Look at precision instead, in overexpression and target!
+
+
+
+```{r}
+tga1_tg <- read.table("data/tga1_target.txt")$V1
+tga4_tg <- read.table("data/tga4_target.txt")$V1
+vrn1_tg <- read.table("data/vrn1_target.txt")$V1
+
+load("results/gene_specific_edges.rdata")
+get_precision <- function(model, density){
+  df <- data.frame(precision_tga1 = double(0),
+                   precision_tga4 = double(0),
+                   precision_vrn1 = double(0),
+                   n_targets = integer(0), model = character(0), 
+                   density = double(0), dataset = character(0), 
+                   alpha = character(0))
+  
+  for(dataset in c("shuffled", "trueData")){
+    nets <- edges[paste0(model, '_', dataset ,'_',1:10, '_', density)]
+    for(net in nets){
+      targs <- net %>% filter(from == tga1)
+    targs <- targs$to
+    
+    df <- rbind.data.frame(df, data.frame(
+          precision_tga1 =length(intersect(targs, tga1_tg))/length(targs),
+          precision_tga4 =length(intersect(targs, tga4_tg))/length(targs),
+          precision_vrn1 =length(intersect(targs, vrn1_tg))/length(targs),
+          n_targets = length(targs),
+          model = paste0("weighted",model) , density = density, 
+          dataset = dataset, alpha = "gene-specific"))
+    
+    }
+  }
+  return(df)
+}
+
+precision_tga1_specific <- rbind.data.frame(get_precision("RF", 0.005),get_precision("LASSO", 0.005))
+```
+
+```{r}
+load(file = "results/100_permutations_bRF_edges_inf.rdata")
+get_precision_global_RF <- function(densities, alphas, m){
+  df <- data.frame(precision_tga1 = double(0),
+                   precision_tga4 = double(0),
+                   precision_vrn1 = double(0),
+                   n_targets = integer(0), model = character(0), 
+                   density = double(0), dataset = character(0), 
+                   alpha = double(0))
+  
+  for(dataset in c("shuffled", "trueData")){
+    for(alpha in alphas){
+      for(density in densities){
+        nets <- edges[paste0('bRF_', alpha, '_', dataset ,'_',1:20, '_', density)]
+        for(net in nets){
+          targs <- net %>% filter(from == tga1)
+        targs <- targs$to
+        df <- rbind.data.frame(df, data.frame(
+           precision_tga1 =length(intersect(targs, tga1_tg))/length(targs),
+          precision_tga4 =length(intersect(targs, tga4_tg))/length(targs),
+          precision_vrn1 =length(intersect(targs, vrn1_tg))/length(targs),
+          n_targets = length(targs),
+          model = "weightedRF", density = density, 
+          dataset = dataset, alpha = alpha))
+        }
+      }
+    }
+  }
+  return(df)
+}
+
+precision_tga1_global_rf <- get_precision_global_RF(0.005, c(0,1))
+
+
+load(file = "results/100_permutations_lasso_edges.rdata")
+
+get_precision_global_LASSO <- function(densities, alphas, m){
+  df <- data.frame(precision_tga1 = double(0),
+                   precision_tga4 = double(0),
+                   precision_vrn1 = double(0),
+                   n_targets = integer(0), model = character(0), 
+                   density = double(0), dataset = character(0), 
+                   alpha = double(0))
+  
+  
+  for(dataset in c("shuffled", "trueData")){
+    for(alpha in alphas){
+      for(density in densities){
+        nets <- edges[paste0('LASSO_', alpha, '_', dataset ,'_',1:20, '_', density)]
+        for(net in nets){
+          targs <- net %>% filter(from == tga1)
+        targs <- targs$to
+        df <- rbind.data.frame(df, data.frame(
+          precision_tga1 =length(intersect(targs, tga1_tg))/length(targs),
+          precision_tga4 =length(intersect(targs, tga4_tg))/length(targs),
+          precision_vrn1 =length(intersect(targs, vrn1_tg))/length(targs),
+          n_targets = length(targs),
+          model = "weightedLASSO", density = density, 
+          dataset = dataset, alpha = alpha))
+        }
+      }
+    }
+  }
+  return(df)
+}
+
+precision_tga1_global_lasso <- get_precision_global_LASSO(0.005, c(0,1))
+
+rbind.data.frame(precision_tga1_global_lasso, precision_tga1_global_rf) %>%
+  rbind.data.frame(precision_tga1_specific) %>%
+  mutate(alpha = as.factor(alpha),
+         density = as.factor(density),
+         n_targets = as.factor(n_targets)) %>%
+  filter(dataset=="trueData") %>%
+  reshape2::melt() %>%
+  filter( variable == "precision_tga1") %>%
+  ggplot(aes(x=alpha, y = value, fill = dataset)) + 
+  facet_wrap(variable~model, ncol = 2) + geom_boxplot()+geom_point()+ggtitle("TGA1 precision on TARGET")
+
+
+
+
+rbind.data.frame(precision_tga1_global_lasso, precision_tga1_global_rf) %>%
+  rbind.data.frame(precision_tga1_specific) %>%
+  mutate(alpha = as.factor(alpha),
+         density = as.factor(density),
+         n_targets = as.factor(n_targets)) %>%
+  filter(dataset=="trueData") %>%
+  reshape2::melt() %>%
+  filter( variable == "precision_tga4") %>%
+  ggplot(aes(x=alpha, y = value, fill = dataset)) + 
+  facet_wrap(variable~model, ncol = 2) + geom_boxplot()+geom_point()+ggtitle("TGA4 precision on TARGET")
+
+
+rbind.data.frame(precision_tga1_global_lasso, precision_tga1_global_rf) %>%
+  rbind.data.frame(precision_tga1_specific) %>%
+  mutate(alpha = as.factor(alpha),
+         density = as.factor(density),
+         n_targets = as.factor(n_targets)) %>%
+  filter(dataset=="trueData") %>%
+  reshape2::melt() %>%
+  filter( variable == "precision_vrn1") %>%
+  ggplot(aes(x=alpha, y = value, fill = dataset)) + 
+  facet_wrap(variable~model, ncol = 2) + geom_boxplot()+geom_point()+ggtitle("VRN1 precision on TARGET")
+
+
+```
+
+
+
+
 ```{r}
 load("rdata/pwm_prom_jaspar_dap.rdata")
 load("rdata/gene_structure.rdata")
+
+
+load("results/gene_specific_grns.rdata")
+load("results/gene_specific_mse.rdata")
+load("results/gene_specific_edges.rdata")
 
 mean_expr <- rowMeans(counts)[genes]
 var_expr <- matrixStats::rowSds(counts[genes,])*matrixStats::rowSds(counts[genes,])
@@ -1765,7 +2834,6 @@ phyper(q=length(intersect(common, tfs)),
 
 <!-- # Expression -->
 
-
 <!-- ```{r} -->
 <!-- expression <- data.frame(counts) -->
 <!-- expression <- (expression-rowMeans(expression)) / matrixStats::rowSds(as.matrix(expression)) -->
@@ -1778,7 +2846,6 @@ phyper(q=length(intersect(common, tfs)),
 <!--                                        nm = names(table(clusters_lasso))), -->
 <!--       clusters_rf= setNames(c("darkorange", "darkgreen", "lightgrey"),  -->
 <!--                                        nm = names(table(clusters_rf))))) -->
-
 <!-- ``` -->
 
 
