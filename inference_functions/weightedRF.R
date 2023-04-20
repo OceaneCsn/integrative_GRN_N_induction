@@ -30,11 +30,12 @@ library(igraph)
 #' @param counts Expression matrix (genes in rownames, conditions in columns)
 #' @param genes Vector of genes (in the rownames of counts) to be used in GRN inference as target genes
 #' @param tfs vector of genes (in the rownames of counts) that are transcriptional regulators
-#' to be used a predictors in the regressions for GRN inference
-#' @param alpha The strength of data integration.
+#' to be used as predictors in the regressions for GRN inference
+#' @param alpha The strength of TFBS data integration.
 #' Numeric value (e.g 0, 1) or a named vector giving the value of alpha for each target gene
 #' @param pwm_occurrence Prior matrix Pi, giving PWM presence scores for TFs in rows
 #' and genes in columns. Can contain NAs for TFs that do not have a PWM available.
+#' NAs will be turned into priors of 1/2.
 #' @param nTrees Number of trees in Random Forests
 #' @param importance Importance metric in Random Forests.
 #' relative MDA ("%IncMSE") is the default value. MDI can be used via "IncNodePurity".

@@ -18,15 +18,14 @@ library(tidyverse)
 source('inference_functions/weightedRF.R')
 source('inference_functions/weightedLASSO.R')
 source('inference_functions/evaluateNetwork.R')
-source('inference_functions/MSE.R')
 ```
 
 This document demonstrates the use of the weightedRF and weightedLASSO functions for integrative GRN inference.
 
 Those functions infer the regulatory pathways of *Arabidopsis thaliana*'s roots in response to nitrate (N) induction from [Varala et al., 2018](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE97500).
 
-They use as inputs the expression profiles of N-responsive genes and TFBS information. 
-Prior TFBS information was built by searching in the promoters of the N-responsive genes the PWM of the N-responsive regulators. 
+They use as inputs the expression profiles of nitrate-responsive genes and TFBS information. 
+Prior TFBS information was built by searching in the promoters of the nitrate-responsive genes (-1000 bp upstream and 200bp downstream of the TSS) the PWM of the N-responsive regulators found in the [JASPAR database](https://jaspar.genereg.net/). 
 
 ## Data import
 
@@ -51,30 +50,33 @@ dim(pwm_occurrence)
 
 ## GRN inference
 
+The strength of data integration $\alpha$ (between 0 and 1) calibrates the contribution of TFBSs to expression data. It can be set globally (one numeric value) or in a gene-specific value (a named vector of $\alpha$ values giving the alpha specific to each gene).
 
 ### weightedRF : weighted Random Forests
 
-Let's infer a GRN using weightedRF with $\alpha=1$ and a density $D = 0.005$.
+As an example, let's infer a GRN using weightedRF with $\alpha=0.8$ for all genes and a density $D = 0.005$.
+It is also parametrized by the number of trees nTrees.
 
 ```{r}
-importances <- weightedRF_inference(counts, genes, tfs, alpha = 1, nTrees = 1000,
+importances_rf <- weightedRF_inference(counts, genes, tfs, alpha = 0.8, nTrees = 500,
                              pwm_occurrence = pwm_occurrence, nCores = 25)
 
-grn_RF <- weightedRF_network(importances, density = 0.005, pwm_occurrence, genes, tfs)
+grn_RF <- weightedRF_network(importances_rf, density = 0.005, pwm_occurrence, genes, tfs)
   
 head(grn_RF); dim(grn_RF)
 mean(grn_RF$pwm)
 ```
-
+Here, around 95% of inferred edges are supported by a PWM.
 
 ### weightedLASSO : LASSO with Differential Shrinkage and Stability Selection
 
 Let's infer a GRN using weightedLASSO with $\alpha=1$ and a density $D = 0.005$.
+It is also parametrized by N, the number of iterations of stability selection.
+
 
 ```{r}
-importances_lasso <- weightedLASSO_inference(counts, genes, tfs, alpha = 1, N = 50,
-                               pwm_occurrence = pwm_occurrence, nCores = 30, 
-                               robustness = 0.2)
+importances_lasso <- weightedLASSO_inference(counts, genes, tfs, alpha = 0.8, N = 50,
+                               pwm_occurrence = pwm_occurrence, nCores = 30)
 grn_lasso <- weightedLASSO_network(importances_lasso, density = 0.005, 
                                        pwm_occurrence, genes, tfs, decreasing = TRUE)
 head(grn_lasso); dim(grn_lasso)
@@ -84,26 +86,24 @@ mean(grn_lasso$pwm)
 
 ### Getting prediction error on target genes (MSE)
 
-The error in predicting the expression of target genes during regressions in GRN inference can be assessed on test examples via these functions :
+The error in predicting the expression of target genes during regressions in GRN inference is also assessed on test conditions and returned by the inference functions ("mse" row in the returned matrix) :
 
 ```{r}
-mse_RF <- weightedRF_inference_MSE(counts, genes, tfs, alpha = 1, nTrees = 1000,
-                             pwm_occurrence = pwm_occurrence, nCores = 25)
-mse_lasso <- weightedLASSO_inference_MSE(counts, genes, tfs, alpha = 1, N = 50,
-                               pwm_occurrence = pwm_occurrence, nCores = 30)
-
-data.frame(weightedRF = mse_RF,
-                  weightedLASSO = mse_lasso) %>%
+data.frame(weightedRF = importances_rf["mse",],
+            weightedLASSO = importances_lasso["mse",]) %>%
   reshape2::melt() %>%
   rename(normalized_mse = value, model = variable) %>%
   ggplot(aes(x= normalized_mse, fill = model)) +
-  geom_histogram(alpha = 0.5)
+  geom_histogram(alpha = 0.5) + theme_bw()
 
 ```
 
+Here, the distribution of test errors across genes are quite similar between the two models.
+The returned MSE is actually normalized by th evariance of the target gene, so it is comparable between target genes.
+
 ### Validating the GRNs against DAPSeq
 
-The following function computes precision and recall on experimental TF-DNA interactions in Arabidopsis:
+The following function computes precision and recall on experimental TF-DNA *in vitro* interactions in Arabidopsis (DAP-Seq data):
 
 ```{r}
 dapseq_validation <- evaluate_networks(list("bRF" = grn_RF, "LASSO-D3S" = grn_lasso), 
@@ -112,7 +112,7 @@ dapseq_validation <- evaluate_networks(list("bRF" = grn_RF, "LASSO-D3S" = grn_la
                                          nCores =2);dapseq_validation
 ```
 
-In this example, approximately approximately 40% of predicted edges by weightedRF and 45% of weightedLASSO are supported by DAPSeq experiments.
+In this example, approximately approximately 42% of predicted edges by weightedRF and 37% of weightedLASSO are supported by DAPSeq experiments.
 
-> In agreement with the paper results, we encourage the use of gene-specific alphas, that can be determined by finding for each gene the value of alpha offering low prediction error as a function data integration, as comapred to baseline (shuffled) data. This is demonstrated in other scripts of this repository, namely XXX.
+> In agreement with the article results, we encourage the use of gene-specific alphas, that can be determined by finding for each gene the value of alpha offering low prediction error as a function data integration, as comapred to baseline (shuffled) data. This is demonstrated in another notebook of this repository, namely _weighted_LASSO_weighted_RF_gene_specific.Rmd_. 
 
