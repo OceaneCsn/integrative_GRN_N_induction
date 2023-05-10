@@ -264,7 +264,7 @@ draw_gene_effective_integration <- function(gene, prior=1, type = "rank"){
   geom_ribbon(aes(ymin = mean_imp - sd_imp , 
                     ymax = mean_imp + sd_imp  ), 
                 alpha = .4)  +theme_pubr(legend = "none")+
-    ylab("Rank of TFs with Pi=1")+
+    ylab("Effective data integration")+
     ggtitle("Effective data integration") + 
     labs(subtitle = gene)+
     scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
