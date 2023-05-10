@@ -2378,8 +2378,36 @@ get_hubs(edges$LASSO_trueData_3_0.005)
 
 ```
 
+getting their targets
 
 
+```{r}
+net_rf <- edges$RF_trueData_1_0.005[]
+net_lasso <- edges$LASSO_trueData_1_0.005[]
+
+# TGA4
+DIANE::get_gene_information(net_rf[net_rf$from == "AT5G10030",]$to, organism = "Arabidopsis thaliana")
+DIANE::get_gene_information(net_lasso[net_lasso$from == "AT5G10030",]$to, organism = "Arabidopsis thaliana")
+
+#TGA1
+DIANE::get_gene_information(net_rf[net_rf$from == "AT5G65210",]$to, organism = "Arabidopsis thaliana")
+DIANE::get_gene_information(net_lasso[net_lasso$from == "AT5G65210",]$to, organism = "Arabidopsis thaliana")
+
+
+# HH02
+DIANE::get_gene_information(net_rf[net_rf$from == "AT1G68670",]$to, organism = "Arabidopsis thaliana")
+DIANE::get_gene_information(net_lasso[net_lasso$from == "AT1G68670",]$to, organism = "Arabidopsis thaliana")
+
+get_in_hubs <- function(net){
+  hubs <- names(table(net$to)[order(table(net$to), decreasing = T)])[1:25]
+  DIANE::get_gene_information(hubs, organism = "Arabidopsis thaliana")
+}
+get_in_hubs(net_lasso)
+get_in_hubs(net_rf)
+
+DIANE::get_gene_information(net_rf[net_rf$to == "AT1G08090",]$from, organism = "Arabidopsis thaliana")
+
+```
 
 
 ```{r}
