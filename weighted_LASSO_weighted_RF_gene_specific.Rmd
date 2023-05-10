@@ -507,14 +507,17 @@ For divergence from permutation criteria :
 load("results/alpha_per_gene_weighted_LASSO_test.rdata")
 load("results/alpha_per_gene_weighted_RF.rdata")
 
-data.frame(weightedLASSO = alphas_lasso, weightedRF = alphas_rf) %>%
+hists <- data.frame(weightedLASSO = alphas_lasso, weightedRF = alphas_rf) %>%
   gather(key = "model", value = "alpha") %>%
 ggplot(aes(x = alpha, fill = model)) +
   geom_histogram()+
   facet_wrap(~model)+
   theme(axis.title.y = element_blank(), legend.position = "none")+
-  scale_fill_manual( values = c("#C55A11","#E67F87"))+theme_pubr()
-
+  scale_fill_manual( values = c("#C55A11","#E67F87"))+theme_bw()+
+  theme(strip.background = element_blank(),
+        legend.position = "none")+
+  xlab(expression(alpha))+ ylab("Number of genes")
+ggexport(hists, filename  = "results/alpha_histograms.pdf", height = 3, width = 4.5)
 ```
 
 ```{r, fig.height=5, fig.width=7}
@@ -745,7 +748,7 @@ ha = HeatmapAnnotation(
     alpha = anno_simple(as.numeric(str_remove(colnames(mse), "alpha "))),
     annotation_name_side = "left")
 
-#pdf("results/rf_mse_interest.pdf", height = 5)
+png("results/rf_mse_interest.png", res = 300, height = 1200, width = 2000)
 Heatmap((mse_interest-rowMeans(mse_interest))/matrixStats::rowSds(mse_interest), 
         col = col_fun, show_column_names = F,
          width = ncol(mse_interest)*unit(10, "mm"), 
@@ -755,8 +758,9 @@ Heatmap((mse_interest-rowMeans(mse_interest))/matrixStats::rowSds(mse_interest),
                                "class of interest", "no integration"), 
                 col = list(class = setNames(c("#70AD47", "grey"), 
                                             nm = c("class of interest", "no integration"))))
-#dev.off()
+dev.off()
 #pdf("results/rf_mse_others.pdf", height = 10)
+png("results/rf_mse_others.png", res = 300, height = 3000, width = 2000)
 Heatmap((mse_other-rowMeans(mse_other))/matrixStats::rowSds(mse_other),
         col = col_fun,show_column_names = F,
         width = ncol(mse_other)*unit(10, "mm"), 
@@ -766,7 +770,7 @@ Heatmap((mse_other-rowMeans(mse_other))/matrixStats::rowSds(mse_other),
                                "class of interest", "no integration"), 
                 col = list(class = setNames(c("#70AD47", "grey"), 
                                             nm = c("class of interest", "no integration"))))
-#dev.off()
+dev.off()
 ```
 
 # For the lasso
@@ -794,6 +798,7 @@ ha = HeatmapAnnotation(
     annotation_name_side = "left")
 
 #pdf("results/lasso_mse_interest.pdf", height = 7)
+png("results/lasso_mse_interest.png", res = 300, height = 1400, width = 2000)
 Heatmap((mse_interest-rowMeans(mse_interest))/matrixStats::rowSds(mse_interest), 
         col = col_fun, show_column_names = F,
          width = ncol(mse_interest)*unit(10, "mm"), 
@@ -803,9 +808,9 @@ Heatmap((mse_interest-rowMeans(mse_interest))/matrixStats::rowSds(mse_interest),
                                "class of interest", "no integration"), 
                 col = list(class = setNames(c("#70AD47", "grey"), 
                                             nm = c("class of interest", "no integration"))))
-#dev.off()
+dev.off()
 #pdf("results/lasso_mse_others.pdf", height = 7)
-
+png("results/lasso_mse_others.png", res = 300, height = 2800, width = 2000)
 Heatmap((mse_other-rowMeans(mse_other))/matrixStats::rowSds(mse_other),
         col = col_fun,show_column_names = F,
         width = ncol(mse_other)*unit(10, "mm"), 
@@ -815,7 +820,7 @@ Heatmap((mse_other-rowMeans(mse_other))/matrixStats::rowSds(mse_other),
                                "class of interest", "no integration"), 
                 col = list(class = setNames(c("#70AD47", "grey"), 
                                             nm = c("class of interest", "no integration"))))
-#dev.off()
+dev.off()
 ```
 
 # Intersection between classes
