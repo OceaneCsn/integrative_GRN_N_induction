@@ -22,6 +22,7 @@ library(ggpubr)
 library(patchwork)
 library(ggVennDiagram)
 library(ComplexHeatmap)
+library(clusterProfiler)
 ```
 
 This document demonstrates the use of the weightedRF and weightedLASSO functions for integrative GRN inference.
@@ -44,54 +45,6 @@ pwm_imputed <- pwm_occurrence
 pwm_imputed[is.na(pwm_imputed)] <- 0.5
 
 ALPHAS <- seq(0,1, by = 0.1)
-```
-
-
-# Prediction error as a function of data integration strengh (alpha) 
-
-The following steps are time and CPU intensive, so the result files can just be loaded to be analysed in further steps.
-
-## For weightedRF
-
-Generating 100 repetitions of weightedRF MSE estimation on true data, and on shuffled data.
-
-```{r, eval=FALSE}
-# lmses <- data.frame(row.names = genes)
-# N <-100
-# for(alpha in ALPHAS){
-#   for(perm in 1:N){
-#     lmses[,paste(as.character(alpha), perm, "true_data")] <- weightedRF_inference_MSE(counts, genes, tfs, alpha = alpha, nTrees = 2000,
-#                              pwm_occurrence = pwm_occurrence, nCores = 45, tf_expression_permutation = F)
-#   }
-# 
-#   for(perm in 1:N){
-#     lmses[,paste(as.character(alpha), perm, "shuffled")] <- weightedRF_inference_MSE(counts, genes, tfs, alpha = alpha, nTrees = 2000,
-#                            pwm_occurrence = pwm_occurrence, nCores = 45, tf_expression_permutation = T)
-#   }
-# }
-# 
-# save(lmses, file = "results/brf_perumtations_mse_all_genes_predict.rdata")
-# subset<-unique(rownames(lmses))
-```
-
-
-## For weightedLASSO 
-
-Generating 100 repetitions of weightedLASSO MSE estimation on true data, and on shuffled data.
-
-```{r, eval=FALSE}
-# lmses <- data.frame(row.names = genes)
-# N<-50
-# for(alpha in ALPHAS){
-#   for(perm in 1:N){
-#     lmses[,paste(as.character(alpha), perm, "true_data")] <- weightedLASSO_inference_MSE(counts, genes, tfs, alpha = alpha, N=50,
-#                              pwm_occurrence = pwm_occurrence, nCores = 40, tf_expression_permutation = F)
-# 
-#     lmses[,paste(as.character(alpha), perm, "shuffled")] <- weightedLASSO_inference_MSE(counts, genes, tfs, alpha = alpha, N=50,
-#                            pwm_occurrence = pwm_occurrence, nCores = 40, tf_expression_permutation = T)
-#   }
-# }
-# save(lmses, file = "results/lasso_perumtations_mse_all_genes_test.rdata")
 ```
 
 
@@ -315,6 +268,7 @@ get_opt_alpha_per_gene <- function(gene, type = "rank",
   if(type == "imp")
     data <- data.frame(lapply(mats, function(mat){mean(mat[,gene][tfs_with_motif])}))
   
+  # get effective data integration
   inte <- data %>%
   gather(key = "setting", value = "summed_importance") %>%
   separate(setting, into = c("method", "alpha", "dataset", "rep"), sep = "_") %>%
@@ -323,7 +277,7 @@ get_opt_alpha_per_gene <- function(gene, type = "rank",
             sd_imp = sd(summed_importance, na.rm=T),
          alpha = as.numeric(alpha))
   
-  
+  # joins effective data integration with MSE data
   curves <- lmses[gene, ] %>%
     gather() %>%
    separate(key,
@@ -338,6 +292,8 @@ get_opt_alpha_per_gene <- function(gene, type = "rank",
     summarise(mean_mse = mean(value, na.rm = T),
            sd_mse = sd(value, na.rm = T)) 
   
+  # Approximates shuflled mean MSE and sd MSE for all true values of data integration
+  # ( as the two curves are not aligned in terms of effectiva data integration)
   curves <- curves %>%
   group_by(dataset) %>%
     arrange(dataset, mean_imp)%>%
@@ -350,8 +306,20 @@ get_opt_alpha_per_gene <- function(gene, type = "rank",
   shuff <- curves[curves$dataset!="trueData",]
   
   # true$div <- (shuff$approx_mse - shuff$approx_sd) - (true$mean_mse)
-  true$div <- ifelse((shuff$approx_mse - true$mean_mse)/shuff$approx_sd>1, 
-                     (shuff$approx_mse - true$mean_mse)/shuff$approx_sd, 
+  
+  # to get mse diff divided by permutations sd :
+  # true$div <- ifelse((shuff$approx_mse - true$mean_mse)/shuff$approx_sd>1, 
+  #                    (shuff$approx_mse - true$mean_mse)/shuff$approx_sd, 
+  #                    0)
+  
+  # to get mse diff divided by true sd :
+  # true$div <- ifelse((shuff$approx_mse - true$mean_mse)/true$sd_mse>1, 
+  #                    (shuff$approx_mse - true$mean_mse)/true$sd_mse, 
+  #                    0)
+  
+  # to get mse diff divided by the mean of true and shuffled sd :
+  true$div <- ifelse(2*(shuff$approx_mse - true$mean_mse)/(true$sd_mse+shuff$approx_sd)>1, 
+                     2*(shuff$approx_mse - true$mean_mse)/(true$sd_mse+shuff$approx_sd), 
                      0)
   
   if(metric == "div"){
@@ -419,7 +387,7 @@ p <- draw_gene_effective_integration(gene_benefit, prior = 1) +
 
 
 figure <- n/o/p;figure
-ggexport(figure, filename = "results/gene_examples_weightedRF.pdf", width = 10, height = 9)
+# ggexport(figure, filename = "results/gene_examples_weightedRF.pdf", width = 10, height = 9)
 
 ```
 
@@ -429,7 +397,8 @@ ggexport(figure, filename = "results/gene_examples_weightedRF.pdf", width = 10, 
 alphas_rf <- mcsapply(genes, get_opt_alpha_per_gene, type = "rank", 
                           return_cluster=T, mc.cores=34)
 hist(alphas_rf)
-save(alphas_rf, file = "results/alpha_per_gene_weighted_RF.rdata")
+sum(alphas_rf > 0)
+save(alphas_rf, file = "results/alpha_per_gene_weighted_RF_mean_true_shuff_sd.rdata")
 
 alphas_rf <- mcsapply(genes, get_opt_alpha_per_gene, type = "rank", metric = "min",
                           return_cluster=T, mc.cores=34)
@@ -458,11 +427,6 @@ load("results/lasso_perumtations_mse_all_genes_test.rdata")
 load("results/100_permutations_lasso_mda_shuffle.rdata")
 # load("results/100_permutations_lasso_edges.rdata")
 
-# gene_no_benefit <- "AT5G66850"
-# # the same as RFs
-# gene_benefit_optimum <- "AT1G14720"
-# gene_benefit <- "AT2G38180"
-
 
 n <- draw_gene_effective_integration(gene_no_benefit, prior = 1) +
   draw_gene_mse(gene_no_benefit)+
@@ -480,7 +444,7 @@ p <- draw_gene_effective_integration(gene_benefit, prior = 1) +
 
 n/o/p
 figure <- n/o/p
-ggexport(figure, filename = "results/gene_examples_weightedLASSO.pdf", width = 10, height = 9)
+# ggexport(figure, filename = "results/gene_examples_weightedLASSO.pdf", width = 10, height = 9)
 
 ```
 
@@ -490,7 +454,8 @@ ggexport(figure, filename = "results/gene_examples_weightedLASSO.pdf", width = 1
 alphas_lasso <- mcsapply(genes, get_opt_alpha_per_gene, type = "rank", 
                           return_cluster=T, mc.cores=34)
 hist(alphas_lasso)
-save(alphas_lasso, file = "results/alpha_per_gene_weighted_LASSO_test.rdata")
+sum(alphas_lasso>0)
+save(alphas_lasso, file = "results/alpha_per_gene_weighted_LASSO_test_mean_true_shuff_sd.rdata")
 
 alphas_lasso <- mcsapply(genes, get_opt_alpha_per_gene, type = "rank", 
                           return_cluster=T, metric = "min", mc.cores=34)
@@ -517,7 +482,7 @@ ggplot(aes(x = alpha, fill = model)) +
   theme(strip.background = element_blank(),
         legend.position = "none")+
   xlab(expression(alpha))+ ylab("Number of genes")
-ggexport(hists, filename  = "results/alpha_histograms.pdf", height = 3, width = 4.5)
+# ggexport(hists, filename  = "results/alpha_histograms.pdf", height = 3, width = 4.5)
 ```
 
 ```{r, fig.height=5, fig.width=7}
@@ -634,90 +599,90 @@ matrix(c(length(same_rf), length(lost_rf), length(saved_rf),
                                             c("data integration min", "no data integration min")))
 ```
 
-## examples at alpha optimal at 0.9
+<!-- ## examples at alpha optimal at 0.9 -->
 
 
-```{r}
-lasso_1<- names(alphas_lasso[alphas_lasso==0.9])
-subset <- sample(lasso_1, size = 8, replace = F)
+<!-- ```{r} -->
+<!-- lasso_1<- names(alphas_lasso[alphas_lasso==0.9]) -->
+<!-- subset <- sample(lasso_1, size = 8, replace = F) -->
 
-for(nrt in subset ){
-  print(draw_gene_effective_integration(nrt, prior = 1) +
-  draw_gene_mse(nrt)+theme(legend.position = "none")+
-  get_opt_alpha_per_gene(nrt)+
-  plot_annotation(title = nrt))
-}
-```
-
-
-## examples of alpha optimal at 1 for lasso and rf
-
-```{r}
-both1<-c("AT3G16560", "AT5G48970" ,"AT3G16350", "AT1G22500" ,"AT3G06110" ,"AT2G46790" ,"AT5G52860")
-for(nrt in both1){
-  print(draw_gene_effective_integration(nrt, prior = 1) +
-  draw_gene_mse(nrt)+theme(legend.position = "none")+
-  get_opt_alpha_per_gene(nrt)+
-  plot_annotation(title = nrt))
-}
-```
+<!-- for(nrt in subset ){ -->
+<!--   print(draw_gene_effective_integration(nrt, prior = 1) + -->
+<!--   draw_gene_mse(nrt)+theme(legend.position = "none")+ -->
+<!--   get_opt_alpha_per_gene(nrt)+ -->
+<!--   plot_annotation(title = nrt)) -->
+<!-- } -->
+<!-- ``` -->
 
 
-```{r}
-load("results/brf_perumtations_mse_all_genes_predict.rdata")
-load("results/100_permutations_bRF_importances_inf.rdata")
-both1<-c("AT3G16560", "AT5G48970" ,"AT3G16350", "AT1G22500" ,"AT3G06110" ,"AT2G46790" ,"AT5G52860")
-for(nrt in both1){
-  print(draw_gene_effective_integration(nrt, prior = 1) +
-  draw_gene_mse(nrt)+theme(legend.position = "none")+
-  get_opt_alpha_per_gene(nrt)+
-  plot_annotation(title = nrt))
-}
-load("results/lasso_perumtations_mse_all_genes_test.rdata")
-load("results/100_permutations_lasso_mda_shuffle.rdata")
-```
+<!-- <!-- ## examples of alpha optimal at 1 for lasso and rf --> -->
 
-# Examples of rank and mean importance in effective integration
-
-In alphas opt at 0.9
+<!-- ```{r} -->
+<!-- both1<-c("AT3G16560", "AT5G48970" ,"AT3G16350", "AT1G22500" ,"AT3G06110" ,"AT2G46790" ,"AT5G52860") -->
+<!-- for(nrt in both1){ -->
+<!--   print(draw_gene_effective_integration(nrt, prior = 1) + -->
+<!--   draw_gene_mse(nrt)+theme(legend.position = "none")+ -->
+<!--   get_opt_alpha_per_gene(nrt)+ -->
+<!--   plot_annotation(title = nrt)) -->
+<!-- } -->
+<!-- ``` -->
 
 
-```{r, eval = F}
-for(nrt in subset){
-  print(draw_gene_effective_integration(nrt, prior = 1) + ggtitle("Pi=1, rank")+
-          draw_gene_effective_integration(nrt, prior = 1, type="imp") +ggtitle("Pi=1")+
-                  draw_gene_effective_integration(nrt, prior = 0.5) +ggtitle("Pi=1/2, rank")+
-          draw_gene_effective_integration(nrt, prior = 0.5, type="imp") +ggtitle("Pi=1/2")+
-                  draw_gene_effective_integration(nrt, prior = 0) +ggtitle("Pi=0, rank")+
-          draw_gene_effective_integration(nrt, prior = 0, type="imp") +ggtitle("Pi=0")+
-  get_opt_alpha_per_gene(nrt)+
-    get_opt_alpha_per_gene(nrt, type = "imp")+
-  plot_annotation(title = nrt)+plot_layout(ncol=4))
-}
-```
+<!-- ```{r} -->
+<!-- load("results/brf_perumtations_mse_all_genes_predict.rdata") -->
+<!-- load("results/100_permutations_bRF_importances_inf.rdata") -->
+<!-- both1<-c("AT3G16560", "AT5G48970" ,"AT3G16350", "AT1G22500" ,"AT3G06110" ,"AT2G46790" ,"AT5G52860") -->
+<!-- for(nrt in both1){ -->
+<!--   print(draw_gene_effective_integration(nrt, prior = 1) + -->
+<!--   draw_gene_mse(nrt)+theme(legend.position = "none")+ -->
+<!--   get_opt_alpha_per_gene(nrt)+ -->
+<!--   plot_annotation(title = nrt)) -->
+<!-- } -->
+<!-- load("results/lasso_perumtations_mse_all_genes_test.rdata") -->
+<!-- load("results/100_permutations_lasso_mda_shuffle.rdata") -->
+<!-- ``` -->
+
+<!-- <!-- # Examples of rank and mean importance in effective integration --> -->
+
+<!-- <!-- In alphas opt at 0.9 --> -->
 
 
-Comparison with the forests (is it the same order of mangitude for variable importance?)
+<!-- ```{r, eval = F} -->
+<!-- for(nrt in subset){ -->
+<!--   print(draw_gene_effective_integration(nrt, prior = 1) + ggtitle("Pi=1, rank")+ -->
+<!--           draw_gene_effective_integration(nrt, prior = 1, type="imp") +ggtitle("Pi=1")+ -->
+<!--                   draw_gene_effective_integration(nrt, prior = 0.5) +ggtitle("Pi=1/2, rank")+ -->
+<!--           draw_gene_effective_integration(nrt, prior = 0.5, type="imp") +ggtitle("Pi=1/2")+ -->
+<!--                   draw_gene_effective_integration(nrt, prior = 0) +ggtitle("Pi=0, rank")+ -->
+<!--           draw_gene_effective_integration(nrt, prior = 0, type="imp") +ggtitle("Pi=0")+ -->
+<!--   get_opt_alpha_per_gene(nrt)+ -->
+<!--     get_opt_alpha_per_gene(nrt, type = "imp")+ -->
+<!--   plot_annotation(title = nrt)+plot_layout(ncol=4)) -->
+<!-- } -->
+<!-- ``` -->
 
 
-```{r, eval=F}
-load("results/brf_perumtations_mse_all_genes_predict.rdata")
-load("results/100_permutations_bRF_importances_inf.rdata")
-wo1 <- F
-for(nrt in subset){
-  print(draw_gene_effective_integration(nrt, prior = 1) + ggtitle("Pi=1, rank")+
-          draw_gene_effective_integration(nrt, prior = 1, type="imp") +ggtitle("Pi=1")+
-                  draw_gene_effective_integration(nrt, prior = 0.5) +ggtitle("Pi=1/2, rank")+
-          draw_gene_effective_integration(nrt, prior = 0.5, type="imp") +ggtitle("Pi=1/2")+
-                  draw_gene_effective_integration(nrt, prior = 0) +ggtitle("Pi=0, rank")+
-          draw_gene_effective_integration(nrt, prior = 0, type="imp") +ggtitle("Pi=0")+
-  get_opt_alpha_per_gene(nrt)+
-    get_opt_alpha_per_gene(nrt, type = "imp")+
-  plot_annotation(title = nrt)+plot_layout(ncol=4))
-}
-load("results/lasso_perumtations_mse_all_genes_test.rdata")
-load("results/100_permutations_lasso_mda_shuffle.rdata")
-```
+<!-- Comparison with the forests (is it the same order of mangitude for variable importance?) -->
+
+
+<!-- ```{r, eval=F} -->
+<!-- load("results/brf_perumtations_mse_all_genes_predict.rdata") -->
+<!-- load("results/100_permutations_bRF_importances_inf.rdata") -->
+<!-- wo1 <- F -->
+<!-- for(nrt in subset){ -->
+<!--   print(draw_gene_effective_integration(nrt, prior = 1) + ggtitle("Pi=1, rank")+ -->
+<!--           draw_gene_effective_integration(nrt, prior = 1, type="imp") +ggtitle("Pi=1")+ -->
+<!--                   draw_gene_effective_integration(nrt, prior = 0.5) +ggtitle("Pi=1/2, rank")+ -->
+<!--           draw_gene_effective_integration(nrt, prior = 0.5, type="imp") +ggtitle("Pi=1/2")+ -->
+<!--                   draw_gene_effective_integration(nrt, prior = 0) +ggtitle("Pi=0, rank")+ -->
+<!--           draw_gene_effective_integration(nrt, prior = 0, type="imp") +ggtitle("Pi=0")+ -->
+<!--   get_opt_alpha_per_gene(nrt)+ -->
+<!--     get_opt_alpha_per_gene(nrt, type = "imp")+ -->
+<!--   plot_annotation(title = nrt)+plot_layout(ncol=4)) -->
+<!-- } -->
+<!-- load("results/lasso_perumtations_mse_all_genes_test.rdata") -->
+<!-- load("results/100_permutations_lasso_mda_shuffle.rdata") -->
+<!-- ``` -->
 
 
 
@@ -729,7 +694,8 @@ Depending on their class (optimal alpha different from 0 or not).
 
 ```{r, fig.height=10}
 load("results/brf_perumtations_mse_all_genes_predict.rdata")
-load(file = "results/alpha_per_gene_weighted_RF.rdata")
+# load(file = "results/alpha_per_gene_weighted_RF.rdata")
+load(file = "results/alpha_per_gene_weighted_RF_true_sd.rdata")
 
 pos_class <- names(alphas_rf[alphas_rf!=0])
 
@@ -748,7 +714,7 @@ ha = HeatmapAnnotation(
     alpha = anno_simple(as.numeric(str_remove(colnames(mse), "alpha "))),
     annotation_name_side = "left")
 
-png("results/rf_mse_interest.png", res = 300, height = 1200, width = 2000)
+# png("results/rf_mse_interest.png", res = 300, height = 1200, width = 2000)
 Heatmap((mse_interest-rowMeans(mse_interest))/matrixStats::rowSds(mse_interest), 
         col = col_fun, show_column_names = F,
          width = ncol(mse_interest)*unit(10, "mm"), 
@@ -758,9 +724,9 @@ Heatmap((mse_interest-rowMeans(mse_interest))/matrixStats::rowSds(mse_interest),
                                "class of interest", "no integration"), 
                 col = list(class = setNames(c("#70AD47", "grey"), 
                                             nm = c("class of interest", "no integration"))))
-dev.off()
+# dev.off()
 #pdf("results/rf_mse_others.pdf", height = 10)
-png("results/rf_mse_others.png", res = 300, height = 3000, width = 2000)
+# png("results/rf_mse_others.png", res = 300, height = 3000, width = 2000)
 Heatmap((mse_other-rowMeans(mse_other))/matrixStats::rowSds(mse_other),
         col = col_fun,show_column_names = F,
         width = ncol(mse_other)*unit(10, "mm"), 
@@ -770,7 +736,7 @@ Heatmap((mse_other-rowMeans(mse_other))/matrixStats::rowSds(mse_other),
                                "class of interest", "no integration"), 
                 col = list(class = setNames(c("#70AD47", "grey"), 
                                             nm = c("class of interest", "no integration"))))
-dev.off()
+# dev.off()
 ```
 
 # For the lasso
@@ -778,7 +744,9 @@ dev.off()
 ```{r, fig.height=10}
 
 load("results/lasso_perumtations_mse_all_genes_test.rdata")
-load("results/alpha_per_gene_weighted_LASSO_test.rdata")
+# load("results/alpha_per_gene_weighted_LASSO_test.rdata")
+load("results/alpha_per_gene_weighted_LASSO_test_true_sd.rdata")
+
 
 pos_class <- names(alphas_lasso[alphas_lasso!=0])
 
@@ -798,7 +766,7 @@ ha = HeatmapAnnotation(
     annotation_name_side = "left")
 
 #pdf("results/lasso_mse_interest.pdf", height = 7)
-png("results/lasso_mse_interest.png", res = 300, height = 1400, width = 2000)
+# png("results/lasso_mse_interest.png", res = 300, height = 1400, width = 2000)
 Heatmap((mse_interest-rowMeans(mse_interest))/matrixStats::rowSds(mse_interest), 
         col = col_fun, show_column_names = F,
          width = ncol(mse_interest)*unit(10, "mm"), 
@@ -808,9 +776,9 @@ Heatmap((mse_interest-rowMeans(mse_interest))/matrixStats::rowSds(mse_interest),
                                "class of interest", "no integration"), 
                 col = list(class = setNames(c("#70AD47", "grey"), 
                                             nm = c("class of interest", "no integration"))))
-dev.off()
+# dev.off()
 #pdf("results/lasso_mse_others.pdf", height = 7)
-png("results/lasso_mse_others.png", res = 300, height = 2800, width = 2000)
+# png("results/lasso_mse_others.png", res = 300, height = 2800, width = 2000)
 Heatmap((mse_other-rowMeans(mse_other))/matrixStats::rowSds(mse_other),
         col = col_fun,show_column_names = F,
         width = ncol(mse_other)*unit(10, "mm"), 
@@ -820,7 +788,7 @@ Heatmap((mse_other-rowMeans(mse_other))/matrixStats::rowSds(mse_other),
                                "class of interest", "no integration"), 
                 col = list(class = setNames(c("#70AD47", "grey"), 
                                             nm = c("class of interest", "no integration"))))
-dev.off()
+# dev.off()
 ```
 
 # Intersection between classes
@@ -840,7 +808,7 @@ venn <- ggVennDiagram(list("weightedRF" = names(alphas_rf[alphas_rf!=0]),
   theme(legend.position = "none");venn
 
 # hypergeometric test to assess the significance of the intersect
-p_enrich <- phyper(q=220, m = length(names(alphas_rf[alphas_rf!=0])), 
+p_enrich <- phyper(q=572, m = length(names(alphas_rf[alphas_rf!=0])), 
                    n = length(genes) - length(names(alphas_rf[alphas_rf!=0])), 
                    k = length( names(alphas_lasso[alphas_lasso!=0])), lower.tail = F)
 p_enrich
@@ -861,7 +829,7 @@ venn <- ggVennDiagram(list("weightedRF" = names(alphas_rf[alphas_rf!=0]),
   theme(legend.position = "none");venn
 
 # hypergeometric test to assess the significance of the intersect
-p_enrich <- phyper(q=220, m = length(names(alphas_rf[alphas_rf!=0])), 
+p_enrich <- phyper(q=351, m = length(names(alphas_rf[alphas_rf!=0])), 
                    n = length(genes) - length(names(alphas_rf[alphas_rf!=0])), 
                    k = length( names(alphas_lasso[alphas_lasso!=0])), lower.tail = F)
 p_enrich
@@ -911,6 +879,13 @@ for(tf in known_tfs){
 enriched_tfs <- names(which(enrichments_per_pwm < 0.05))
 DIANE::get_gene_information(enriched_tfs, organism = "Arabidopsis thaliana")
 
+
+```
+
+## enrichment in lasso
+
+```{r}
+
 gene_list <- pos_class_lasso
 enrichments_per_pwm <- setNames(rep(1, length(known_tfs)), known_tfs)
 n_targets_lasso_in_all <- get_number_of_motifs_per_tfs(genes)
@@ -935,6 +910,12 @@ for(tf in known_tfs){
 enriched_tfs <- names(which(enrichments_per_pwm < 0.05))
 DIANE::get_gene_information(enriched_tfs, organism = "Arabidopsis thaliana")
 
+```
+
+## enrichment in common genes
+
+
+```{r}
 
 gene_list <- common
 enrichments_per_pwm <- setNames(rep(1, length(known_tfs)), known_tfs)
@@ -1059,13 +1040,13 @@ draw_validation(validation = val_rf)
 # load("results/alpha_per_gene_weighted_RF.rdata")
 
 
-load("results/alpha_per_gene_weighted_LASSO_min.rdata")
-load("results/alpha_per_gene_weighted_RF_min.rdata")
+# load("results/alpha_per_gene_weighted_LASSO_test_true_sd.rdata")
+# load("results/alpha_per_gene_weighted_RF_true_sd.rdata")
 
 hist(alphas_lasso)
 hist(alphas_rf)
 
-nCores = 40
+nCores = 34
 mats <- list()
 nrep <- 10
 for(rep in 1:nrep){ # exploring inherent variability
@@ -1103,7 +1084,7 @@ for(rep in 1:nrep){ # exploring inherent variability
   mats[[paste0("RF_trueData_", rep)]] <- mat_rf
   mats[[paste0("RF_shuffled_", rep)]] <- mat_rf_perm
 }
-save(mats, file = "results/gene_specific_grns_min.rdata")
+save(mats, file = "results/gene_specific_grns_mean_true_shuff_sd.rdata")
 
 
 edges <- list()
@@ -1122,8 +1103,8 @@ for(name in names(mats)){
         lmses[,name] <- mats[[name]]["mse",]
       }
 }
-save(lmses, file = "results/gene_specific_mse_min.rdata") 
-save(edges, file = "results/gene_specific_edges_min.rdata") 
+save(lmses, file = "results/gene_specific_mse_mean_true_shuff_sd.rdata") 
+save(edges, file = "results/gene_specific_edges_mean_true_shuff_sd.rdata") 
 
 # validation against DAP-Seq
 settings <- c("model", "dataset", "rep", "density")
@@ -1137,18 +1118,18 @@ val_specific <-
   )
 val_specific[, settings] <-
   str_split_fixed(val_specific$network_name, '_', length(settings))
-save(val_specific, file = "results/gene_specific_validation_min.rdata")
+save(val_specific, file = "results/gene_specific_validation_mean_true_shuff_sd.rdata")
 ```
 
 ## For the max divergence to permutations metric
 
 ```{r}
-load("results/gene_specific_grns.rdata")
-load("results/gene_specific_mse.rdata")
-load("results/gene_specific_edges.rdata")
+# load("results/gene_specific_grns.rdata")
+# load("results/gene_specific_mse.rdata")
+# load("results/gene_specific_edges.rdata")
 
 settings <- c("model", "dataset", "rep", "density")
-load("results/gene_specific_validation.rdata")
+# load("results/gene_specific_validation.rdata")
 
 precision_rf <- draw_validation(validation = val_rf, 
                                    densities = c(0.005), precision_only = T)
@@ -1255,6 +1236,8 @@ spec_lasso_recall <- val_specific %>%
 
 ```
 
+
+
 ```{r, fig.width=12, fig.height=10}
 # gene specific MSE
 mse_lasso_spec <- lmses %>%
@@ -1354,7 +1337,7 @@ plot <- mse_lasso + ylim(c(x_min,0.265)) +labs(subtitle = "Global\ndata integrat
   mse_lasso_spec+ ylim(c(x_min,0.265)) +labs(subtitle = "Gene-specific\ndata integration")+ylab("") +
   mse_rf +  ylim(c(x_min,0.265)) +labs(subtitle = "Global\ndata integration")+ ylab("") +
   mse_rf_spec+ ylim(c(x_min,0.265))  +labs(subtitle = "Gene-specific\ndata integration")+ylab("") +
-  precision_lasso + ylim(c(0.2,0.46)) +ggtitle("")+ labs(subtitle = "Global\ndata integration")+
+  precision_lasso + ylim(c(x_min,0.46)) +ggtitle("")+ labs(subtitle = "Global\ndata integration")+
   theme(legend.position = 'none') + 
   spec_lasso + labs(subtitle = "Gene-specific\ndata integration")+
   precision_rf +labs(subtitle = "Global\ndata integration")+ ylab("") +ylim(c(0.2,0.46))+
@@ -1368,7 +1351,7 @@ plot <- mse_lasso + ylim(c(x_min,0.265)) +labs(subtitle = "Global\ndata integrat
   spec_rf_recall +labs(subtitle = "Gene-specific\ndata integration")+ ylim(c(0,0.03))+
 plot_layout(guides = "collect", ncol = 4, widths = c(1.5,1,1.5,1))& theme(legend.position = 'bottom');plot
 
-ggexport(plot, filename = "results/specific_grns.pdf", width = 10, height = 10)
+ggexport(plot, filename = "results/specific_grns_mean_true_shuff_sd.pdf", width = 10, height = 10)
 
 
 ```
@@ -1513,7 +1496,7 @@ Showing the precision of grns with min method and D=0.005
 + for all genes
 
 
-```{r}
+```{r, eval=T}
 load("results/gene_specific_grns_min.rdata")
 edges <- list()
 # lmses <- data.frame(row.names = genes)
@@ -1657,7 +1640,7 @@ Showing the precision of grns with max div method and D=0.005
 + for all genes
 
 
-```{r, fig.width=10}
+```{r, fig.width=10, eval=FALSE}
 load("results/gene_specific_grns.rdata")
 edges <- list()
 # lmses <- data.frame(row.names = genes)
@@ -1794,168 +1777,8 @@ spec_rf_gain+ ggtitle("saved rf") +spec_rf+ ggtitle("all genes rf") + plot_layou
 ```
 
 
-Showing the precision of grns with max div method and D=0.01 
-
-+ only on the genes not present with min mse method, gained by our metric
-+ for all genes
-
-
-```{r, fig.width=10}
-load("results/gene_specific_grns.rdata")
-edges <- list()
-# lmses <- data.frame(row.names = genes)
-for(name in names(mats)){ 
-      for(density in c(0.01)){# exploring importance threshold stringency
-        
-        if(str_detect(name, "LASSO"))
-          edges[[paste0(name, '_', density)]] <-
-        weightedLASSO_network(mats[[name]][,saved_lasso], density = density, pwm_occurrence, 
-                          saved_lasso, tfs, decreasing = TRUE)
-        else
-          edges[[paste0(name, '_', density)]] <-
-        weightedRF_network(mats[[name]][,saved_rf], density = density, pwm_occurrence, 
-                          saved_rf, tfs)
-        # lmses[,name] <- mats[[name]]["mse",]
-      }
-}
-
-
-
-settings <- c("model", "dataset", "rep", "density")
-val_specific_gain <-
-  evaluate_networks(
-    edges,
-    validation = c("DAPSeq"),
-    nCores = 30,
-    input_genes = genes,
-    input_tfs = tfs
-  )
-val_specific_gain[, settings] <-
-  str_split_fixed(val_specific_gain$network_name, '_', length(settings))
-
-load("results/gene_specific_validation.rdata")
-
-spec_rf <- val_specific %>%
-  separate(network_name, into = settings, sep = "_") %>%
-    filter(density == 0.01 & model == "RF") %>%
-  mutate(density = paste("D =", density),
-           model = str_replace(model, "RF", "weightedRF"),
-           model = str_replace(model, "LASSO", "weightedLASSO"))%>%
-  ggplot(aes(x=dataset, y = precision, color = dataset, fill = dataset)) + 
-  scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
-    scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData"))) +
-  geom_hline(color = "#C55A11", yintercept = 0.331042, size= 1.5, show.legend = T) + 
-  geom_boxplot(size = 1, alpha = 0.5, outlier.alpha = 0) +
-  theme_pubr() + geom_jitter(width = 0.2, size = 2)+
-  theme(
-    strip.background = element_blank(),
-    axis.title.x = element_text(size = 22),
-    title = element_text(size = 16),
-    axis.ticks.x = element_blank(),
-    strip.text = element_text(size = 16),
-    legend.text = element_text(size = 15),
-    axis.text.x = element_blank(),
-    legend.position = 'none'
-  )+ xlab("")+ ylim(c(0,0.7))+ ylab("")
-
-spec_lasso <- val_specific %>%
-  separate(network_name, into = settings, sep = "_") %>%
-    filter(density == 0.01 & model == "LASSO") %>%
-  mutate(density = paste("D =", density),
-           model = str_replace(model, "RF", "weightedRF"),
-           model = str_replace(model, "LASSO", "weightedLASSO"))%>%
-  ggplot(aes(x=dataset, y = precision, color = dataset, fill = dataset)) + 
-  scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
-    scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData"))) +
-  geom_hline(color = "#C55A11", yintercept = 0.331042, size= 1.5, show.legend = T) + 
-  geom_boxplot(size = 1, alpha = 0.5, outlier.alpha = 0) +
-  theme_pubr() + geom_jitter(width = 0.2, size = 2)+
-  theme(
-    strip.background = element_blank(),
-    axis.title.x = element_text(size = 22),
-    title = element_text(size = 16),
-    axis.ticks.x = element_blank(),
-    strip.text = element_text(size = 16),
-    legend.text = element_text(size = 15),
-    axis.text.x = element_blank(),
-    legend.position = 'none'
-  )+ xlab("")+ ylim(c(0,0.7))+ ylab("")
-
-
-spec_rf_gain <- val_specific_gain %>%
-  separate(network_name, into = settings, sep = "_") %>%
-    filter(density == 0.01 & model == "RF") %>%
-  mutate(density = paste("D =", density),
-           model = str_replace(model, "RF", "weightedRF"),
-           model = str_replace(model, "LASSO", "weightedLASSO"))%>%
-  ggplot(aes(x=dataset, y = precision, color = dataset, fill = dataset)) + 
-  scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
-    scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData"))) +
-  geom_hline(color = "#C55A11", yintercept = 0.331042, size= 1.5, show.legend = T) + 
-  geom_boxplot(size = 1, alpha = 0.5, outlier.alpha = 0) +
-  theme_pubr() + geom_jitter(width = 0.2, size = 2)+
-  theme(
-    strip.background = element_blank(),
-    axis.title.x = element_text(size = 22),
-    title = element_text(size = 16),
-    strip.text = element_text(size = 16),
-    legend.text = element_text(size = 15),
-    axis.text = element_blank(),
-    legend.position = 'none'
-  )+ xlab("")+ ylim(c(0,0.7))+ ylab("")
-
-spec_lasso_gain <- val_specific_gain %>%
-  separate(network_name, into = settings, sep = "_") %>%
-    filter(density == 0.01 & model == "LASSO") %>%
-  mutate(density = paste("D =", density),
-           model = str_replace(model, "RF", "weightedRF"),
-           model = str_replace(model, "LASSO", "weightedLASSO"))%>%
-  ggplot(aes(x=dataset, y = precision, color = dataset, fill = dataset)) + 
-  scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
-    scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData"))) +
-  geom_hline(color = "#C55A11", yintercept = 0.331042, size= 1.5, show.legend = T) + 
-  geom_boxplot(size = 1, alpha = 0.5, outlier.alpha = 0) +
-  theme_pubr() + geom_jitter(width = 0.2, size = 2)+
-  theme(
-    strip.background = element_blank(),
-    axis.title.x = element_text(size = 22),
-    title = element_text(size = 16),
-    strip.text = element_text(size = 16),
-    legend.text = element_text(size = 15),
-    axis.text = element_blank(),
-    legend.position = 'none'
-  )+ xlab("")+ ylim(c(0,0.7))+ ylab("")
-
-
-
-spec_lasso_gain + ggtitle("saved lasso") + spec_lasso + ggtitle("all genes lasso") +
-spec_rf_gain+ ggtitle("saved rf") +spec_rf+ ggtitle("all genes rf") + plot_layout(ncol = 4)
-
-# save(val_specific, file = "results/gene_specific_validation_min.rdata")
-# save(lmses, file = "results/gene_specific_mse_min.rdata") 
-# save(edges, file = "results/gene_specific_edges_min.rdata") 
-```
-
-
 ## TARGET
 
-```{r}
-load(file = "results/100_permutations_bRF_edges_inf.rdata")
-
-# validation of GRN edges against DAP-Seq
-settings <- c("model", "alpha", "dataset", "rep", "density")
-val_targ <-
-  evaluate_networks(
-    edges,
-    validation = c("TARGET"),
-    nCores = 35,
-    input_genes = genes,
-    input_tfs = tfs
-  )
-val_targ[, settings] <-
-  str_split_fixed(val_targ$network_name, '_', length(settings))
-save(val_targ, file = "results/100_permutations_rf_validation_target_inf.rdata")
-```
 
 
 ```{r, eval=F}
@@ -2046,16 +1869,16 @@ spec_lasso <- val_specific %>%
   )+ xlab("")+ ylim(c(0.2,0.46))+ ylab("")
 
 
-spec_lasso+ylim(0.1, 0.26)+ lasso_targ+ylim(0.1, 0.26) + 
-  spec_rf +ylim(0.1, 0.26) + rf_targ +ylim(0.1, 0.26) + plot_layout(ncol = 4)+plot_annotation("TARGET validation")
+ lasso_targ+ylim(0.1, 0.26) +spec_lasso+ylim(0.1, 0.26)+ 
+  rf_targ +ylim(0.1, 0.26) +  spec_rf +ylim(0.1, 0.26) +plot_layout(ncol = 4)+plot_annotation("TARGET validation")
 ```
 
-# Validation of TGA1 targets in inferred GRNs
+Validation of TGA1 targets in inferred GRNs
 
 Differentially expressed targets of TGA1 (35S:TGA1 vs Col-0) identified in whole roots obtained from (https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6451032/#MOESM7) (Varala)
 
 
-```{r}
+```{r, eval=F}
 load("results/gene_specific_grns.rdata")
 load("results/gene_specific_mse.rdata")
 load("results/gene_specific_edges.rdata")
@@ -2137,7 +1960,10 @@ draw_ALFC_in_targets("RF", 0.01)+
 
 ```
 
-# Look at precision instead, in TARGET in order to remove indirect targets
+# Validation of top TFs in specific GRNs via TARGET 
+
+
+Instead of overexpression in order to remove indirect targets
 
 
 
@@ -2149,6 +1975,14 @@ hho3_tg <- read.table("data/hho3_target.txt")$V1
 hho5_tg <- read.table("data/hho5_target.txt")$V1
 div1_tg <- read.table("data/div1_target.txt")$V1
 
+
+tga1 <- "AT5G65210"
+tga4 <- "AT5G10030"
+vrn1 <- "AT3G18990"
+hho3 <- "AT1G25550"
+hho5 <- "AT4G37180"
+div1 <- "AT5G58900"
+
 load("results/gene_specific_edges.rdata")
 get_precision <- function(model, density){
   df <- data.frame(precision_tga1 = double(0),
@@ -2157,24 +1991,21 @@ get_precision <- function(model, density){
                    precision_hho5 = double(0),
                    precision_hh3 = double(0),
                    precision_div1 = double(0),
-                   n_targets = integer(0), model = character(0), 
+                   model = character(0), 
                    density = double(0), dataset = character(0), 
                    alpha = character(0))
   
   for(dataset in c("shuffled", "trueData")){
     nets <- edges[paste0(model, '_', dataset ,'_',1:10, '_', density)]
     for(net in nets){
-      targs <- net %>% filter(from == tga1)
-    targs <- targs$to
-    
+      
     df <- rbind.data.frame(df, data.frame(
-          precision_tga1 =length(intersect(targs, tga1_tg))/length(targs),
-          precision_tga4 =length(intersect(targs, tga4_tg))/length(targs),
-          precision_vrn1 =length(intersect(targs, vrn1_tg))/length(targs),
-          precision_hho5 =length(intersect(targs, hho5_tg))/length(targs),
-          precision_hho3 =length(intersect(targs, hho3_tg))/length(targs),
-          precision_div1 =length(intersect(targs, div1_tg))/length(targs),
-          n_targets = length(targs),
+          precision_tga1 =length(intersect( net[net$from == tga1,]$to, tga1_tg))/length( net[net$from == tga1,]$to),
+          precision_tga4 =length(intersect( net[net$from == tga4,]$to, tga4_tg))/length( net[net$from == tga4,]$to),
+          precision_vrn1 =length(intersect( net[net$from == vrn1,]$to, vrn1_tg))/length( net[net$from == vrn1,]$to),
+          precision_hho5 =length(intersect( net[net$from == hho5,]$to, hho5_tg))/length( net[net$from == hho5,]$to),
+          precision_hho3 =length(intersect( net[net$from == hho3,]$to, hho3_tg))/length( net[net$from == hho3,]$to),
+          precision_div1 =length(intersect( net[net$from == div1,]$to, div1_tg))/length( net[net$from == div1,]$to),
           model = paste0("weighted",model) , density = density, 
           dataset = dataset, alpha = "gene-specific"))
     }
@@ -2183,6 +2014,7 @@ get_precision <- function(model, density){
 }
 precision_tga1_specific <- rbind.data.frame(get_precision("RF", 0.005),get_precision("LASSO", 0.005))
 ```
+
 
 ```{r, fig.height=10}
 load(file = "results/100_permutations_bRF_edges_inf.rdata")
@@ -2193,7 +2025,7 @@ get_precision_global_RF <- function(densities, alphas, m){
                    precision_hho5 = double(0),
                    precision_hh3 = double(0),
                    precision_div1 = double(0),
-                   n_targets = integer(0), model = character(0), 
+                   model = character(0), 
                    density = double(0), dataset = character(0), 
                    alpha = double(0))
   
@@ -2202,16 +2034,13 @@ get_precision_global_RF <- function(densities, alphas, m){
       for(density in densities){
         nets <- edges[paste0('bRF_', alpha, '_', dataset ,'_',1:20, '_', density)]
         for(net in nets){
-          targs <- net %>% filter(from == tga1)
-        targs <- targs$to
         df <- rbind.data.frame(df, data.frame(
-           precision_tga1 =length(intersect(targs, tga1_tg))/length(targs),
-          precision_tga4 =length(intersect(targs, tga4_tg))/length(targs),
-          precision_vrn1 =length(intersect(targs, vrn1_tg))/length(targs),
-          precision_hho5 =length(intersect(targs, hho5_tg))/length(targs),
-          precision_hho3 =length(intersect(targs, hho3_tg))/length(targs),
-          precision_div1 =length(intersect(targs, div1_tg))/length(targs),
-          n_targets = length(targs),
+         precision_tga1 =length(intersect( net[net$from == tga1,]$to, tga1_tg))/length( net[net$from == tga1,]$to),
+          precision_tga4 =length(intersect( net[net$from == tga4,]$to, tga4_tg))/length( net[net$from == tga4,]$to),
+          precision_vrn1 =length(intersect( net[net$from == vrn1,]$to, vrn1_tg))/length( net[net$from == vrn1,]$to),
+          precision_hho5 =length(intersect( net[net$from == hho5,]$to, hho5_tg))/length( net[net$from == hho5,]$to),
+          precision_hho3 =length(intersect( net[net$from == hho3,]$to, hho3_tg))/length( net[net$from == hho3,]$to),
+          precision_div1 =length(intersect( net[net$from == div1,]$to, div1_tg))/length( net[net$from == div1,]$to),
           model = "weightedRF", density = density, 
           dataset = dataset, alpha = alpha))
         }
@@ -2223,7 +2052,7 @@ get_precision_global_RF <- function(densities, alphas, m){
 
 precision_tga1_global_rf <- get_precision_global_RF(0.005, c(0,1))
 
-
+tga1 <- 
 load(file = "results/100_permutations_lasso_edges.rdata")
 
 get_precision_global_LASSO <- function(densities, alphas, m){
@@ -2233,7 +2062,7 @@ get_precision_global_LASSO <- function(densities, alphas, m){
                    precision_hho5 = double(0),
                    precision_hh3 = double(0),
                    precision_div1 = double(0),
-                   n_targets = integer(0), model = character(0), 
+                   model = character(0), 
                    density = double(0), dataset = character(0), 
                    alpha = double(0))
   
@@ -2243,16 +2072,13 @@ get_precision_global_LASSO <- function(densities, alphas, m){
       for(density in densities){
         nets <- edges[paste0('LASSO_', alpha, '_', dataset ,'_',1:20, '_', density)]
         for(net in nets){
-          targs <- net %>% filter(from == tga1)
-        targs <- targs$to
         df <- rbind.data.frame(df, data.frame(
-          precision_tga1 =length(intersect(targs, tga1_tg))/length(targs),
-          precision_tga4 =length(intersect(targs, tga4_tg))/length(targs),
-          precision_vrn1 =length(intersect(targs, vrn1_tg))/length(targs),
-          precision_hho5 =length(intersect(targs, hho5_tg))/length(targs),
-          precision_hho3 =length(intersect(targs, hho3_tg))/length(targs),
-          precision_div1 =length(intersect(targs, div1_tg))/length(targs),
-          n_targets = length(targs),
+          precision_tga1 =length(intersect( net[net$from == tga1,]$to, tga1_tg))/length( net[net$from == tga1,]$to),
+          precision_tga4 =length(intersect( net[net$from == tga4,]$to, tga4_tg))/length( net[net$from == tga4,]$to),
+          precision_vrn1 =length(intersect( net[net$from == vrn1,]$to, vrn1_tg))/length( net[net$from == vrn1,]$to),
+          precision_hho5 =length(intersect( net[net$from == hho5,]$to, hho5_tg))/length( net[net$from == hho5,]$to),
+          precision_hho3 =length(intersect( net[net$from == hho3,]$to, hho3_tg))/length( net[net$from == hho3,]$to),
+          precision_div1 =length(intersect( net[net$from == div1,]$to, div1_tg))/length( net[net$from == div1,]$to),
           model = "weightedLASSO", density = density, 
           dataset = dataset, alpha = alpha))
         }
@@ -2267,8 +2093,7 @@ precision_tga1_global_lasso <- get_precision_global_LASSO(0.005, c(0,1))
 target_tfs <- rbind.data.frame(precision_tga1_global_lasso, precision_tga1_global_rf) %>%
   rbind.data.frame(precision_tga1_specific) %>%
   mutate(alpha = as.factor(alpha),
-         density = as.factor(density),
-         n_targets = as.factor(n_targets)) %>%
+         density = as.factor(density)) %>%
   filter(dataset=="trueData") %>%
   reshape2::melt() %>%
   filter( variable == "precision_tga1") %>%
@@ -2283,8 +2108,7 @@ target_tfs <- rbind.data.frame(precision_tga1_global_lasso, precision_tga1_globa
 rbind.data.frame(precision_tga1_global_lasso, precision_tga1_global_rf) %>%
   rbind.data.frame(precision_tga1_specific) %>%
   mutate(alpha = as.factor(alpha),
-         density = as.factor(density),
-         n_targets = as.factor(n_targets)) %>%
+         density = as.factor(density) ) %>%
   filter(dataset=="trueData") %>%
   reshape2::melt() %>%
   filter( variable == "precision_tga4") %>%
@@ -2298,8 +2122,7 @@ rbind.data.frame(precision_tga1_global_lasso, precision_tga1_global_rf) %>%
 rbind.data.frame(precision_tga1_global_lasso, precision_tga1_global_rf) %>%
   rbind.data.frame(precision_tga1_specific) %>%
   mutate(alpha = as.factor(alpha),
-         density = as.factor(density),
-         n_targets = as.factor(n_targets)) %>%
+         density = as.factor(density)) %>%
   filter(dataset=="trueData") %>%
   reshape2::melt() %>%
   filter( variable == "precision_vrn1") %>%
@@ -2314,8 +2137,7 @@ rbind.data.frame(precision_tga1_global_lasso, precision_tga1_global_rf) %>%
   rbind.data.frame(precision_tga1_global_lasso, precision_tga1_global_rf) %>%
   rbind.data.frame(precision_tga1_specific) %>%
   mutate(alpha = as.factor(alpha),
-         density = as.factor(density),
-         n_targets = as.factor(n_targets)) %>%
+         density = as.factor(density)) %>%
   filter(dataset=="trueData") %>%
   reshape2::melt() %>%
   filter( variable == "precision_hho5") %>%
@@ -2330,8 +2152,7 @@ rbind.data.frame(precision_tga1_global_lasso, precision_tga1_global_rf) %>%
 rbind.data.frame(precision_tga1_global_lasso, precision_tga1_global_rf) %>%
   rbind.data.frame(precision_tga1_specific) %>%
   mutate(alpha = as.factor(alpha),
-         density = as.factor(density),
-         n_targets = as.factor(n_targets)) %>%
+         density = as.factor(density)) %>%
   filter(dataset=="trueData") %>%
   reshape2::melt() %>%
   filter( variable == "precision_hho3") %>%
@@ -2345,8 +2166,7 @@ rbind.data.frame(precision_tga1_global_lasso, precision_tga1_global_rf) %>%
 rbind.data.frame(precision_tga1_global_lasso, precision_tga1_global_rf) %>%
   rbind.data.frame(precision_tga1_specific) %>%
   mutate(alpha = as.factor(alpha),
-         density = as.factor(density),
-         n_targets = as.factor(n_targets)) %>%
+         density = as.factor(density)) %>%
   filter(dataset=="trueData") %>%
   reshape2::melt() %>%
   filter( variable == "precision_div1") %>%
@@ -2361,35 +2181,243 @@ rbind.data.frame(precision_tga1_global_lasso, precision_tga1_global_rf) %>%
 ```
 
 
-```{r}
-load("results/gene_specific_edges.rdata")
-table(edges$RF_trueData_1_0.005$from)
-TFs <- c("AT5G65210", "AT5G10030", "AT3G18990")
+Shows the top 25 regulators in terms of out-degree.
 
-get_hubs <- function(net){
-  hubs <- names(table(net$from)[order(table(net$from), decreasing = T)])[1:15]
-  DIANE::get_gene_information(hubs, organism = "Arabidopsis thaliana")
+```{r}
+load("results/gene_specific_edges_mean_true_shuff_sd.rdata")
+
+annot <- DIANE::get_gene_information(genes,organism = "Arabidopsis thaliana")
+
+get_hubs <- function(nets){
+  g <- setNames(rep(0, length(genes)), genes)
+  for(net in names(nets)){
+    g[names(table(nets[[net]]$from))] <- g[names(table(nets[[net]]$from))] + table(nets[[net]]$from)/length(nets)
+  }
+  df <- data.frame(genes = genes, average_degree = g[genes], 
+                   label = annot[match(genes, rownames(annot)), "label"])
+  plt <- df %>%
+    slice_max(average_degree, n = 25) %>%
+    ggplot(aes(x=average_degree, y=reorder(label, average_degree) ))+ 
+    geom_point() + theme_bw() + ylab("gene") + xlab("Average out-degree")
+  
+  top20<- df %>%
+    slice_max(average_degree, n = 25) %>%
+    select(label)
+  return(list(ranking = plt, top25 = top20$label))
 }
 
+rf_nets <- names(edges)[str_detect(names(edges),"RF_trueData") ]
+rf_nets <- edges[rf_nets[str_detect(rf_nets,"0.005") ]]
 
-"AT3G60530" %in% tfs
 
-get_hubs(edges$RF_trueData_1_0.005)
-get_hubs(edges$RF_trueData_2_0.005)
-get_hubs(edges$RF_trueData_3_0.005)
-get_hubs(edges$LASSO_trueData_1_0.005)
-get_hubs(edges$LASSO_trueData_2_0.005)
-get_hubs(edges$LASSO_trueData_3_0.005)
+lasso_nets <- names(edges)[str_detect(names(edges),"LASSO_trueData") ]
+lasso_nets <- edges[lasso_nets[str_detect(lasso_nets,"0.005") ]]
+
+get_hubs(rf_nets)$ranking+ ggtitle("weightedRF") + get_hubs(lasso_nets)$ranking+ggtitle("weightedLASSO")
+intersect(get_hubs(rf_nets)$top25 , get_hubs(lasso_nets)$top25)
+```
+
+Rankings in global alpha networks compared for alpha specific in RF:
+
+```{r}
+load(file = "results/100_permutations_bRF_edges_inf.rdata")
+
+rf_nets_0 <- names(edges)[str_detect(names(edges),"RF_0_trueData") ]
+rf_nets_0 <- edges[rf_nets_0[str_detect(rf_nets_0,"0.005") ]]
+
+rf_nets_1 <- names(edges)[str_detect(names(edges),"RF_1_trueData") ]
+rf_nets_1 <- edges[rf_nets_1[str_detect(rf_nets_1,"0.005") ]]
+
+get_hubs(rf_nets_0)$ranking+ ggtitle("weightedRF alpha = 0") + 
+  get_hubs(rf_nets_1)$ranking+ggtitle("weightedRF alpha = 1") + 
+  get_hubs(rf_nets)$ranking+ ggtitle("weightedRF specific alpha")
+
+intersect(get_hubs(rf_nets)$top25 , get_hubs(rf_nets_1)$top25)
+intersect(get_hubs(rf_nets)$top25 , get_hubs(rf_nets_0)$top25)
+
+# regulators that were not in the top 25
+setdiff(get_hubs(rf_nets)$top25 , union(get_hubs(rf_nets_0)$top25,
+                                        get_hubs(rf_nets_1)$top25))
+
 
 ```
 
-getting their targets
+
+Rankings in global alpha networks compared for alpha specific in LASSO:
+
+```{r}
+load(file = "results/100_permutations_lasso_edges.rdata")
+
+lasso_nets_0 <- names(edges)[str_detect(names(edges),"LASSO_0_trueData") ]
+lasso_nets_0 <- edges[lasso_nets_0[str_detect(lasso_nets_0,"0.005") ]]
+
+lasso_nets_1 <- names(edges)[str_detect(names(edges),"LASSO_1_trueData") ]
+lasso_nets_1 <- edges[lasso_nets_1[str_detect(lasso_nets_1,"0.005") ]]
+
+get_hubs(lasso_nets_0)$ranking+ ggtitle("weightedLASSO alpha = 0") + 
+  get_hubs(lasso_nets_1)$ranking+ggtitle("weightedLASSO alpha = 1") + 
+  get_hubs(lasso_nets)$ranking+ ggtitle("weightedLASSO specific alpha")
+
+intersect(get_hubs(lasso_nets)$top25 , get_hubs(lasso_nets_1)$top25)
+intersect(get_hubs(lasso_nets)$top25 , get_hubs(lasso_nets_0)$top25)
+
+# regulators that were not in the top 25
+setdiff(get_hubs(lasso_nets)$top25 , union(get_hubs(lasso_nets_0)$top25,
+                                        get_hubs(lasso_nets_1)$top25))
+
+
+```
+
+
+
+
+Getting the most regulated genes in specific GRNs :
 
 
 ```{r}
-net_rf <- edges$RF_trueData_1_0.005[]
-net_lasso <- edges$LASSO_trueData_1_0.005[]
+get_hubs_incoming <- function(nets){
+  g <- setNames(rep(0, length(genes)), genes)
+  for(net in names(nets)){
+    g[names(table(nets[[net]]$to))] <- g[names(table(nets[[net]]$to))] + table(nets[[net]]$to)/length(nets)
+  }
+  df <- data.frame(genes = genes, average_degree = g[genes], 
+                   label = annot[match(genes, rownames(annot)), "label"])
+  plt <- df %>%
+    slice_max(average_degree, n = 25) %>%
+    ggplot(aes(x=average_degree, y=reorder(label, average_degree) ))+ 
+    geom_point() + theme_bw() + ylab("gene") + xlab("Average in-degree")
+  
+  top20<- df %>%
+    slice_max(average_degree, n = 25) %>%
+    select(label)
+  return(list(ranking = plt, top20 = top20$label))
+}
 
+get_hubs_incoming(rf_nets)$ranking+ ggtitle("weightedRF") + 
+  get_hubs_incoming(lasso_nets)$ranking+ ggtitle("weightedLASSO")
+intersect(get_hubs_incoming(rf_nets)$top25 , get_hubs_incoming(lasso_nets)$top25)
+```
+
+
+
+```{r, eval = T}
+
+
+N_go <- c("GO:0006807", "GO:0051171", "GO:0051173", "GO:0022622", "GO:0034641", "GO:0044271")
+
+convert_from_agi <- function(ids){
+  x <- org.At.tair.db::org.At.tairENTREZID
+  mapped_genes <- AnnotationDbi::mappedkeys(x)
+  xx <- as.list(x[mapped_genes])
+  return(unlist(xx[as.vector(ids)]))
+}
+
+load("results/gene_specific_edges_mean_true_shuff_sd.rdata")
+
+rf_nets <- names(edges)[str_detect(names(edges),"RF_trueData") ]
+rf_nets <- edges[rf_nets[str_detect(rf_nets,"0.005") ]]
+
+
+lasso_nets <- names(edges)[str_detect(names(edges),"LASSO_trueData") ]
+lasso_nets <- edges[lasso_nets[str_detect(lasso_nets,"0.005") ]]
+
+
+get_gsea <- function(nets, settings){
+  g <- setNames(rep(0, length(genes)), genes)
+  for(net in names(nets)){
+    g[names(table(nets[[net]]$to))] <- g[names(table(nets[[net]]$to))] + table(nets[[net]]$to)/length(nets)
+  }
+  df <- data.frame(genes = genes, average_degree = g[genes],
+                   label = annot[match(genes, rownames(annot)), "label"])
+
+
+  degrees <- sort(setNames(df$average_degree,convert_from_agi(df$average_degree)),
+                  decreasing = T)
+  
+  gse <- gseGO(geneList=degrees,
+              ont ="BP",
+              minGSSize = 3,
+              maxGSSize = 800, nPerm =1000,
+              pvalueCutoff = 1,
+              verbose = TRUE, scoreType = "pos",
+              OrgDb = org.At.tair.db::org.At.tair.db,
+              pAdjustMethod = "BH")
+  
+  res <- gse@result[gse@result$ID %in% N_go,c("Description", "enrichmentScore", "p.adjust")]
+  res$settings = settings
+  return(res)
+}
+
+gsea_nitrogen <- rbind.data.frame(get_gsea(rf_nets_0, "weightedRF_0"), 
+                 get_gsea(rf_nets_1, "weightedRF_1"), 
+                 get_gsea(rf_nets, "weightedRF_specific"),
+                 get_gsea(lasso_nets_0, "weightedLASSO_0"), 
+                 get_gsea(lasso_nets_1, "weightedLASSO_1"), 
+                 get_gsea(lasso_nets, "weightedLASSO_specific"))
+
+gsea_nitrogen <- gsea_nitrogen %>%
+  separate(settings, into = c("model", "alpha"), sep = "_")
+# res_rf <- res
+# 
+# gs <- rbind.data.frame(res_rf_0, res_rf_1, res_rf)
+# gs$alpha<- c(rep("alpha_0",4), rep("alpha_1", 4), rep("alpha_specific",4))
+# gs$model <- "weightedRF"
+# 
+# gs_lasso <- rbind.data.frame(res_lasso_0, res_lasso_1, res_lasso)
+# gs_lasso$alpha <- c(rep("alpha_0",4), rep("alpha_1", 4), rep("alpha_specific",4))
+# gs_lasso$model <- "weightedLASSO"
+# 
+
+# gsea_nitrogen <- rbind.data.frame(gs, gs_lasso) 
+# save(gsea_nitrogen, file = "results/gsea_nitrogen.rdata")
+
+
+gsea_nitrogen %>%
+  ggplot(aes(x=alpha, y = enrichmentScore, color = Description)) + 
+  ggh4x::facet_nested_wrap(vars(Description,model), nrow = 2)+ theme_bw()+ 
+  theme(strip.background = element_blank())+
+  geom_point() +ggtitle("Enrichment score (GSEA)")
+
+
+gsea_nitrogen %>%
+  ggplot(aes(x=alpha, y = -log(p.adjust), color = Description)) + 
+  ggh4x::facet_nested_wrap(vars(Description,model), nrow = 2)+ theme_bw()+ 
+  theme(strip.background = element_blank())+
+  geom_point() + ggtitle("Enrichment p adjusted pavlue (GSEA)")
+
+```
+# degree distributions of TFs with and without PWMs
+
+```{r}
+
+load("rdata/pwm_prom_jaspar_dap.rdata")
+known_tfs <- intersect(genes,unique(pwm_prom$TF))
+get_degree_hist <- function(nets, title){
+  g <- setNames(rep(0, length(genes)), genes)
+  for(net in names(nets)){
+    g[names(table(nets[[net]]$to))] <- g[names(table(nets[[net]]$to))] + table(nets[[net]]$to)/length(nets)
+  }
+  df <- data.frame(genes = genes, average_degree = g[genes],
+                   label = annot[match(genes, rownames(annot)), "label"])%>%
+    mutate(pwm = ifelse(genes %in% known_tfs, "Available", "Missing"))
+  
+  df %>%
+    filter(genes %in% tfs) %>%
+    ggplot(aes(x=average_degree, fill = pwm)) + 
+    geom_histogram()+facet_wrap(~ pwm)+ theme_bw()+
+    ggtitle(title) + theme(legend.position = "none")
+}
+(get_degree_hist(rf_nets_0, "weightedRF alpha 0")+
+  get_degree_hist(rf_nets_1, "weightedRF alpha 1")+
+  get_degree_hist(rf_nets, "weightedRF alpha specific"))/
+  (get_degree_hist(lasso_nets_0, "weightedLASSO alpha 0")+
+  get_degree_hist(lasso_nets_1, "weightedLASSO alpha 1")+
+  get_degree_hist(lasso_nets, "weightedLASSO alpha specific"))
+
+```
+
+
+```{r, eval=FALSE}
 # TGA4
 DIANE::get_gene_information(net_rf[net_rf$from == "AT5G10030",]$to, organism = "Arabidopsis thaliana")
 DIANE::get_gene_information(net_lasso[net_lasso$from == "AT5G10030",]$to, organism = "Arabidopsis thaliana")
@@ -2416,6 +2444,11 @@ DIANE::get_gene_information(net_rf[net_rf$to == "AT1G08090",]$from, organism = "
 
 
 ```{r}
+
+load("results/alpha_per_gene_weighted_LASSO_test.rdata")
+load("results/alpha_per_gene_weighted_RF.rdata")
+
+
 load("rdata/pwm_prom_jaspar_dap.rdata")
 load("rdata/gene_structure.rdata")
 
@@ -2428,7 +2461,6 @@ mean_expr <- rowMeans(counts)[genes]
 var_expr <- matrixStats::rowSds(counts[genes,])*matrixStats::rowSds(counts[genes,])
 pwm_prom_n_TFs <- pwm_prom[pwm_prom$TF %in% tfs,]
 
-library(patchwork)
 
 # to comment for new version where mse is already normalized per genes
 # norm_mse <- exp(as.matrix(cbind(lmses, lmses_lasso)))/var_expr
