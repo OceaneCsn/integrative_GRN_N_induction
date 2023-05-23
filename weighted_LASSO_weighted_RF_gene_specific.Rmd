@@ -1039,7 +1039,6 @@ draw_validation(validation = val_rf)
 # load("results/alpha_per_gene_weighted_LASSO_test.rdata")
 # load("results/alpha_per_gene_weighted_RF.rdata")
 
-
 # load("results/alpha_per_gene_weighted_LASSO_test_true_sd.rdata")
 # load("results/alpha_per_gene_weighted_RF_true_sd.rdata")
 
@@ -1123,14 +1122,25 @@ save(val_specific, file = "results/gene_specific_validation_mean_true_shuff_sd.r
 
 ## For the max divergence to permutations metric
 
+
 ```{r}
 # load("results/gene_specific_grns.rdata")
 # load("results/gene_specific_mse.rdata")
 # load("results/gene_specific_edges.rdata")
 
 settings <- c("model", "dataset", "rep", "density")
-# load("results/gene_specific_validation.rdata")
 
+# load("results/gene_specific_mse_mean_true_shuff_sd.rdata") 
+# load("results/gene_specific_validation_mean_true_shuff_sd.rdata")
+
+# load("results/gene_specific_mse_true_sd.rdata") 
+# load("results/gene_specific_validation_true_sd.rdata")
+
+load("results/gene_specific_mse.rdata") 
+load("results/gene_specific_validation.rdata")
+```
+
+```{r, eval=FALSE}
 precision_rf <- draw_validation(validation = val_rf, 
                                    densities = c(0.005), precision_only = T)
 precision_lasso <- draw_validation(validation = val_lasso, 
@@ -1236,6 +1246,55 @@ spec_lasso_recall <- val_specific %>%
 
 ```
 
+### Precision/recall curves
+
+```{r, warning=TRUE}
+
+val_spec <- val_specific %>%
+  separate(network_name, into = settings, sep = "_") %>%
+    filter(density == 0.005) %>%
+  mutate(density = paste("D =", density),
+           model = str_replace(model, "RF", "weightedRF"),
+           model = str_replace(model, "LASSO", "weightedLASSO"), 
+         alpha_type = "gene-specific")
+
+data_val <- rbind.data.frame(val_rf, val_lasso) %>%
+    filter(density %in% c(0.005))%>%
+    group_by(model, alpha, dataset, density) %>%
+    mutate(mean_precision = mean(precision, na.rm = T),
+           sd_precision = sd(precision, na.rm = T),
+           mean_recall = mean(recall, na.rm = T),
+           sd_recall = sd(recall, na.rm = T),
+           density = paste("D =", density),
+           model = str_replace(model, "bRF", "weightedRF"),
+           model = str_replace(model, "LASSO", "weightedLASSO")) %>%
+  dplyr::select(-network_name) %>%
+  mutate(alpha = as.numeric(alpha), alpha_type = "global")
+
+# geom_label(aes(y=mean_precision, x=mean_recall), nudge_y = 0.02)+
+
+pr_curves <- data_val %>%
+  ggplot(aes(x=recall, y=precision, 
+             label = alpha, color = interaction(dataset, alpha_type),
+             fill = interaction(dataset, alpha_type))) +
+  geom_point(size = 0.65)+
+  geom_ribbon(aes(ymin = mean_precision - sd_precision , 
+                    ymax = mean_precision + sd_precision, x=mean_recall  ), alpha = 0.4)+
+  theme_pubr()+ ggh4x::facet_nested_wrap(vars(model), nest_line = T)+
+  geom_line(aes(y=mean_precision, x=mean_recall), size=2)+
+  theme(strip.background = element_blank())+
+  geom_hline(color = "#C55A11", yintercept = 0.331042, size= 1.5, show.legend = T) +
+  geom_point(aes(x=recall, y=precision), data = val_spec)+
+  scale_color_manual(name = "Dataset and type of integration",
+                     values = setNames(c("lightblue", "grey", "#4670CD", "#70AD47"), 
+                                       c("shuffled.gene-specific","shuffled.global",
+                                         "trueData.gene-specific", "trueData.global")))+
+  scale_fill_manual(name = "Dataset and type of integration",
+                     values = setNames(c("lightblue", "grey", "#4670CD", "#70AD47"), 
+                                       c("shuffled.gene-specific","shuffled.global",
+                                         "trueData.gene-specific", "trueData.global")))
+```
+
 
 
 ```{r, fig.width=12, fig.height=10}
@@ -1250,8 +1309,8 @@ filter(model == "LASSO") %>%
 group_by(dataset, rep) %>%
 summarise(median_MSE = median(value, na.rm=T))%>%
   ggplot(aes(x=dataset, y = median_MSE, color = dataset, fill = dataset)) + 
-scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
-  scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData"))) +
+scale_color_manual(values = setNames(c("lightblue", "#4670CD"), c("shuffled", "trueData")))+
+  scale_fill_manual(values = setNames(c("lightblue", "#4670CD"), c("shuffled", "trueData"))) +
 geom_boxplot(size = 1, alpha = 0.5, outlier.alpha = 0) +
 theme_pubr() + geom_jitter(width = 0.2, size = 2)+
 theme(
@@ -1275,8 +1334,8 @@ filter(model == "RF") %>%
 group_by(dataset, rep) %>%
 summarise(median_MSE = median(value, na.rm=T))%>%
   ggplot(aes(x=dataset, y = median_MSE, color = dataset, fill = dataset)) + 
-scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
-  scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData"))) +
+scale_color_manual(values = setNames(c("lightblue", "#4670CD"), c("shuffled", "trueData")))+
+  scale_fill_manual(values = setNames(c("lightblue", "#4670CD"), c("shuffled", "trueData"))) +
 geom_boxplot(size = 1, alpha = 0.5, outlier.alpha = 0) +
 theme_pubr() + geom_jitter(width = 0.2, size = 2)+
 theme(
@@ -1333,26 +1392,42 @@ mse_lasso <- draw_mse("LASSO")
 load("results/brf_perumtations_mse_all_genes_predict.rdata")
 mse_rf <- draw_mse("RF")
 x_min <- 0.19
-plot <- mse_lasso + ylim(c(x_min,0.265)) +labs(subtitle = "Global\ndata integration")+ 
+
+
+
+# plot <- mse_lasso + ylim(c(x_min,0.265)) +labs(subtitle = "Global\ndata integration")+ 
+#   mse_lasso_spec+ ylim(c(x_min,0.265)) +labs(subtitle = "Gene-specific\ndata integration")+ylab("") +
+#   mse_rf +  ylim(c(x_min,0.265)) +labs(subtitle = "Global\ndata integration")+ ylab("") +
+#   mse_rf_spec+ ylim(c(x_min,0.265))  +labs(subtitle = "Gene-specific\ndata integration")+ylab("") +
+#   precision_lasso + ylim(c(x_min,0.46)) +ggtitle("")+ labs(subtitle = "Global\ndata integration")+
+#   theme(legend.position = 'none') + 
+#   spec_lasso + labs(subtitle = "Gene-specific\ndata integration")+
+#   precision_rf +labs(subtitle = "Global\ndata integration")+ ylab("") +ylim(c(0.2,0.46))+
+#   theme(legend.position = 'none')+ggtitle("") + 
+#   spec_rf +labs(subtitle = "Gene-specific\ndata integration")+
+#    recall_lasso + ylim(c(0,0.03)) +ggtitle("")+ labs(subtitle = "Global\ndata integration")+ theme(legend.position = 'none')+
+#   theme(legend.position = 'none') + 
+#   spec_lasso_recall + labs(subtitle = "Gene-specific\ndata integration")+ ylim(c(0,0.03))+
+#   recall_rf +labs(subtitle = "Global\ndata integration")+ ylab("")+ ylim(c(0,0.03))+ theme(legend.position = 'none')+
+#   theme(legend.position = 'none')+ggtitle("") + 
+#   spec_rf_recall +labs(subtitle = "Gene-specific\ndata integration")+ ylim(c(0,0.03))+
+# plot_layout(guides = "collect", ncol = 4, widths = c(1.5,1,1.5,1))& theme(legend.position = 'bottom');plot
+
+# ggexport(plot, filename = "results/specific_grns_mean_true_shuff_sd.pdf", width = 10, height = 10)
+
+plot <- (mse_lasso + ylim(c(x_min,0.265)) +labs(subtitle = "Global\ndata integration")+ 
   mse_lasso_spec+ ylim(c(x_min,0.265)) +labs(subtitle = "Gene-specific\ndata integration")+ylab("") +
   mse_rf +  ylim(c(x_min,0.265)) +labs(subtitle = "Global\ndata integration")+ ylab("") +
-  mse_rf_spec+ ylim(c(x_min,0.265))  +labs(subtitle = "Gene-specific\ndata integration")+ylab("") +
-  precision_lasso + ylim(c(x_min,0.46)) +ggtitle("")+ labs(subtitle = "Global\ndata integration")+
-  theme(legend.position = 'none') + 
-  spec_lasso + labs(subtitle = "Gene-specific\ndata integration")+
-  precision_rf +labs(subtitle = "Global\ndata integration")+ ylab("") +ylim(c(0.2,0.46))+
-  theme(legend.position = 'none')+ggtitle("") + 
-  spec_rf +labs(subtitle = "Gene-specific\ndata integration")+
-   recall_lasso + ylim(c(0,0.03)) +ggtitle("")+ labs(subtitle = "Global\ndata integration")+ theme(legend.position = 'none')+
-  theme(legend.position = 'none') + 
-  spec_lasso_recall + labs(subtitle = "Gene-specific\ndata integration")+ ylim(c(0,0.03))+
-  recall_rf +labs(subtitle = "Global\ndata integration")+ ylab("")+ ylim(c(0,0.03))+ theme(legend.position = 'none')+
-  theme(legend.position = 'none')+ggtitle("") + 
-  spec_rf_recall +labs(subtitle = "Gene-specific\ndata integration")+ ylim(c(0,0.03))+
-plot_layout(guides = "collect", ncol = 4, widths = c(1.5,1,1.5,1))& theme(legend.position = 'bottom');plot
+  mse_rf_spec+ ylim(c(x_min,0.265))  +labs(subtitle = "Gene-specific\ndata integration")+ylab(""))+
+  plot_layout(guides = "collect", ncol = 4, widths = c(1.5,1,1.5,1))& theme(legend.position = 'bottom')
 
-ggexport(plot, filename = "results/specific_grns_mean_true_shuff_sd.pdf", width = 10, height = 10)
 
+plot_final <- plot/ pr_curves+theme(legend.position = "none", 
+                      axis.title = element_text(size= 15),
+                      strip.text = element_text(size = 18))+
+  plot_layout(heights = c(1,1.5))+plot_annotation(title = "Shuffle SD")
+
+ggexport(plot_final, filename = "results/specific_grns_shuffle_sd.pdf", width = 11, height = 10)
 
 ```
 
@@ -2313,6 +2388,16 @@ convert_from_agi <- function(ids){
 }
 
 load("results/gene_specific_edges_mean_true_shuff_sd.rdata")
+
+
+mean(edges$LASSO_trueData_1_0.005$pwm)
+mean(lasso_nets_0$LASSO_0_trueData_1_0.005$pwm)
+mean(lasso_nets_1$LASSO_1_trueData_1_0.005$pwm)
+
+mean(edges$RF_trueData_10_0.005$pwm)
+mean(rf_nets_0$bRF_0_trueData_1_0.005$pwm)
+mean(rf_nets_1$bRF_1_trueData_1_0.005$pwm)
+
 
 rf_nets <- names(edges)[str_detect(names(edges),"RF_trueData") ]
 rf_nets <- edges[rf_nets[str_detect(rf_nets,"0.005") ]]
