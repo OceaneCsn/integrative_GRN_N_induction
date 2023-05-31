@@ -387,7 +387,7 @@ p <- draw_gene_effective_integration(gene_benefit, prior = 1) +
 
 
 figure <- n/o/p;figure
-# ggexport(figure, filename = "results/gene_examples_weightedRF.pdf", width = 10, height = 9)
+ggexport(figure, filename = "results/gene_examples_weightedRF.pdf", width = 10, height = 9)
 
 ```
 
@@ -422,7 +422,6 @@ Doing the same for weightedLASSO:
 
 ```{r fig.height=10, fig.width=10}
 
-# for the lasso
 load("results/lasso_perumtations_mse_all_genes_test.rdata")
 load("results/100_permutations_lasso_mda_shuffle.rdata")
 # load("results/100_permutations_lasso_edges.rdata")
@@ -444,7 +443,7 @@ p <- draw_gene_effective_integration(gene_benefit, prior = 1) +
 
 n/o/p
 figure <- n/o/p
-# ggexport(figure, filename = "results/gene_examples_weightedLASSO.pdf", width = 10, height = 9)
+ggexport(figure, filename = "results/gene_examples_weightedLASSO.pdf", width = 10, height = 9)
 
 ```
 
@@ -469,8 +468,8 @@ For divergence from permutation criteria :
 
 ```{r}
 
-load("results/alpha_per_gene_weighted_LASSO_test_true_sd.rdata")
-load("results/alpha_per_gene_weighted_RF_true_sd.rdata")
+load("results/alpha_per_gene_weighted_LASSO_test_mean_true_shuff_sd.rdata")
+load("results/alpha_per_gene_weighted_RF_mean_true_shuff_sd.rdata")
 
 hists <- data.frame(weightedLASSO = alphas_lasso, weightedRF = alphas_rf) %>%
   gather(key = "model", value = "alpha") %>%
@@ -482,7 +481,7 @@ ggplot(aes(x = alpha, fill = model)) +
   theme(strip.background = element_blank(),
         legend.position = "none")+
   xlab(expression(alpha))+ ylab("Number of genes")
-# ggexport(hists, filename  = "results/alpha_histograms.pdf", height = 3, width = 4.5)
+ggexport(hists, filename  = "results/alpha_histograms.pdf", height = 3, width = 4.5)
 ```
 
 ```{r, fig.height=5, fig.width=7}
@@ -695,7 +694,7 @@ Depending on their class (optimal alpha different from 0 or not).
 ```{r, fig.height=10}
 load("results/brf_perumtations_mse_all_genes_predict.rdata")
 # load(file = "results/alpha_per_gene_weighted_RF.rdata")
-load(file = "results/alpha_per_gene_weighted_RF_true_sd.rdata")
+load(file = "results/alpha_per_gene_weighted_RF_mean_true_shuff_sd.rdata")
 
 pos_class <- names(alphas_rf[alphas_rf!=0])
 
@@ -714,7 +713,7 @@ ha = HeatmapAnnotation(
     alpha = anno_simple(as.numeric(str_remove(colnames(mse), "alpha "))),
     annotation_name_side = "left")
 
-# png("results/rf_mse_interest.png", res = 300, height = 1200, width = 2000)
+png("results/rf_mse_interest.png", res = 300, height = 1700, width = 2000)
 Heatmap((mse_interest-rowMeans(mse_interest))/matrixStats::rowSds(mse_interest), 
         col = col_fun, show_column_names = F,
          width = ncol(mse_interest)*unit(10, "mm"), 
@@ -724,9 +723,9 @@ Heatmap((mse_interest-rowMeans(mse_interest))/matrixStats::rowSds(mse_interest),
                                "class of interest", "no integration"), 
                 col = list(class = setNames(c("#70AD47", "grey"), 
                                             nm = c("class of interest", "no integration"))))
-# dev.off()
+dev.off()
 #pdf("results/rf_mse_others.pdf", height = 10)
-# png("results/rf_mse_others.png", res = 300, height = 3000, width = 2000)
+png("results/rf_mse_others.png", res = 300, height = 2500, width = 2000)
 Heatmap((mse_other-rowMeans(mse_other))/matrixStats::rowSds(mse_other),
         col = col_fun,show_column_names = F,
         width = ncol(mse_other)*unit(10, "mm"), 
@@ -736,7 +735,7 @@ Heatmap((mse_other-rowMeans(mse_other))/matrixStats::rowSds(mse_other),
                                "class of interest", "no integration"), 
                 col = list(class = setNames(c("#70AD47", "grey"), 
                                             nm = c("class of interest", "no integration"))))
-# dev.off()
+dev.off()
 ```
 
 # For the lasso
@@ -745,7 +744,7 @@ Heatmap((mse_other-rowMeans(mse_other))/matrixStats::rowSds(mse_other),
 
 load("results/lasso_perumtations_mse_all_genes_test.rdata")
 # load("results/alpha_per_gene_weighted_LASSO_test.rdata")
-load("results/alpha_per_gene_weighted_LASSO_test_true_sd.rdata")
+load("results/alpha_per_gene_weighted_LASSO_test_mean_true_shuff_sd.rdata")
 
 
 pos_class <- names(alphas_lasso[alphas_lasso!=0])
@@ -766,7 +765,7 @@ ha = HeatmapAnnotation(
     annotation_name_side = "left")
 
 #pdf("results/lasso_mse_interest.pdf", height = 7)
-# png("results/lasso_mse_interest.png", res = 300, height = 1400, width = 2000)
+png("results/lasso_mse_interest.png", res = 300, height = 2000, width = 2000)
 Heatmap((mse_interest-rowMeans(mse_interest))/matrixStats::rowSds(mse_interest), 
         col = col_fun, show_column_names = F,
          width = ncol(mse_interest)*unit(10, "mm"), 
@@ -776,9 +775,9 @@ Heatmap((mse_interest-rowMeans(mse_interest))/matrixStats::rowSds(mse_interest),
                                "class of interest", "no integration"), 
                 col = list(class = setNames(c("#70AD47", "grey"), 
                                             nm = c("class of interest", "no integration"))))
-# dev.off()
+dev.off()
 #pdf("results/lasso_mse_others.pdf", height = 7)
-# png("results/lasso_mse_others.png", res = 300, height = 2800, width = 2000)
+png("results/lasso_mse_others.png", res = 300, height = 2200, width = 2000)
 Heatmap((mse_other-rowMeans(mse_other))/matrixStats::rowSds(mse_other),
         col = col_fun,show_column_names = F,
         width = ncol(mse_other)*unit(10, "mm"), 
@@ -788,7 +787,7 @@ Heatmap((mse_other-rowMeans(mse_other))/matrixStats::rowSds(mse_other),
                                "class of interest", "no integration"), 
                 col = list(class = setNames(c("#70AD47", "grey"), 
                                             nm = c("class of interest", "no integration"))))
-# dev.off()
+dev.off()
 ```
 
 # Intersection between classes
@@ -798,8 +797,8 @@ Divergence from perm :
 
 ```{r}
 
-load("results/alpha_per_gene_weighted_LASSO_test.rdata")
-load("results/alpha_per_gene_weighted_RF.rdata")
+load("results/alpha_per_gene_weighted_LASSO_test_mean_true_shuff_sd.rdata")
+load("results/alpha_per_gene_weighted_RF_mean_true_shuff_sd.rdata")
 
 venn <- ggVennDiagram(list("weightedRF" = names(alphas_rf[alphas_rf!=0]),
                    "weightedLASSO" = names(alphas_lasso[alphas_lasso!=0])), edge_size = 2)+ 
@@ -808,7 +807,7 @@ venn <- ggVennDiagram(list("weightedRF" = names(alphas_rf[alphas_rf!=0]),
   theme(legend.position = "none");venn
 
 # hypergeometric test to assess the significance of the intersect
-p_enrich <- phyper(q=572, m = length(names(alphas_rf[alphas_rf!=0])), 
+p_enrich <- phyper(q=351, m = length(names(alphas_rf[alphas_rf!=0])), 
                    n = length(genes) - length(names(alphas_rf[alphas_rf!=0])), 
                    k = length( names(alphas_lasso[alphas_lasso!=0])), lower.tail = F)
 p_enrich
@@ -840,7 +839,7 @@ ggexport(venn, filename = "results/classes_intersection_min.pdf", width = 4, hei
 
 
 ```{r}
-load("results/alpha_per_gene_weighted_LASSO_test_true_sd.rdata")
+load("results/alpha_per_gene_weighted_LASSO_test_mean_true_shuff_sd.rdata")
 load("results/alpha_per_gene_weighted_RF_mean_true_shuff_sd.rdata")
 load("rdata/pwm_prom_jaspar_dap.rdata")
 
@@ -2415,7 +2414,7 @@ rbind.data.frame(precision_tga1_global_lasso, precision_tga1_global_rf) %>%
 Shows the top 25 regulators in terms of out-degree.
 
 ```{r}
-load("results/gene_specific_edges_true_sd.rdata")
+load("results/gene_specific_edges_mean_true_shuff_sd.rdata")
 
 annot <- DIANE::get_gene_information(genes,organism = "Arabidopsis thaliana")
 
