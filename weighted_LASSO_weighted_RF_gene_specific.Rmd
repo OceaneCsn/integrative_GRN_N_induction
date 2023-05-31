@@ -725,7 +725,7 @@ Heatmap((mse_interest-rowMeans(mse_interest))/matrixStats::rowSds(mse_interest),
                                             nm = c("class of interest", "no integration"))))
 dev.off()
 #pdf("results/rf_mse_others.pdf", height = 10)
-png("results/rf_mse_others.png", res = 300, height = 2500, width = 2000)
+png("results/rf_mse_others.png", res = 300, height = 2200, width = 2000)
 Heatmap((mse_other-rowMeans(mse_other))/matrixStats::rowSds(mse_other),
         col = col_fun,show_column_names = F,
         width = ncol(mse_other)*unit(10, "mm"), 
