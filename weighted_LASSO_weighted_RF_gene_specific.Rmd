@@ -718,7 +718,7 @@ Heatmap((mse_interest-rowMeans(mse_interest))/matrixStats::rowSds(mse_interest),
         col = col_fun, show_column_names = F,
          width = ncol(mse_interest)*unit(10, "mm"), 
       height = nrow(mse_interest)*unit(0.2, "mm"),
-        cluster_columns = F, show_row_names = F, top_annotation = ha)+ 
+        cluster_columns = F, show_row_names = F)+ 
   rowAnnotation(class = ifelse(alphas_rf[rownames(mse_interest)]>0, 
                                "class of interest", "no integration"), 
                 col = list(class = setNames(c("#70AD47", "grey"), 
@@ -730,7 +730,7 @@ Heatmap((mse_other-rowMeans(mse_other))/matrixStats::rowSds(mse_other),
         col = col_fun,show_column_names = F,
         width = ncol(mse_other)*unit(10, "mm"), 
       height = nrow(mse_other)*unit(0.2, "mm"),
-        cluster_columns = F, show_row_names = F, top_annotation = ha)+ 
+        cluster_columns = F, show_row_names = F)+ 
   rowAnnotation(class = ifelse(alphas_rf[rownames(mse_other)]>0, 
                                "class of interest", "no integration"), 
                 col = list(class = setNames(c("#70AD47", "grey"), 
@@ -770,7 +770,7 @@ Heatmap((mse_interest-rowMeans(mse_interest))/matrixStats::rowSds(mse_interest),
         col = col_fun, show_column_names = F,
          width = ncol(mse_interest)*unit(10, "mm"), 
       height = nrow(mse_interest)*unit(0.2, "mm"),
-        cluster_columns = F, show_row_names = F, top_annotation = ha)+ 
+        cluster_columns = F, show_row_names = F)+ 
   rowAnnotation(class = ifelse(alphas_lasso[rownames(mse_interest)]>0, 
                                "class of interest", "no integration"), 
                 col = list(class = setNames(c("#70AD47", "grey"), 
@@ -782,7 +782,7 @@ Heatmap((mse_other-rowMeans(mse_other))/matrixStats::rowSds(mse_other),
         col = col_fun,show_column_names = F,
         width = ncol(mse_other)*unit(10, "mm"), 
       height = nrow(mse_other)*unit(0.2, "mm"),
-        cluster_columns = F, show_row_names = F, top_annotation = ha)+ 
+        cluster_columns = F, show_row_names = F)+ 
   rowAnnotation(class = ifelse(alphas_lasso[rownames(mse_other)]>0, 
                                "class of interest", "no integration"), 
                 col = list(class = setNames(c("#70AD47", "grey"), 
@@ -2542,7 +2542,7 @@ convert_from_agi <- function(ids){
   return(unlist(xx[as.vector(ids)]))
 }
 
-load("results/gene_specific_edges_true_sd.rdata")
+load("results/gene_specific_edges_mean_true_shuff_sd.rdata")
 
 
 mean(edges$LASSO_trueData_1_0.005$pwm)
