@@ -392,6 +392,61 @@ ggexport(figure, filename = "results/gene_examples_weightedRF.pdf", width = 10, 
 ```
 
 
+looking for new profiles (increasing mse but )
+
+```{r}
+lasso_1<- names(alphas_rf[alphas_rf==0])
+subset <- sample(lasso_1, size = 10, replace = F)
+
+for(nrt in subset ){
+  print(
+  draw_gene_mse(nrt)+theme(legend.position = "none")+
+  get_opt_alpha_per_gene(nrt)+
+  plot_annotation(title = nrt))
+}
+```
+
+
+```{r}
+lasso_1<- names(alphas_rf[alphas_rf>0.5])
+subset <- sample(lasso_1, size = 50, replace = F)
+
+for(nrt in subset ){
+  print(
+  draw_gene_mse(nrt)+theme(legend.position = "none")+
+  get_opt_alpha_per_gene(nrt)+
+  plot_annotation(title = nrt))
+}
+```
+
+
+Figures for ISMB talk : 
+
+
+```{r}
+# mse increase (or AT5G64660)
+compromise <- get_opt_alpha_per_gene("AT1G14720")+labs(subtitle = "AT1G14720")+
+  get_opt_alpha_per_gene("AT5G16650")+labs(subtitle = "AT5G16650")
+ 
+
+# mse decrese
+ideal <- get_opt_alpha_per_gene("AT1G70790")+
+  theme(legend.position = "right") + 
+  labs(subtitle = "AT1G70790")
+
+
+# mse increase_bad
+bad <- get_opt_alpha_per_gene("AT1G56230") +labs(subtitle = "AT1G56230")+ 
+  get_opt_alpha_per_gene("AT2G29990")+labs(subtitle = "AT2G29990")
+
+
+ggexport(ideal, filename = "results/ismb_talk/wRF_ideal.pdf", width = 6, height = 5)
+ggexport(compromise, filename = "results/ismb_talk/wRF_compromise.pdf", width = 10, height = 5)
+ggexport(bad, filename = "results/ismb_talk/wRF_bad.pdf", width = 10, height = 5)
+
+```
+
+
 ```{r, eval=F}
 # value of alpha per genes:
 alphas_rf <- mcsapply(genes, get_opt_alpha_per_gene, type = "rank", 
@@ -2418,21 +2473,46 @@ load("results/gene_specific_edges_mean_true_shuff_sd.rdata")
 
 annot <- DIANE::get_gene_information(genes,organism = "Arabidopsis thaliana")
 
-get_hubs <- function(nets){
+get_hubs <- function(nets, metric = "degree"){
   g <- setNames(rep(0, length(genes)), genes)
   for(net in names(nets)){
-    g[names(table(nets[[net]]$from))] <- g[names(table(nets[[net]]$from))] + table(nets[[net]]$from)/length(nets)
+    if(metric == "degree")
+      g[names(table(nets[[net]]$from))] <- g[names(table(nets[[net]]$from))] + table(nets[[net]]$from)/length(nets)
+    if(metric == "betweenness")
+      g[names(table(nets[[net]]$from))]<- g[names(table(nets[[net]]$from))]+
+        igraph::betweenness(igraph::graph_from_data_frame(nets[[net]], directed = T),
+                            v = names(table(nets[[net]]$from)), directed = T)
   }
   df <- data.frame(genes = genes, average_degree = g[genes], 
-                   label = annot[match(genes, rownames(annot)), "label"])
+                   label = annot[match(genes, rownames(annot)), "label"],
+                   pwm_available =  genes %in% known_tfs)
+  
+  df$regulator <- ifelse(df$label %in% c("DIV1", "TGA1", "TGA4", "HHO2", "HHO3", "HRS1", "BT1", "BT2"), 
+                         "Nitrate regulator",
+                         ifelse(df$label %in%  c("VRN1", "CRF4"), "Candidate nitrate\nregulator",
+                                ifelse(df$label %in% c("NLP7", "PHL1", "BZIP53", "HHO6", "JKD"),
+                                       "Retreived by gene\nspecific data integration\n optimisation", "No knowlege")))
+  
+  
   plt <- df %>%
-    slice_max(average_degree, n = 25) %>%
-    ggplot(aes(x=average_degree, y=reorder(label, average_degree) ))+ 
-    geom_point() + theme_bw() + ylab("gene") + xlab("Average out-degree")
+    slice_max(average_degree, n = 25) %>% 
+    ggplot(aes(x=average_degree, label = label, color = regulator,
+               y=reorder(label, average_degree)))+ 
+    geom_segment(x=0, color = "grey",
+                 aes(xend=average_degree, 
+                          yend = reorder(label, average_degree)))+
+    geom_point()+
+    geom_text(nudge_x = 7, show.legend = F)+ theme_bw() + 
+    ylab("") + xlab("Average out-degree")+theme(axis.text.y = element_blank())+
+    scale_color_manual(name = "", values = setNames(c("#C55A11", "orange", "#4670CD", "black"), 
+                                         c("Nitrate regulator", "Candidate nitrate\nregulator",
+                                           "Retreived by gene\nspecific data integration\n optimisation", "No knowledge")))+
+    guides(color = guide_legend(nrow=4,byrow=TRUE))
   
   top20<- df %>%
     slice_max(average_degree, n = 25) %>%
     select(label)
+  
   return(list(ranking = plt, top25 = top20$label))
 }
 
@@ -2443,39 +2523,12 @@ rf_nets <- edges[rf_nets[str_detect(rf_nets,"0.005") ]]
 lasso_nets <- names(edges)[str_detect(names(edges),"LASSO_trueData") ]
 lasso_nets <- edges[lasso_nets[str_detect(lasso_nets,"0.005") ]]
 
-get_hubs(rf_nets)$ranking+ ggtitle("weightedRF") + get_hubs(lasso_nets)$ranking+ggtitle("weightedLASSO")
-intersect(get_hubs(rf_nets)$top25 , get_hubs(lasso_nets)$top25)
-```
-
-Rankings in global alpha networks compared for alpha specific in RF:
-
-```{r}
-load(file = "results/100_permutations_bRF_edges_inf.rdata")
-
-rf_nets_0 <- names(edges)[str_detect(names(edges),"RF_0_trueData") ]
-rf_nets_0 <- edges[rf_nets_0[str_detect(rf_nets_0,"0.005") ]]
-
-rf_nets_1 <- names(edges)[str_detect(names(edges),"RF_1_trueData") ]
-rf_nets_1 <- edges[rf_nets_1[str_detect(rf_nets_1,"0.005") ]]
-
-get_hubs(rf_nets_0)$ranking+ ggtitle("weightedRF alpha = 0") + 
-  get_hubs(rf_nets_1)$ranking+ggtitle("weightedRF alpha = 1") + 
-  get_hubs(rf_nets)$ranking+ ggtitle("weightedRF specific alpha")
-
-intersect(get_hubs(rf_nets)$top25 , get_hubs(rf_nets_1)$top25)
-intersect(get_hubs(rf_nets)$top25 , get_hubs(rf_nets_0)$top25)
-
-# regulators that were not in the top 25
-setdiff(get_hubs(rf_nets)$top25 , union(get_hubs(rf_nets_0)$top25,
-                                        get_hubs(rf_nets_1)$top25))
-
 
 ```
-
-
-Rankings in global alpha networks compared for alpha specific in LASSO:
+Building global networks :
 
 ```{r}
+
 load(file = "results/100_permutations_lasso_edges.rdata")
 
 lasso_nets_0 <- names(edges)[str_detect(names(edges),"LASSO_0_trueData") ]
@@ -2484,19 +2537,97 @@ lasso_nets_0 <- edges[lasso_nets_0[str_detect(lasso_nets_0,"0.005") ]]
 lasso_nets_1 <- names(edges)[str_detect(names(edges),"LASSO_1_trueData") ]
 lasso_nets_1 <- edges[lasso_nets_1[str_detect(lasso_nets_1,"0.005") ]]
 
-get_hubs(lasso_nets_0)$ranking+ ggtitle("weightedLASSO alpha = 0") + 
-  get_hubs(lasso_nets_1)$ranking+ggtitle("weightedLASSO alpha = 1") + 
-  get_hubs(lasso_nets)$ranking+ ggtitle("weightedLASSO specific alpha")
 
-intersect(get_hubs(lasso_nets)$top25 , get_hubs(lasso_nets_1)$top25)
-intersect(get_hubs(lasso_nets)$top25 , get_hubs(lasso_nets_0)$top25)
+load(file = "results/100_permutations_bRF_edges_inf.rdata")
+
+rf_nets_0 <- names(edges)[str_detect(names(edges),"RF_0_trueData") ]
+rf_nets_0 <- edges[rf_nets_0[str_detect(rf_nets_0,"0.005") ]]
+
+rf_nets_1 <- names(edges)[str_detect(names(edges),"RF_1_trueData") ]
+rf_nets_1 <- edges[rf_nets_1[str_detect(rf_nets_1,"0.005") ]]
+
+```
+
+
+Rankings in global alpha networks compared to alpha specific in RF:
+
+```{r}
+
+ranks_rf <- get_hubs(rf_nets_0)$ranking+ ggtitle("weightedRF alpha = 0") + 
+  theme(legend.position = "none")+
+  get_hubs(rf_nets_1)$ranking+ggtitle("weightedRF alpha = 1") + 
+  theme(legend.position = "none")+
+  get_hubs(rf_nets)$ranking+ ggtitle("weightedRF specific alpha")+
+  theme(legend.position = "top")+
+  plot_layout(guides = "collect") 
+
+
+
+ranks_rf <- get_hubs(rf_nets)$ranking+ ggtitle("weightedRF, gene-specific optimsation")+
+  theme(legend.position = "right", legend.text = element_text(size = 15))
+
+ggexport(ranks_rf, filename = "results/weightedRF_ranks_grns.pdf", width = 8, ehight = 7)
+# regulators in the top ranking of all GRNs
+common_rf <- intersect(get_hubs(rf_nets)$top25 , union(get_hubs(rf_nets_0)$top25,
+                                        get_hubs(rf_nets_1)$top25))
+
+# regulators in gene-specific GRNs only
+setdiff(get_hubs(rf_nets)$top25 , union(get_hubs(rf_nets_0)$top25,
+                                        get_hubs(rf_nets_1)$top25))
+
+```
+
+Rankings in global alpha networks compared for alpha specific in LASSO:
+
+```{r}
+
+
+get_hubs(lasso_nets_0)$ranking+ ggtitle("weightedLASSO alpha = 0") +
+  theme(legend.position = "none")+
+  get_hubs(lasso_nets_1)$ranking+ggtitle("weightedLASSO alpha = 1") +
+  theme(legend.position = "none")+
+  get_hubs(lasso_nets)$ranking+ ggtitle("weightedLASSO specific alpha")+
+  theme(legend.position = "top")+
+  plot_layout(guides = "collect") 
+
+# regulators in the top ranking of all GRNs
+common_lasso <- intersect(get_hubs(lasso_nets)$top25 , union(get_hubs(lasso_nets_0)$top25,
+                                        get_hubs(lasso_nets_1)$top25))
 
 # regulators that were not in the top 25
-setdiff(get_hubs(lasso_nets)$top25 , union(get_hubs(lasso_nets_0)$top25,
-                                        get_hubs(lasso_nets_1)$top25))
+setdiff(get_hubs(lasso_nets)$top25 , 
+        union(get_hubs(lasso_nets_0)$top25,
+              get_hubs(lasso_nets_1)$top25))
 
 
 ```
+
+```{r}
+intersect(common_lasso, common_rf)
+```
+
+
+```{r}
+
+get_hubs(rf_nets_0, metric = "betweenness")$ranking+ ggtitle("weightedRF alpha = 0") + 
+  get_hubs(rf_nets_1, metric = "betweenness")$ranking+ggtitle("weightedRF alpha = 1") + 
+  get_hubs(rf_nets, metric = "betweenness")$ranking+ ggtitle("weightedRF specific alpha")
+
+# intersect(get_hubs(rf_nets)$top25 , get_hubs(rf_nets_1)$top25)
+# intersect(get_hubs(rf_nets)$top25 , get_hubs(rf_nets_0)$top25)
+
+intersect(get_hubs(rf_nets, metric = "betweenness")$top25 , union(get_hubs(rf_nets_0, metric = "betweenness")$top25,
+                                        get_hubs(rf_nets_1, metric = "betweenness")$top25))
+
+# regulators that were not in the top 25
+setdiff(get_hubs(rf_nets, metric = "betweenness")$top25 , union(get_hubs(rf_nets_0, metric = "betweenness")$top25,
+                                        get_hubs(rf_nets_1, metric = "betweenness")$top25))
+
+
+```
+
+
+
 
 
 
@@ -2528,7 +2659,71 @@ get_hubs_incoming(rf_nets)$ranking+ ggtitle("weightedRF") +
 intersect(get_hubs_incoming(rf_nets)$top25 , get_hubs_incoming(lasso_nets)$top25)
 ```
 
+Clustering coefficient:
 
+
+
+
+```{r, eval = T}
+
+load("results/gene_specific_edges_mean_true_shuff_sd.rdata")
+
+
+rf_nets <- names(edges)[str_detect(names(edges),"RF_trueData") ]
+rf_nets <- edges[rf_nets[str_detect(rf_nets,"0.005") ]]
+
+lasso_nets <- names(edges)[str_detect(names(edges),"LASSO_trueData") ]
+lasso_nets <- edges[lasso_nets[str_detect(lasso_nets,"0.005") ]]
+
+
+get_transitivity <- function(nets, settings){
+  res <- data.frame(trans = unlist(lapply(names(nets), 
+           function(net){return(igraph::transitivity(igraph::graph_from_data_frame(nets[[net]], directed = T), 
+                                                     type = "global"))})),
+           length = unlist(lapply(names(nets), 
+           function(net){return(igraph::mean_distance(igraph::graph_from_data_frame(nets[[net]], directed = T)))})),
+           diam = unlist(lapply(names(nets), 
+           function(net){return(igraph::diameter(igraph::graph_from_data_frame(nets[[net]], directed = T)))})))
+  
+  res$settings <- settings
+  return(res)
+}
+
+trans <- rbind.data.frame(get_transitivity(rf_nets_0, "weightedRF_0"), 
+                 get_transitivity(rf_nets_1, "weightedRF_1"), 
+                 get_transitivity(rf_nets, "weightedRF_specific"),
+                 get_transitivity(lasso_nets_0, "weightedLASSO_0"), 
+                 get_transitivity(lasso_nets_1, "weightedLASSO_1"), 
+                 get_transitivity(lasso_nets, "weightedLASSO_specific"))
+
+trans <- trans %>%
+  separate(settings, into = c("model", "alpha"), sep = "_")
+
+trans %>%
+  ggplot(aes(x=alpha, y = trans, color = alpha)) + 
+  ggh4x::facet_nested_wrap(vars(model), nrow = 2, scales = "free")+ 
+  theme_bw()+ 
+  theme(strip.background = element_blank())+
+  geom_point() +ggtitle("clustering coeff")
+
+trans %>%
+  ggplot(aes(x=alpha, y = length, color = alpha)) + 
+  ggh4x::facet_nested_wrap(vars(model), nrow = 2, scales = "free")+ 
+  theme_bw()+ 
+  theme(strip.background = element_blank())+
+  geom_point() +ggtitle("avg path length coeff")
+
+trans %>%
+  ggplot(aes(x=alpha, y = diam, color = alpha)) + 
+  ggh4x::facet_nested_wrap(vars(model), nrow = 2, scales = "free")+ 
+  theme_bw()+ 
+  theme(strip.background = element_blank())+
+  geom_point() +ggtitle("diameter")
+
+```
+
+
+Nitrate GSEA :
 
 ```{r, eval = T}
 
@@ -2541,43 +2736,61 @@ convert_from_agi <- function(ids){
   xx <- as.list(x[mapped_genes])
   return(unlist(xx[as.vector(ids)]))
 }
+# 
+# load("results/gene_specific_edges_mean_true_shuff_sd.rdata")
+# 
+# 
+# mean(edges$LASSO_trueData_1_0.005$pwm)
+# mean(lasso_nets_0$LASSO_0_trueData_1_0.005$pwm)
+# mean(lasso_nets_1$LASSO_1_trueData_1_0.005$pwm)
+# 
+# mean(edges$RF_trueData_10_0.005$pwm)
+# mean(rf_nets_0$bRF_0_trueData_1_0.005$pwm)
+# mean(rf_nets_1$bRF_1_trueData_1_0.005$pwm)
+# 
+# 
+# rf_nets <- names(edges)[str_detect(names(edges),"RF_trueData") ]
+# rf_nets <- edges[rf_nets[str_detect(rf_nets,"0.005") ]]
 
-load("results/gene_specific_edges_mean_true_shuff_sd.rdata")
 
-
-mean(edges$LASSO_trueData_1_0.005$pwm)
-mean(lasso_nets_0$LASSO_0_trueData_1_0.005$pwm)
-mean(lasso_nets_1$LASSO_1_trueData_1_0.005$pwm)
-
-mean(edges$RF_trueData_10_0.005$pwm)
-mean(rf_nets_0$bRF_0_trueData_1_0.005$pwm)
-mean(rf_nets_1$bRF_1_trueData_1_0.005$pwm)
-
-
-rf_nets <- names(edges)[str_detect(names(edges),"RF_trueData") ]
-rf_nets <- edges[rf_nets[str_detect(rf_nets,"0.005") ]]
-
-
-lasso_nets <- names(edges)[str_detect(names(edges),"LASSO_trueData") ]
-lasso_nets <- edges[lasso_nets[str_detect(lasso_nets,"0.005") ]]
+# lasso_nets <- names(edges)[str_detect(names(edges),"LASSO_trueData") ]
+# lasso_nets <- edges[lasso_nets[str_detect(lasso_nets,"0.005") ]]
 
 
 get_gsea <- function(nets, settings){
   g <- setNames(rep(0, length(genes)), genes)
   for(net in names(nets)){
-    g[names(table(nets[[net]]$to))] <- g[names(table(nets[[net]]$to))] + table(nets[[net]]$to)/length(nets)
+    
+    # g[names(table(nets[[net]]$to))]<-g[names(table(nets[[net]]$to))]+
+    #   igraph::betweenness(igraph::graph_from_data_frame(nets[[net]], directed = T),
+    #                       v = names(table(nets[[net]]$to)), directed = F)
+    
+    # g[names(table(nets[[net]]$to))]<-g[names(table(nets[[net]]$to))]+
+    #   igraph::transitivity(igraph::graph_from_data_frame(nets[[net]], directed = T),
+    #                       vids = names(table(nets[[net]]$to)), type = "local")
+    #g[names(table(nets[[net]]$from))] <- g[names(table(nets[[net]]$from))] + table(nets[[net]]$from)/length(nets)
+    
+    # g[genes] <- g[genes] + (table(nets[[net]]$from)[genes]+table(nets[[net]]$to)[genes])/length(nets)
+    ge <- intersect(genes, unique(c(nets[[net]]$from, nets[[net]]$to)))
+    g[ge]<-g[ge]+
+      igraph::degree(igraph::graph_from_data_frame(nets[[net]], directed = T),
+                          v = ge, mode = "total")
   }
   df <- data.frame(genes = genes, average_degree = g[genes],
                    label = annot[match(genes, rownames(annot)), "label"])
 
 
-  degrees <- sort(setNames(df$average_degree,convert_from_agi(df$average_degree)),
+  # degrees <- sort(setNames(df$average_degree,convert_from_agi(df$average_degree)),
+  #                 decreasing = T)
+  df <- df[df$average_degree>0,]
+  degrees <- sort(setNames(df$average_degree,convert_from_agi(df$genes)),
                   decreasing = T)
+  
+  degree <- degrees[!is.na(names(degrees))]
   
   gse <- gseGO(geneList=degrees,
               ont ="BP",
-              minGSSize = 3,
-              maxGSSize = 800, nPerm =1000,
+              maxGSSize = length(degrees)-1, nPerm =1000,
               pvalueCutoff = 1,
               verbose = TRUE, scoreType = "pos",
               OrgDb = org.At.tair.db::org.At.tair.db,
@@ -2685,17 +2898,17 @@ DIANE::get_gene_information(net_rf[net_rf$to == "AT1G08090",]$from, organism = "
 
 ```{r}
 
-load("results/alpha_per_gene_weighted_LASSO_test.rdata")
-load("results/alpha_per_gene_weighted_RF.rdata")
-
+# load("results/alpha_per_gene_weighted_LASSO_test.rdata")
+# load("results/alpha_per_gene_weighted_RF.rdata")
+# 
 
 load("rdata/pwm_prom_jaspar_dap.rdata")
 load("rdata/gene_structure.rdata")
 
 
-load("results/gene_specific_grns.rdata")
-load("results/gene_specific_mse.rdata")
-load("results/gene_specific_edges.rdata")
+# load("results/gene_specific_grns.rdata")
+# load("results/gene_specific_mse.rdata")
+# load("results/gene_specific_edges.rdata")
 
 mean_expr <- rowMeans(counts)[genes]
 var_expr <- matrixStats::rowSds(counts[genes,])*matrixStats::rowSds(counts[genes,])
@@ -2882,7 +3095,7 @@ genes_info %>%
 phyper(q=length(intersect(common, tfs)), 
        m = length(tfs), 
        n = length(genes) - length(tfs),
-       k = length(common), lower.tail = F)
+       k = length(common),lower.tail = F)
 ```
 
 
