@@ -444,6 +444,21 @@ ggexport(ideal, filename = "results/ismb_talk/wRF_ideal.pdf", width = 6, height 
 ggexport(compromise, filename = "results/ismb_talk/wRF_compromise.pdf", width = 10, height = 5)
 ggexport(bad, filename = "results/ismb_talk/wRF_bad.pdf", width = 10, height = 5)
 
+
+eff_data <- draw_gene_effective_integration("AT1G14720")+
+   theme(legend.position = "right") 
+
+ggexport(eff_data, filename = "results/ismb_talk/wRF_eff_data_int.pdf", 
+         width = 6, height = 5)
+
+
+
+mse <- draw_gene_mse("AT1G14720")+
+   theme(legend.position = "right") 
+
+ggexport(mse, filename = "results/ismb_talk/wRF_mse.pdf", 
+         width = 6, height = 5)
+
 ```
 
 
