@@ -1,5 +1,5 @@
 ---
-title: "Integrative GRN inference : effect of permuting the expression and motifs of TFs on expression prediction"
+title: "Gene specific tuning of integrative GRN inference"
 output: 
   html_document:
     df_print: paged
@@ -31,7 +31,7 @@ It shows how to select one optimal alpha value per gene, in order to apply data 
 
 # Data import
 
-Import of the expression data and the N-responsive genes and regulators :
+Import of the expression data and binding motifs data for the nitrate-responsive genes and regulators :
 
 ```{r}
 load('rdata/inference_input_N_response_varala.rdata')
@@ -49,6 +49,14 @@ ALPHAS <- seq(0,1, by = 0.1)
 
 
 # Getting the MSE and importance metrics of inferred GRNs
+
+For $alpha$ from 0 to 1 with a step of 0.1, infers 100 integrative models on 
+
++ true data
+
++ a shuffled baseline.
+
+The following code chunks are very long to run.
 
 ## For weightedRF
 
@@ -173,8 +181,12 @@ save(val_dap, file = "results/100_permutations_lasso_validation_dap.rdata")
 ```
 
 
-# Showing the MSE and effective data integration behaviors
+# Gene-level optimisation of TFBM information
 
+
+The following graphics show the MSE and effective data integration behaviors as a function of $alpha$.
+
+This chunk loads the saved results of the parametric exploration for both models on true and shuffled datasets, and defines the functions for visualization and computation of the optimal value of $alpha$ per gene.
 
 ```{r}
 # prior values
@@ -192,8 +204,6 @@ mcsapply <- function (X, FUN, ..., simplify = TRUE, USE.NAMES = TRUE) {
   else answer
 }
 
-
-# needs an appropriate mats variable and a lmses variable to be loaded
 
 # plots the importance of TFs that have a specific prior value, here one,
 # as alpha is increased
@@ -255,8 +265,8 @@ draw_gene_mse <- function(gene, title = NULL){
 
 
 # plots the MSE as a function of effective data integration
-get_opt_alpha_per_gene <- function(gene, type = "rank", 
-                                   return_cluster = F, metric = 'div'){
+get_opt_alpha_per_gene <- function(gene, type = "rank", dev = "mean",
+                                   return_alpha = F, metric = 'div'){
   tfs_with_motif <- names(which(pwm_occurrence[gene,]==1))
   # gene with no TFBS has an optimal alpha of 0
   if(return_cluster & length(tfs_with_motif)==0) return(0)
@@ -307,21 +317,25 @@ get_opt_alpha_per_gene <- function(gene, type = "rank",
   
   # true$div <- (shuff$approx_mse - shuff$approx_sd) - (true$mean_mse)
   
-  # to get mse diff divided by permutations sd :
-  # true$div <- ifelse((shuff$approx_mse - true$mean_mse)/shuff$approx_sd>1, 
-  #                    (shuff$approx_mse - true$mean_mse)/shuff$approx_sd, 
-  #                    0)
+  # to get mse difference divided by permutations sd :
+  if(dev == "shuff")
+    true$div <- ifelse((shuff$approx_mse - true$mean_mse)/shuff$approx_sd>1, 
+                       (shuff$approx_mse - true$mean_mse)/shuff$approx_sd, 
+                      0)
   
-  # to get mse diff divided by true sd :
-  # true$div <- ifelse((shuff$approx_mse - true$mean_mse)/true$sd_mse>1, 
-  #                    (shuff$approx_mse - true$mean_mse)/true$sd_mse, 
-  #                    0)
+  # to get mse difference divided by true sd :
+  if(dev == "true")
+    true$div <- ifelse((shuff$approx_mse - true$mean_mse)/true$sd_mse>1, 
+                      (shuff$approx_mse - true$mean_mse)/true$sd_mse, 
+                      0)
   
-  # to get mse diff divided by the mean of true and shuffled sd :
-  true$div <- ifelse(2*(shuff$approx_mse - true$mean_mse)/(true$sd_mse+shuff$approx_sd)>1, 
-                     2*(shuff$approx_mse - true$mean_mse)/(true$sd_mse+shuff$approx_sd), 
-                     0)
+  # to get mse difference divided by the mean of true and shuffled sd :
+  if(dev=="mean")
+    true$div <- ifelse(2*(shuff$approx_mse - true$mean_mse)/(true$sd_mse+shuff$approx_sd)>1, 
+                       2*(shuff$approx_mse - true$mean_mse)/(true$sd_mse+shuff$approx_sd), 
+                       0)
   
+  # gets the value of alpha optimizing the chosen criterion
   if(metric == "div"){
     if(max(true$div)>0) alpha_opt <- true[true$div == max(true$div),]$alpha
     else alpha_opt <- 0
@@ -330,12 +344,15 @@ get_opt_alpha_per_gene <- function(gene, type = "rank",
   if(metric == "min"){
     alpha_opt <- true[true$mean_mse == min(true$mean_mse),]$alpha
   }
-    
+  
+  # value of effective data integration corresponding to the optimal alpha value
   eff_opt = true[true$alpha==alpha_opt,]$mean_imp
   
-  padding = ifelse(type=="rank", ifelse(alpha_opt<0.2, 17, -17), 0)
-  if(return_cluster) return(alpha_opt)
+  # returns the optimal value of alpha for this gene
+  if(return_alpha) return(alpha_opt)
   
+  # else, draws the figure :
+  padding = ifelse(type=="rank", ifelse(alpha_opt<0.2, 17, -17), 0)
   curves%>%
     ggplot(aes(y=mean_mse, x = mean_imp, color = dataset, fill = dataset))+
   # geom_ribbon(aes(ymin =mean_mse-sd_mse , 
@@ -362,6 +379,7 @@ get_opt_alpha_per_gene <- function(gene, type = "rank",
 
 ## weightedRF
 
+Plots the results for the proposed gene-specific criterion for three gene examples :
 
 ```{r, fig.width=9, fig.height=8}
 # importance metrics and MSE for weightedRF
@@ -393,35 +411,7 @@ ggexport(figure, filename = "results/gene_examples_weightedRF.pdf", width = 10, 
 ```
 
 
-looking for new profiles (increasing mse but )
-
-```{r}
-lasso_1<- names(alphas_rf[alphas_rf==0])
-subset <- sample(lasso_1, size = 10, replace = F)
-
-for(nrt in subset ){
-  print(
-  draw_gene_mse(nrt)+theme(legend.position = "none")+
-  get_opt_alpha_per_gene(nrt)+
-  plot_annotation(title = nrt))
-}
-```
-
-
-```{r}
-lasso_1<- names(alphas_rf[alphas_rf>0.5])
-subset <- sample(lasso_1, size = 50, replace = F)
-
-for(nrt in subset ){
-  print(
-  draw_gene_mse(nrt)+theme(legend.position = "none")+
-  get_opt_alpha_per_gene(nrt)+
-  plot_annotation(title = nrt))
-}
-```
-
-
-Figures for ISMB talk : 
+Some more figures illustrating the approach on several gene cases for the ISMB 2023 talk : 
 
 
 ```{r}
@@ -430,7 +420,7 @@ compromise <- get_opt_alpha_per_gene("AT1G14720")+labs(subtitle = "AT1G14720")+
   get_opt_alpha_per_gene("AT5G16650")+labs(subtitle = "AT5G16650")
  
 
-# mse decrese
+# mse decrease
 ideal <- get_opt_alpha_per_gene("AT1G70790")+
   theme(legend.position = "right") + 
   labs(subtitle = "AT1G70790")
@@ -452,8 +442,6 @@ eff_data <- draw_gene_effective_integration("AT1G14720")+
 ggexport(eff_data, filename = "results/ismb_talk/wRF_eff_data_int.pdf", 
          width = 6, height = 5)
 
-
-
 mse <- draw_gene_mse("AT1G70790")+
    theme(legend.position = "right") 
 
@@ -463,32 +451,22 @@ ggexport(mse, filename = "results/ismb_talk/wRF_mse.pdf",
 ```
 
 
+Returns the optimal value of alpha for all nitrate responsive genes :
+
 ```{r, eval=F}
 # value of alpha per genes:
-alphas_rf <- mcsapply(genes, get_opt_alpha_per_gene, type = "rank", 
-                          return_cluster=T, mc.cores=34)
-hist(alphas_rf)
-sum(alphas_rf > 0)
+alphas_rf <- mcsapply(genes, get_opt_alpha_per_gene,
+                          return_alpha=T, mc.cores=34)
 save(alphas_rf, file = "results/alpha_per_gene_weighted_RF_mean_true_shuff_sd.rdata")
 
-alphas_rf <- mcsapply(genes, get_opt_alpha_per_gene, type = "rank", metric = "min",
-                          return_cluster=T, mc.cores=34)
-hist(alphas_rf)
+# doing the same but with the value of alpha minimising the mse:
+alphas_rf <- mcsapply(genes, get_opt_alpha_per_gene, metric = "min",
+                          return_alpha=T, mc.cores=34)
 save(alphas_rf, file = "results/alpha_per_gene_weighted_RF_min.rdata")
 ```
 
 
-```{r, eval=FALSE}
-#turns old mse of RF into new format returned by inference
-colnames(lmses) <- 
-  paste0("RF", "_", str_split_fixed(colnames(lmses), ' ', 3)[,1], '_', 
-       str_split_fixed(colnames(lmses), ' ', 3)[,3], "_", 
-       str_split_fixed(colnames(lmses), ' ', 3)[,2]) %>%
-  str_replace("_data", "Data")
-save(lmses, file = "results/brf_perumtations_mse_all_genes_predict.rdata")
-```
-
-Doing the same for weightedLASSO:
+## weightedLASSO:
 
 
 ```{r fig.height=10, fig.width=10}
@@ -521,125 +499,28 @@ ggexport(figure, filename = "results/gene_examples_weightedLASSO.pdf", width = 1
 
 ```{r, eval=FALSE}
 # value of alpha per genes:
-alphas_lasso <- mcsapply(genes, get_opt_alpha_per_gene, type = "rank", 
-                          return_cluster=T, mc.cores=34)
-hist(alphas_lasso)
-sum(alphas_lasso>0)
+alphas_lasso <- mcsapply(genes, get_opt_alpha_per_gene, 
+                          return_alpha=T, mc.cores=34)
 save(alphas_lasso, file = "results/alpha_per_gene_weighted_LASSO_test_mean_true_shuff_sd.rdata")
 
-alphas_lasso <- mcsapply(genes, get_opt_alpha_per_gene, type = "rank", 
-                          return_cluster=T, metric = "min", mc.cores=34)
-hist(alphas_lasso)
+# doing the same but with the value of alpha minimising the mse:
+alphas_lasso <- mcsapply(genes, get_opt_alpha_per_gene, 
+                          return_alpha=T, metric = "min", mc.cores=34)
 save(alphas_lasso, file = "results/alpha_per_gene_weighted_LASSO_min.rdata")
 ```
-
-TAR DB gives us the targets of miRNAs. Are they enriched in alpha = 0 genes?
-
-
-```{r}
-mirnas <- readLines("data/miRNAs_targets.txt") 
-
-mirnas <- mirnas[str_detect(mirnas, "AT")] |>
-  str_split_fixed('\t', 6) |>
-  as.data.frame() %>%
-  select(V1, V2) %>%
-  rename(mirna = V1, target = V2) %>%
-  mutate(target = str_split_fixed(target, '\\.', 2)[,1])
-
-cons_mirnas <- unique(mirnas$target)
-
-mirnas <- readLines("data/miRNAs_targets_deg.txt") 
-
-mirnas <- mirnas[str_detect(mirnas, "AT")] |>
-  str_split_fixed('\t', 6) |>
-  as.data.frame() %>%
-  select(V1, V2) %>%
-  rename(mirna = V1, target = V2) %>%
-  mutate(target = str_split_fixed(target, '\\.', 2)[,1])
-
-deg_mirnas <- unique(mirnas$target)
-
-#all_mirnas_targets <- unique(c(deg_mirnas, cons_mirnas))
-all_mirnas_targets <- unique(c(deg_mirnas))
-
-length(intersect(genes, all_mirnas_targets))
-
-
-no_int_rf <- names(alphas_rf[alphas_rf<0.5])
-no_int_lasso <- names(alphas_lasso[alphas_lasso<0.5])
-no_int_common <- intersect(no_int_rf, no_int_lasso)
-
-
-# proportion in all genes
-length(intersect(genes, all_mirnas_targets)) / length(genes)
-
-
-# proportion in pos class
-length(intersect(no_int_common, all_mirnas_targets)) / length(no_int_common)
-
-
-# proportion in pos class
-length(intersect(no_int_rf, all_mirnas_targets)) / length(no_int_rf)
-
-# proportion in pos class
-length(intersect(no_int_lasso, all_mirnas_targets)) / length(no_int_lasso)
-
-
-# proportion
-length(intersect(common, all_mirnas_targets))/length(common)
-
-```
-
-No result. Trying with a new database : 
-
-
-```{r}
-mirnas <- read.table("data/mirnas_dpmind.txt", h = T, sep = '\t') %>%
-  select(Target_Acc.) 
-
-all_mirnas_targets <- str_split_fixed(mirnas$Target_Acc., "\\.", 2)[,1]
-
-
-length(intersect(genes, all_mirnas_targets))
-
-
-no_int_rf <- names(alphas_rf[alphas_rf==0])
-no_int_lasso <- names(alphas_lasso[alphas_lasso==0])
-no_int_common <- intersect(no_int_rf, no_int_lasso)
-
-
-# proportion in all genes
-length(intersect(genes, all_mirnas_targets)) / length(genes)
-
-
-# proportion in pos class
-length(intersect(no_int_common, all_mirnas_targets)) / length(no_int_common)
-
-
-# proportion in pos class
-length(intersect(no_int_rf, all_mirnas_targets)) / length(no_int_rf)
-
-# proportion in pos class
-length(intersect(no_int_lasso, all_mirnas_targets)) / length(no_int_lasso)
-
-
-# proportion
-length(intersect(common, all_mirnas_targets))/length(common)
-```
-
-
 
 
 ## Distributions of optimal alphas
 
-For divergence from permutation criteria :
+For maximal divergence from permutation criterion :
 
 ```{r}
 
 load("results/alpha_per_gene_weighted_LASSO_test_mean_true_shuff_sd.rdata")
 load("results/alpha_per_gene_weighted_RF_mean_true_shuff_sd.rdata")
 
-hists <- data.frame(weightedLASSO = alphas_lasso, weightedRF = alphas_rf) %>%
+hists <- data.frame(weightedLASSO = alphas_lasso, 
+                    weightedRF = alphas_rf) %>%
   gather(key = "model", value = "alpha") %>%
 ggplot(aes(x = alpha, fill = model)) +
   geom_histogram()+
@@ -652,205 +533,6 @@ ggplot(aes(x = alpha, fill = model)) +
 ggexport(hists, filename  = "results/alpha_histograms.pdf", height = 3, width = 7)
 ```
 
-```{r, fig.height=5, fig.width=7}
-
-
-p<-data.frame(weightedLASSO = alphas_lasso, weightedRF = alphas_rf) %>%
-  rownames_to_column("gene") %>%
-  mutate(gene_type=gene %in% tfs) %>%
-  ggplot(aes(x=weightedLASSO, y=weightedRF)) +
-  geom_point(alpha = 0)+
-  geom_bin2d(bins=11)+ 
-  scale_fill_gradient(name = "count", trans = "log",
-                      low = "white", high = "#4670CD",
-                      breaks = c(2,10,50,250,700), 
-                      labels = c(2,10,50,250,700))+
-  theme_pubclean() + theme(legend.position = "right", 
-                           axis.text = element_text(size = 15),
-                           axis.title = element_text(size = 20))
-
-ggExtra::ggMarginal(p, type = "histogram", fill = "#C55A11", size = 1)
-```
-
-
-For minimum MSE criteria :
-
-
-```{r, fig.height=5, fig.width=7}
-
-load("results/alpha_per_gene_weighted_LASSO_min.rdata")
-load("results/alpha_per_gene_weighted_RF_min.rdata")
-
-data.frame(weightedLASSO = alphas_lasso, weightedRF = alphas_rf) %>%
-  gather(key = "model", value = "alpha") %>%
-ggplot(aes(x = alpha, fill = model)) +
-  geom_histogram()+
-  facet_wrap(~model)+
-  theme(axis.title.y = element_blank(), legend.position = "none")+
-  scale_fill_manual( values = c("#C55A11","#E67F87"))+theme_pubr()
-
-```
-
-```{r, fig.height=5, fig.width=7}
-
-p<-data.frame(weightedLASSO = alphas_lasso, weightedRF = alphas_rf) %>%
-  rownames_to_column("gene") %>%
-  mutate(gene_type=gene %in% tfs) %>%
-  ggplot(aes(x=weightedLASSO, y=weightedRF)) +
-  geom_point(alpha = 0)+
-  geom_bin2d(bins=11)+ 
-  scale_fill_gradient(name = "count", trans = "log",
-                      low = "white", high = "#4670CD",
-                      breaks = c(2,10,50,250,700), 
-                      labels = c(2,10,50,250,700))+
-  theme_pubclean() + theme(legend.position = "right", 
-                           axis.text = element_text(size = 15),
-                           axis.title = element_text(size = 20))
-
-ggExtra::ggMarginal(p, type = "histogram", fill = "#C55A11", size = 1)
-```
-
-
-## Differences between gene lists for the two criteria 
-
-For the lasso : 
-
-```{r}
-
-load("results/alpha_per_gene_weighted_LASSO_min.rdata")
-load("results/alpha_per_gene_weighted_RF_min.rdata")
-
-alphas_lasso_min <- alphas_lasso
-alphas_rf_min <- alphas_rf
-
-load("results/alpha_per_gene_weighted_LASSO_test.rdata")
-load("results/alpha_per_gene_weighted_RF.rdata")
-
-alphas_lasso_div <- alphas_lasso
-alphas_rf_div <- alphas_rf
-
-saved_lasso <- setdiff(names(alphas_lasso_div[alphas_lasso_div > 0]), 
-                             names(alphas_lasso_min[alphas_lasso_min > 0]))
-
-saved_rf <- setdiff(names(alphas_rf_div[alphas_rf_div > 0]), 
-                             names(alphas_rf_min[alphas_rf_min > 0]))
-
-same_rf <- intersect(names(alphas_rf_div[alphas_rf_div > 0]), 
-                             names(alphas_rf_min[alphas_rf_min > 0]))
-
-lost_lasso <- setdiff(names(alphas_lasso_min[alphas_lasso_min > 0]),
-                            names(alphas_lasso_div[alphas_lasso_div > 0]))
-
-lost_rf <- setdiff(names(alphas_rf_min[alphas_rf_min > 0]),
-                         names(alphas_rf_div[alphas_rf_div > 0]))
-
-same_lasso <- intersect(names(alphas_lasso_min[alphas_lasso_min > 0]),
-                        names(alphas_lasso_div[alphas_lasso_div > 0]))
-
-matrix(c(length(same_lasso), length(lost_lasso), length(saved_lasso), 
-         length(genes) - length(same_lasso) - length(lost_lasso) - length(saved_lasso)), 
-       nrow = 2, byrow = F, dimnames = list(c("data integration div", "no data integration div"),
-                                            c("data integration min", "no data integration min")))
-
-
-```
-
-
-
-For the RFs :
-
-```{r}
-matrix(c(length(same_rf), length(lost_rf), length(saved_rf), 
-         length(genes) - length(same_rf) - length(lost_rf) - length(saved_rf)), 
-       nrow = 2, byrow = F, dimnames = list(c("data integration div", "no data integration div"),
-                                            c("data integration min", "no data integration min")))
-```
-
-<!-- ## examples at alpha optimal at 0.9 -->
-
-
-<!-- ```{r} -->
-<!-- lasso_1<- names(alphas_lasso[alphas_lasso==0.9]) -->
-<!-- subset <- sample(lasso_1, size = 8, replace = F) -->
-
-<!-- for(nrt in subset ){ -->
-<!--   print(draw_gene_effective_integration(nrt, prior = 1) + -->
-<!--   draw_gene_mse(nrt)+theme(legend.position = "none")+ -->
-<!--   get_opt_alpha_per_gene(nrt)+ -->
-<!--   plot_annotation(title = nrt)) -->
-<!-- } -->
-<!-- ``` -->
-
-
-<!-- <!-- ## examples of alpha optimal at 1 for lasso and rf --> -->
-
-<!-- ```{r} -->
-<!-- both1<-c("AT3G16560", "AT5G48970" ,"AT3G16350", "AT1G22500" ,"AT3G06110" ,"AT2G46790" ,"AT5G52860") -->
-<!-- for(nrt in both1){ -->
-<!--   print(draw_gene_effective_integration(nrt, prior = 1) + -->
-<!--   draw_gene_mse(nrt)+theme(legend.position = "none")+ -->
-<!--   get_opt_alpha_per_gene(nrt)+ -->
-<!--   plot_annotation(title = nrt)) -->
-<!-- } -->
-<!-- ``` -->
-
-
-<!-- ```{r} -->
-<!-- load("results/brf_perumtations_mse_all_genes_predict.rdata") -->
-<!-- load("results/100_permutations_bRF_importances_inf.rdata") -->
-<!-- both1<-c("AT3G16560", "AT5G48970" ,"AT3G16350", "AT1G22500" ,"AT3G06110" ,"AT2G46790" ,"AT5G52860") -->
-<!-- for(nrt in both1){ -->
-<!--   print(draw_gene_effective_integration(nrt, prior = 1) + -->
-<!--   draw_gene_mse(nrt)+theme(legend.position = "none")+ -->
-<!--   get_opt_alpha_per_gene(nrt)+ -->
-<!--   plot_annotation(title = nrt)) -->
-<!-- } -->
-<!-- load("results/lasso_perumtations_mse_all_genes_test.rdata") -->
-<!-- load("results/100_permutations_lasso_mda_shuffle.rdata") -->
-<!-- ``` -->
-
-<!-- <!-- # Examples of rank and mean importance in effective integration --> -->
-
-<!-- <!-- In alphas opt at 0.9 --> -->
-
-
-<!-- ```{r, eval = F} -->
-<!-- for(nrt in subset){ -->
-<!--   print(draw_gene_effective_integration(nrt, prior = 1) + ggtitle("Pi=1, rank")+ -->
-<!--           draw_gene_effective_integration(nrt, prior = 1, type="imp") +ggtitle("Pi=1")+ -->
-<!--                   draw_gene_effective_integration(nrt, prior = 0.5) +ggtitle("Pi=1/2, rank")+ -->
-<!--           draw_gene_effective_integration(nrt, prior = 0.5, type="imp") +ggtitle("Pi=1/2")+ -->
-<!--                   draw_gene_effective_integration(nrt, prior = 0) +ggtitle("Pi=0, rank")+ -->
-<!--           draw_gene_effective_integration(nrt, prior = 0, type="imp") +ggtitle("Pi=0")+ -->
-<!--   get_opt_alpha_per_gene(nrt)+ -->
-<!--     get_opt_alpha_per_gene(nrt, type = "imp")+ -->
-<!--   plot_annotation(title = nrt)+plot_layout(ncol=4)) -->
-<!-- } -->
-<!-- ``` -->
-
-
-<!-- Comparison with the forests (is it the same order of mangitude for variable importance?) -->
-
-
-<!-- ```{r, eval=F} -->
-<!-- load("results/brf_perumtations_mse_all_genes_predict.rdata") -->
-<!-- load("results/100_permutations_bRF_importances_inf.rdata") -->
-<!-- wo1 <- F -->
-<!-- for(nrt in subset){ -->
-<!--   print(draw_gene_effective_integration(nrt, prior = 1) + ggtitle("Pi=1, rank")+ -->
-<!--           draw_gene_effective_integration(nrt, prior = 1, type="imp") +ggtitle("Pi=1")+ -->
-<!--                   draw_gene_effective_integration(nrt, prior = 0.5) +ggtitle("Pi=1/2, rank")+ -->
-<!--           draw_gene_effective_integration(nrt, prior = 0.5, type="imp") +ggtitle("Pi=1/2")+ -->
-<!--                   draw_gene_effective_integration(nrt, prior = 0) +ggtitle("Pi=0, rank")+ -->
-<!--           draw_gene_effective_integration(nrt, prior = 0, type="imp") +ggtitle("Pi=0")+ -->
-<!--   get_opt_alpha_per_gene(nrt)+ -->
-<!--     get_opt_alpha_per_gene(nrt, type = "imp")+ -->
-<!--   plot_annotation(title = nrt)+plot_layout(ncol=4)) -->
-<!-- } -->
-<!-- load("results/lasso_perumtations_mse_all_genes_test.rdata") -->
-<!-- load("results/100_permutations_lasso_mda_shuffle.rdata") -->
-<!-- ``` -->
-
 
 
 # Plotting MSE behaviour for all genes
@@ -861,7 +543,6 @@ Depending on their class (optimal alpha different from 0 or not).
 
 ```{r, fig.height=10}
 load("results/brf_perumtations_mse_all_genes_predict.rdata")
-# load(file = "results/alpha_per_gene_weighted_RF.rdata")
 load(file = "results/alpha_per_gene_weighted_RF_mean_true_shuff_sd.rdata")
 
 pos_class <- names(alphas_rf[alphas_rf!=0])
@@ -911,7 +592,6 @@ dev.off()
 ```{r, fig.height=10}
 
 load("results/lasso_perumtations_mse_all_genes_test.rdata")
-# load("results/alpha_per_gene_weighted_LASSO_test.rdata")
 load("results/alpha_per_gene_weighted_LASSO_test_mean_true_shuff_sd.rdata")
 
 
@@ -958,10 +638,9 @@ Heatmap((mse_other-rowMeans(mse_other))/matrixStats::rowSds(mse_other),
 dev.off()
 ```
 
-# Intersection between classes
+# Intersection between genes with $\alpha > 1$
 
-Divergence from perm :
-
+Are the genes with $\alpha > 1$ the same between weightedLASSO and weightedRF?
 
 ```{r}
 
@@ -981,30 +660,15 @@ p_enrich <- phyper(q=351, m = length(names(alphas_rf[alphas_rf!=0])),
 p_enrich
 ggexport(venn, filename = "results/classes_intersection.pdf", width = 4, height = 4)
 ```
+Not really, even though the intersection is clearly significant.
 
-Min MSE :
 
-```{r}
+# Motif enrichment in gene  with $\alpha > 1$
 
-load("results/alpha_per_gene_weighted_LASSO_min.rdata")
-load("results/alpha_per_gene_weighted_RF_min.rdata")
 
-venn <- ggVennDiagram(list("weightedRF" = names(alphas_rf[alphas_rf!=0]),
-                   "weightedLASSO" = names(alphas_lasso[alphas_lasso!=0])), edge_size = 2)+ 
-  scale_color_manual( values = c("#C55A11","#E67F87"))+
-  scale_fill_gradient(high="#e6f2ff", low="#e6f2ff")+
-  theme(legend.position = "none");venn
+Can we find TFBMs significantly enriched in the promoters of genes benefitting from data integration?
 
-# hypergeometric test to assess the significance of the intersect
-p_enrich <- phyper(q=351, m = length(names(alphas_rf[alphas_rf!=0])), 
-                   n = length(genes) - length(names(alphas_rf[alphas_rf!=0])), 
-                   k = length( names(alphas_lasso[alphas_lasso!=0])), lower.tail = F)
-p_enrich
-ggexport(venn, filename = "results/classes_intersection_min.pdf", width = 4, height = 4)
-```
-
-# Motif enrichment in gene lists
-
+## For weightedRF :
 
 ```{r}
 load("results/alpha_per_gene_weighted_LASSO_test_mean_true_shuff_sd.rdata")
@@ -1110,7 +774,97 @@ DIANE::get_gene_information(enriched_tfs, organism = "Arabidopsis thaliana")
 ```
 
 
-# Precision curves
+
+
+# Gene specific GRNs
+
+```{r, eval = F}
+# load("results/alpha_per_gene_weighted_LASSO_test_true_sd.rdata")
+# load("results/alpha_per_gene_weighted_RF_true_sd.rdata")
+
+hist(alphas_lasso)
+hist(alphas_rf)
+
+nCores = 34
+mats <- list()
+nrep <- 10
+for(rep in 1:nrep){ # exploring inherent variability
+  
+  mat_lasso <- weightedLASSO_inference(counts, genes, tfs,
+                                   alpha = alphas_lasso, N = 50,
+                                   tf_expression_permutation = FALSE,
+                                   int_pwm_noise = 0, mda_type = "shuffle",
+                                   pwm_occurrence = pwm_occurrence,
+                                   nCores = nCores)
+
+  mat_lasso_perm <- weightedLASSO_inference(counts, genes, tfs,
+                                   alpha = alphas_lasso, N = 50,
+                                   tf_expression_permutation = TRUE,
+                                   int_pwm_noise = 0, mda_type = "shuffle",
+                                   pwm_occurrence = pwm_occurrence,
+                                   nCores = nCores)
+
+  mats[[paste0("LASSO_trueData_", rep)]] <- mat_lasso
+  mats[[paste0("LASSO_shuffled_", rep)]] <- mat_lasso_perm
+  
+   mat_rf <- weightedRF_inference(counts, genes, tfs, nTrees = 2000,
+                            alpha = alphas_rf,
+                            pwm_occurrence = pwm_occurrence,
+                            nCores = nCores,
+                            importance = "%IncMSE")
+    
+    mat_rf_perm <- weightedRF_inference(counts, genes, tfs, nTrees = 2000,
+                            alpha = alphas_rf, 
+                            tf_expression_permutation = TRUE,
+                            pwm_occurrence = pwm_occurrence,
+                            nCores = nCores,
+                            importance = "%IncMSE")
+  
+  mats[[paste0("RF_trueData_", rep)]] <- mat_rf
+  mats[[paste0("RF_shuffled_", rep)]] <- mat_rf_perm
+}
+save(mats, file = "results/gene_specific_grns_mean_true_shuff_sd.rdata")
+
+
+edges <- list()
+lmses <- data.frame(row.names = genes)
+for(name in names(mats)){ 
+      for(density in c(0.005,0.01,0.05)){# exploring importance threshold stringency
+        
+        if(str_detect(name, "LASSO"))
+          edges[[paste0(name, '_', density)]] <-
+        weightedLASSO_network(mats[[name]], density = density, pwm_occurrence, 
+                          genes, tfs, decreasing = TRUE)
+        else
+          edges[[paste0(name, '_', density)]] <-
+        weightedRF_network(mats[[name]], density = density, pwm_occurrence, 
+                          genes, tfs)
+        lmses[,name] <- mats[[name]]["mse",]
+      }
+}
+save(lmses, file = "results/gene_specific_mse_mean_true_shuff_sd.rdata") 
+save(edges, file = "results/gene_specific_edges_mean_true_shuff_sd.rdata") 
+
+# validation against DAP-Seq
+settings <- c("model", "dataset", "rep", "density")
+val_specific <-
+  evaluate_networks(
+    edges,
+    validation = c("DAPSeq"),
+    nCores = 30,
+    input_genes = genes,
+    input_tfs = tfs
+  )
+val_specific[, settings] <-
+  str_split_fixed(val_specific$network_name, '_', length(settings))
+save(val_specific, file = "results/gene_specific_validation_mean_true_shuff_sd.rdata")
+```
+
+
+
+# Precision and recall analyses
+
+Validate an inferred GRN, with a given density, against an experimental gold standard (here, DAP-Seq).
 
 
 ```{r, fig.width=10, fig.height=10}
@@ -1195,97 +949,28 @@ val_rf <- val_dap
 load(file = "results/100_permutations_lasso_validation_dap.rdata")
 val_lasso <- val_dap
 
-draw_validation(validation = val_lasso)
-draw_validation(validation = val_rf)
+precision_lasso <- draw_validation(validation = val_lasso)+
+  plot_annotation(title = "weightedLASSO") & 
+  theme(plot.title = element_text(size = 20, hjust = 0.5) )
+
+ggexport(precision_lasso, filename = "results/supp_figures/precision_recall_weightedLASSO.pdf", 
+         width = 10, height = 10)
+
+precision_rf <- draw_validation(validation = val_rf)+
+  plot_annotation(title = "weightedRF") & 
+  theme(plot.title = element_text(size = 20, hjust = 0.5) )
+
+
+ggexport(precision_rf, filename = "results/supp_figures/precision_recall_weightedRF.pdf", 
+         width = 10, height = 10)
+
 ```
 
 
-# Gene specific GRNs
-
-```{r, eval = F}
-# load("results/alpha_per_gene_weighted_LASSO_test.rdata")
-# load("results/alpha_per_gene_weighted_RF.rdata")
-
-# load("results/alpha_per_gene_weighted_LASSO_test_true_sd.rdata")
-# load("results/alpha_per_gene_weighted_RF_true_sd.rdata")
-
-hist(alphas_lasso)
-hist(alphas_rf)
-
-nCores = 34
-mats <- list()
-nrep <- 10
-for(rep in 1:nrep){ # exploring inherent variability
-  
-  mat_lasso <- weightedLASSO_inference(counts, genes, tfs,
-                                   alpha = alphas_lasso, N = 50,
-                                   tf_expression_permutation = FALSE,
-                                   int_pwm_noise = 0, mda_type = "shuffle",
-                                   pwm_occurrence = pwm_occurrence,
-                                   nCores = nCores)
-
-  mat_lasso_perm <- weightedLASSO_inference(counts, genes, tfs,
-                                   alpha = alphas_lasso, N = 50,
-                                   tf_expression_permutation = TRUE,
-                                   int_pwm_noise = 0, mda_type = "shuffle",
-                                   pwm_occurrence = pwm_occurrence,
-                                   nCores = nCores)
-
-  mats[[paste0("LASSO_trueData_", rep)]] <- mat_lasso
-  mats[[paste0("LASSO_shuffled_", rep)]] <- mat_lasso_perm
-  
-   mat_rf <- weightedRF_inference(counts, genes, tfs, nTrees = 2000,
-                            alpha = alphas_rf,
-                            pwm_occurrence = pwm_occurrence,
-                            nCores = nCores,
-                            importance = "%IncMSE")
-    
-    mat_rf_perm <- weightedRF_inference(counts, genes, tfs, nTrees = 2000,
-                            alpha = alphas_rf, 
-                            tf_expression_permutation = TRUE,
-                            pwm_occurrence = pwm_occurrence,
-                            nCores = nCores,
-                            importance = "%IncMSE")
-  
-  mats[[paste0("RF_trueData_", rep)]] <- mat_rf
-  mats[[paste0("RF_shuffled_", rep)]] <- mat_rf_perm
-}
-save(mats, file = "results/gene_specific_grns_mean_true_shuff_sd.rdata")
+Getting the final GRN models with a gene-specific value of $\alpha$
 
 
-edges <- list()
-lmses <- data.frame(row.names = genes)
-for(name in names(mats)){ 
-      for(density in c(0.005,0.01,0.05)){# exploring importance threshold stringency
-        
-        if(str_detect(name, "LASSO"))
-          edges[[paste0(name, '_', density)]] <-
-        weightedLASSO_network(mats[[name]], density = density, pwm_occurrence, 
-                          genes, tfs, decreasing = TRUE)
-        else
-          edges[[paste0(name, '_', density)]] <-
-        weightedRF_network(mats[[name]], density = density, pwm_occurrence, 
-                          genes, tfs)
-        lmses[,name] <- mats[[name]]["mse",]
-      }
-}
-save(lmses, file = "results/gene_specific_mse_mean_true_shuff_sd.rdata") 
-save(edges, file = "results/gene_specific_edges_mean_true_shuff_sd.rdata") 
 
-# validation against DAP-Seq
-settings <- c("model", "dataset", "rep", "density")
-val_specific <-
-  evaluate_networks(
-    edges,
-    validation = c("DAPSeq"),
-    nCores = 30,
-    input_genes = genes,
-    input_tfs = tfs
-  )
-val_specific[, settings] <-
-  str_split_fixed(val_specific$network_name, '_', length(settings))
-save(val_specific, file = "results/gene_specific_validation_mean_true_shuff_sd.rdata")
-```
 
 ## For the max divergence to permutations metric
 
@@ -1887,6 +1572,88 @@ plot_layout(guides = "collect", ncol = 4, widths = c(1,1,1,1))
 ```
 
 # Do genes lost by our metric have a lower precision?
+
+
+
+
+
+
+## Differences between gene lists for the two criteria : Maximal divergence from permutations and minimal MSE.
+
+
+
+Intersection between genes benefiting from data integration with the minimal MSE criterion.
+
+```{r}
+
+load("results/alpha_per_gene_weighted_LASSO_min.rdata")
+load("results/alpha_per_gene_weighted_RF_min.rdata")
+
+venn <- ggVennDiagram(list("weightedRF" = names(alphas_rf[alphas_rf!=0]),
+                   "weightedLASSO" = names(alphas_lasso[alphas_lasso!=0])), edge_size = 2)+ 
+  scale_color_manual( values = c("#C55A11","#E67F87"))+
+  scale_fill_gradient(high="#e6f2ff", low="#e6f2ff")+
+  theme(legend.position = "none");venn
+
+# hypergeometric test to assess the significance of the intersect
+p_enrich <- phyper(q=351, m = length(names(alphas_rf[alphas_rf!=0])), 
+                   n = length(genes) - length(names(alphas_rf[alphas_rf!=0])), 
+                   k = length( names(alphas_lasso[alphas_lasso!=0])), lower.tail = F)
+p_enrich
+ggexport(venn, filename = "results/classes_intersection_min.pdf", width = 4, height = 4)
+```
+
+
+Differences between the two criteria for the lasso : 
+
+```{r}
+
+load("results/alpha_per_gene_weighted_LASSO_min.rdata")
+load("results/alpha_per_gene_weighted_RF_min.rdata")
+
+alphas_lasso_min <- alphas_lasso
+alphas_rf_min <- alphas_rf
+
+load("results/alpha_per_gene_weighted_LASSO_test.rdata")
+load("results/alpha_per_gene_weighted_RF.rdata")
+
+alphas_lasso_div <- alphas_lasso
+alphas_rf_div <- alphas_rf
+
+saved_lasso <- setdiff(names(alphas_lasso_div[alphas_lasso_div > 0]), 
+                             names(alphas_lasso_min[alphas_lasso_min > 0]))
+
+saved_rf <- setdiff(names(alphas_rf_div[alphas_rf_div > 0]), 
+                             names(alphas_rf_min[alphas_rf_min > 0]))
+
+same_rf <- intersect(names(alphas_rf_div[alphas_rf_div > 0]), 
+                             names(alphas_rf_min[alphas_rf_min > 0]))
+
+lost_lasso <- setdiff(names(alphas_lasso_min[alphas_lasso_min > 0]),
+                            names(alphas_lasso_div[alphas_lasso_div > 0]))
+
+lost_rf <- setdiff(names(alphas_rf_min[alphas_rf_min > 0]),
+                         names(alphas_rf_div[alphas_rf_div > 0]))
+
+same_lasso <- intersect(names(alphas_lasso_min[alphas_lasso_min > 0]),
+                        names(alphas_lasso_div[alphas_lasso_div > 0]))
+
+matrix(c(length(same_lasso), length(lost_lasso), length(saved_lasso), 
+         length(genes) - length(same_lasso) - length(lost_lasso) - length(saved_lasso)), 
+       nrow = 2, byrow = F, dimnames = list(c("data integration div", "no data integration div"),
+                                            c("data integration min", "no data integration min")))
+
+
+```
+
+For the RFs :
+
+```{r}
+matrix(c(length(same_rf), length(lost_rf), length(saved_rf), 
+         length(genes) - length(same_rf) - length(lost_rf) - length(saved_rf)), 
+       nrow = 2, byrow = F, dimnames = list(c("data integration div", "no data integration div"),
+                                            c("data integration min", "no data integration min")))
+```
 
 Showing the precision of grns with min method and D=0.005 
 

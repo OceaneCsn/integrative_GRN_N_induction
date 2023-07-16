@@ -25,7 +25,7 @@ This document demonstrates the use of the weightedRF and weightedLASSO functions
 Those functions infer the regulatory pathways of *Arabidopsis thaliana*'s roots in response to nitrate (N) induction from [Varala et al., 2018](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE97500).
 
 They use as inputs the expression profiles of nitrate-responsive genes and TFBS information. 
-Prior TFBS information was built by searching in the promoters of the nitrate-responsive genes (-1000 bp upstream and 200bp downstream of the TSS) the PWM of the N-responsive regulators found in the [JASPAR database](https://jaspar.genereg.net/). 
+Prior TFMS information was built by searching in the promoters of the nitrate-responsive genes (-1000 bp upstream and 200bp downstream of the TSS) the PWM of the N-responsive regulators found in the [JASPAR database](https://jaspar.genereg.net/). 
 
 ## Data import
 
@@ -70,7 +70,7 @@ Here, around 95% of inferred edges are supported by a PWM.
 
 ### weightedLASSO : LASSO with Differential Shrinkage and Stability Selection
 
-Let's infer a GRN using weightedLASSO with $\alpha=1$ and a density $D = 0.005$.
+Let's infer a GRN using weightedLASSO with $\alpha=0.8$ and a density $D = 0.005$.
 It is also parametrized by N, the number of iterations of stability selection.
 
 
