@@ -158,8 +158,8 @@ for(name in names(mats)){
         
         lmses[,name] <- mats[[name]]["mse",]
       }
-  
 }
+
 save(edges, file = "results/100_permutations_lasso_edges.rdata")
 save(lmses, file = "results/lasso_perumtations_mse_all_genes_test.rdata")
 
@@ -448,6 +448,46 @@ png("results/supp_figures/EDI_all_genes_weightedLASSO.png",
     res = 300, height = 1700+2200, width = 2000)
 lasso
 dev.off()
+```
+
+
+TFBM support of globally optimized networks :
+
+```{r}
+# lasso edges
+load(file = "results/100_permutations_lasso_edges.rdata")
+edges_num <- lapply(edges, function(df) df[sapply(df, is.numeric)])
+d <- data.frame(settings = names(unlist(lapply(edges_num, FUN = nrow))),
+                pwm = unlist(lapply(edges_num, FUN = colMeans)))
+d[c("model", "alpha", "dataset", "rep", "density")] <- str_split_fixed(d$settings, '_', 5)
+d_lasso <- d
+
+
+#rf edges
+load(file = "results/100_permutations_bRF_edges_inf.rdata")
+edges_num <- lapply(edges, function(df) df[sapply(df, is.numeric)])
+d <- data.frame(settings = names(unlist(lapply(edges_num, FUN = nrow))),
+                pwm = unlist(lapply(edges_num, FUN = colMeans)))
+d[c("model", "alpha", "dataset", "rep", "density")] <- str_split_fixed(d$settings, '_', 5)
+d <- rbind.data.frame(d, d_lasso)
+
+pwm_support <- d %>%
+  mutate(alpha = as.numeric(alpha),
+         model = str_replace(model, "bRF", "weightedRF"),
+         model = str_replace(model, "LASSO", "weightedLASSO"),
+         density = paste("D =", density)) %>%
+  ggplot(aes(color = dataset, x = alpha, y = pwm)) +
+  geom_point() + 
+  geom_smooth() +
+  theme_bw()+
+  ggh4x::facet_nested_wrap(vars(model, density), ncol =3, nest_line = T) + 
+  theme(strip.background = element_blank(), axis.title.x = element_text(size = 22),
+        title = element_text(size = 16), strip.text = element_text(size = 16), 
+        legend.text = element_text(size = 15), axis.text = element_text(size = 12)) +
+  xlab(expression(alpha)) + ylab("Mean of TFBM scores") + 
+  scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
+  ggtitle("Mean of TFBM scores in inferred GRN edges") ; pwm_support
+ggsave(pwm_support, file = "results/supp_figures/TFBM_support.pdf", width = 11, height = 8)
 ```
 
 
@@ -1038,7 +1078,6 @@ precision_rf <- draw_validation(validation = val_rf)+
 
 ggexport(precision_rf, filename = "results/supp_figures/precision_recall_weightedRF.pdf", 
          width = 10, height = 10)
-
 ```
 
 
@@ -1514,7 +1553,7 @@ ggexport(plot_final, filename = "results/specific_grns_no_permutations_mean_sds.
 ```
 
 
-## For the min MSE  criteria
+## For the min MSE criteria
 
 
 
@@ -1647,10 +1686,6 @@ plot_layout(guides = "collect", ncol = 4, widths = c(1,1,1,1))
 ```
 
 # Do genes lost by our metric have a lower precision?
-
-
-
-
 
 
 ## Differences between gene lists for the two criteria : Maximal divergence from permutations and minimal MSE.
