@@ -184,6 +184,9 @@ save(val_dap, file = "results/100_permutations_lasso_validation_dap.rdata")
 # Gene-level optimisation of TFBM information
 
 
+## Functions for computing EDI and MSE based on the stored inference results
+
+
 The following graphics show the MSE and effective data integration behaviors as a function of $alpha$.
 
 This chunk loads the saved results of the parametric exploration for both models on true and shuffled datasets, and defines the functions for visualization and computation of the optimal value of $alpha$ per gene.
@@ -207,7 +210,7 @@ mcsapply <- function (X, FUN, ..., simplify = TRUE, USE.NAMES = TRUE) {
 
 # plots the importance of TFs that have a specific prior value, here one,
 # as alpha is increased
-draw_gene_effective_integration <- function(gene, prior=1, type = "rank"){
+draw_gene_effective_integration <- function(gene, prior=1, type = "rank", return = F){
   tfs_with_motif <- names(which(pwm_imputed[gene,]== prior))
   if(type == "rank")
     data <- data.frame(lapply(mats, function(mat){mean(rank(mat[,gene])[tfs_with_motif])}))
@@ -216,6 +219,13 @@ draw_gene_effective_integration <- function(gene, prior=1, type = "rank"){
   data <- data %>%
   gather(key = "setting", value = "summed_importance") %>%
   separate(setting, into = c("method", "alpha", "dataset", "rep"), sep = "_")
+  
+  
+  if(return) return(data %>%
+                      filter(dataset == "trueData") %>%
+    group_by(alpha, dataset) %>%
+    summarise(mean_imp = mean(summed_importance),
+           sd_imp = sd(summed_importance)))
   
   plot <- data %>%
     group_by(alpha, dataset) %>%
@@ -377,7 +387,74 @@ get_opt_alpha_per_gene <- function(gene, type = "rank", dev = "mean",
 
 ```
 
-## weightedRF
+
+## Plotting EDI behaviour for all genes
+
+How does the EDI vary when alpha increases?
+
+### In weightedRF
+
+```{r, fig.height=20}
+library(circlize)
+col_fun = colorRamp2(c(1, 201), hcl_palette = "Blue-Red 3")
+
+load("results/100_permutations_bRF_importances_inf.rdata")
+load(file = "results/alpha_per_gene_weighted_RF_mean_true_shuff_sd.rdata")
+
+
+# getting mean EDI values for all genes as a function of alpha
+edi_rf <- mcsapply(genes, draw_gene_effective_integration, 
+                          return=T, mc.cores=40)
+
+edi <- t(as.data.frame(edi_rf[3,]))
+colnames(edi) = ALPHAS
+edi <- na.omit(edi)
+ha = HeatmapAnnotation(
+    alpha = anno_simple(colnames(edi)),
+    annotation_name_side = "left")
+
+rf <- Heatmap(edi, col = col_fun,
+        show_column_names = T,
+         width = ncol(edi)*unit(10, "mm"), 
+      height = nrow(edi)*unit(0.2, "mm"),
+      name = "EDI",
+        cluster_columns = F, show_row_names = F)
+png("results/supp_figures/EDI_all_genes_weightedRF.png", 
+    res = 300, height = 1700+2200, width = 2000)
+rf
+dev.off()
+```
+
+# In weightedLASSO
+
+```{r, fig.height=20}
+load("results/100_permutations_lasso_mda_shuffle.rdata")
+load(file = "results/alpha_per_gene_weighted_RF_mean_true_shuff_sd.rdata")
+
+# getting mean EDI values for all genes as a function of alpha
+edi_lasso <- mcsapply(genes, draw_gene_effective_integration, 
+                          return=T, mc.cores=40)
+
+edi <- t(as.data.frame(edi_lasso[3,]))
+colnames(edi) = ALPHAS
+edi <- na.omit(edi)
+lasso <- Heatmap(edi, 
+        col = col_fun, show_column_names = T,
+         width = ncol(edi)*unit(10, "mm"), 
+      height = nrow(edi)*unit(0.2, "mm"),
+      name = "EDI",
+        cluster_columns = F, show_row_names = F)
+png("results/supp_figures/EDI_all_genes_weightedLASSO.png", 
+    res = 300, height = 1700+2200, width = 2000)
+lasso
+dev.off()
+```
+
+
+## Draw some gene examples to illustrate our gene-specific optimization :
+
+
+### In weightedRF
 
 Plots the results for the proposed gene-specific criterion for three gene examples :
 
@@ -466,15 +543,13 @@ save(alphas_rf, file = "results/alpha_per_gene_weighted_RF_min.rdata")
 ```
 
 
-## weightedLASSO:
+### In weightedLASSO:
 
 
 ```{r fig.height=10, fig.width=10}
 
 load("results/lasso_perumtations_mse_all_genes_test.rdata")
 load("results/100_permutations_lasso_mda_shuffle.rdata")
-# load("results/100_permutations_lasso_edges.rdata")
-
 
 n <- draw_gene_effective_integration(gene_no_benefit, prior = 1) +
   draw_gene_mse(gene_no_benefit)+
@@ -489,11 +564,9 @@ p <- draw_gene_effective_integration(gene_benefit, prior = 1) +
   get_opt_alpha_per_gene(gene_benefit)+
   plot_annotation(title = gene_benefit)
 
-
 n/o/p
 figure <- n/o/p
 ggexport(figure, filename = "results/gene_examples_weightedLASSO.pdf", width = 10, height = 9)
-
 ```
 
 
@@ -638,6 +711,9 @@ Heatmap((mse_other-rowMeans(mse_other))/matrixStats::rowSds(mse_other),
 dev.off()
 ```
 
+
+
+
 # Intersection between genes with $\alpha > 1$
 
 Are the genes with $\alpha > 1$ the same between weightedLASSO and weightedRF?
@@ -673,7 +749,6 @@ Can we find TFBMs significantly enriched in the promoters of genes benefitting f
 ```{r}
 load("results/alpha_per_gene_weighted_LASSO_test_mean_true_shuff_sd.rdata")
 load("results/alpha_per_gene_weighted_RF_mean_true_shuff_sd.rdata")
-load("rdata/pwm_prom_jaspar_dap.rdata")
 
 pos_class_rf <- names(alphas_rf[alphas_rf!=0])
 pos_class_lasso <- names(alphas_lasso[alphas_lasso!=0])
