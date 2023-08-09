@@ -1,4 +1,6 @@
 load('rdata/connectf_N_responsive_genes.rdata')
+library(tidyverse)
+library(ggh4x)
 
 #' Evaluates an inferred network against validated regulatory interactions
 #'
@@ -232,3 +234,83 @@ evaluate_networks <- function(edges_list, validation = c("TARGET", "CHIPSeq", "D
   attr(result.validation, "rng") <- NULL # It contains the whole sequence of RNG seeds
   return(result.validation)
 }
+
+
+
+
+draw_validation <- function(validation, densities = c(0.005,0.01,0.05), 
+                            precision_only = F, recall_only = F){
+  data_val <- validation %>%
+    filter(density %in% densities)%>%
+    group_by(model, alpha, dataset, density) %>%
+    mutate(mean_precision = mean(precision, na.rm = T),
+           sd_precision = sd(precision, na.rm = T),
+           mean_recall = mean(recall, na.rm = T),
+           sd_recall = sd(recall, na.rm = T),
+           density = paste("D =", density),
+           model = str_replace(model, "bRF", "weightedRF"),
+           model = str_replace(model, "LASSO", "weightedLASSO")) %>%
+    dplyr::select(-network_name) %>%
+    mutate(alpha = as.numeric(alpha))
+  
+  precision <- data_val %>%
+    ggplot(aes(
+      x = as.numeric(alpha),
+      y = precision,
+      color = dataset,
+      fill = dataset
+    ))+
+    ggh4x::facet_nested_wrap(vars(density), ncol = 8, nest_line = T) + 
+    geom_ribbon(aes(ymin = mean_precision - sd_precision , 
+                    ymax = mean_precision + sd_precision  ), 
+                alpha = .4) + theme_pubr(legend = "top")+
+    geom_point(alpha = 0.1) +
+    xlab(expression(alpha)) + ylab("Precision") +
+    ggtitle(paste("Precision against DAP-Seq")) +
+    geom_line(aes(group = dataset, y = mean_precision)) +
+    theme(
+      strip.background = element_blank(),
+      axis.title.x = element_text(size = 22),
+      title = element_text(size = 16),
+      strip.text = element_text(size = 16),
+      legend.text = element_text(size = 15),
+      axis.text = element_text(size = 12),
+      legend.position = 'top'
+    )+scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
+    scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData"))) +
+    geom_hline(color = "#C55A11", yintercept = 0.331042, size= 1.5, show.legend = T)
+  
+  recall <- data_val %>%
+    ggplot(aes(
+      x = as.numeric(alpha),
+      y = recall,
+      color = dataset,
+      fill = dataset
+    ))+
+    ggh4x::facet_nested_wrap(vars(density), ncol = 8, nest_line = T, scales = "free") + 
+    geom_ribbon(aes(ymin = mean_recall - sd_recall , 
+                    ymax = mean_recall + sd_recall  ), 
+                alpha = .4)  +theme_pubr(legend = "top")+
+    geom_point(alpha = 0.1) + xlab("alpha") +
+    xlab(expression(alpha)) + ylab("Recall") +
+    geom_line(aes(group = dataset, y = mean_recall)) +
+    ggtitle(paste("Recall against DAPSeq")) +
+    theme(
+      strip.background = element_blank(),
+      axis.title.x = element_text(size = 22),
+      title = element_text(size = 16),
+      strip.text = element_text(size = 16),
+      legend.text = element_text(size = 15),
+      axis.text = element_text(size = 12),
+      legend.position = 'top'
+    )+scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
+    scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))
+  
+  if(precision_only)
+    return(precision)
+  if(recall_only)
+    return(recall)
+  if(!precision_only & !precision_only)
+    return(precision/recall)
+}
+
