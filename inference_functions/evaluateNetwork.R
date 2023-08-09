@@ -1,6 +1,7 @@
 load('rdata/connectf_N_responsive_genes.rdata')
 library(tidyverse)
 library(ggh4x)
+library(igraph)
 
 #' Evaluates an inferred network against validated regulatory interactions
 #'
@@ -312,5 +313,122 @@ draw_validation <- function(validation, densities = c(0.005,0.01,0.05),
     return(recall)
   if(!precision_only & !precision_only)
     return(precision/recall)
+}
+
+
+
+
+# Plots the ranking of TFs based on their out degree and highlights
+# the known nitrate regulators
+get_hubs <- function(nets, metric = "degree"){
+  g <- setNames(rep(0, length(genes)), genes)
+  for(net in names(nets)){
+    if(metric == "degree")
+      g[names(table(nets[[net]]$from))] <- g[names(table(nets[[net]]$from))] + table(nets[[net]]$from)/length(nets)
+    if(metric == "betweenness")
+      g[names(table(nets[[net]]$from))]<- g[names(table(nets[[net]]$from))]+
+        igraph::betweenness(igraph::graph_from_data_frame(nets[[net]], directed = T),
+                            v = names(table(nets[[net]]$from)), directed = T)
+  }
+  df <- data.frame(genes = genes, average_degree = g[genes], 
+                   label = annot[match(genes, rownames(annot)), "label"],
+                   pwm_available =  genes %in% known_tfs)
+  
+  df$regulator <- ifelse(df$label %in% c("DIV1", "TGA1", "TGA4", "HHO2", "HHO3", "HRS1", "BT1", "BT2"), 
+                         "Nitrate regulator",
+                         ifelse(df$label %in%  c("VRN1", "CRF4"), "Candidate nitrate\nregulator",
+                                ifelse(df$label %in% c("NLP7", "PHL1", "BZIP53", "HHO6", "JKD"),
+                                       "Retreived by gene\nspecific data integration\n optimisation", "No knowlege")))
+  
+  
+  plt <- df %>%
+    slice_max(average_degree, n = 25) %>% 
+    ggplot(aes(x=average_degree, label = label, color = regulator,
+               y=reorder(label, average_degree)))+ 
+    geom_segment(x=0, color = "grey",
+                 aes(xend=average_degree, 
+                     yend = reorder(label, average_degree)))+
+    geom_point()+
+    geom_text(nudge_x = 7, show.legend = F)+ theme_bw() + 
+    ylab("") + xlab("Average out-degree")+theme(axis.text.y = element_blank())+
+    scale_color_manual(name = "", values = setNames(c("#C55A11", "orange", "#4670CD", "black"), 
+                                                    c("Nitrate regulator", "Candidate nitrate\nregulator",
+                                                      "Retreived by gene\nspecific data integration\n optimisation", "No knowledge")))+
+    guides(color = guide_legend(nrow=4,byrow=TRUE))
+  
+  top20<- df %>%
+    slice_max(average_degree, n = 25) %>%
+    select(label)
+  
+  return(list(ranking = plt, top25 = top20$label))
+}
+
+
+
+# computes other topological metrics on a list of GRNs
+get_transitivity <- function(nets, settings){
+  res <- data.frame(trans = unlist(lapply(names(nets), 
+                                          function(net){return(igraph::transitivity(igraph::graph_from_data_frame(nets[[net]], directed = T), 
+                                                                                    type = "global"))})),
+                    length = unlist(lapply(names(nets), 
+                                           function(net){return(igraph::mean_distance(igraph::graph_from_data_frame(nets[[net]], directed = T)))})),
+                    diam = unlist(lapply(names(nets), 
+                                         function(net){return(igraph::diameter(igraph::graph_from_data_frame(nets[[net]], directed = T)))})))
+  
+  res$settings <- settings
+  return(res)
+}
+
+
+
+N_go <- c("GO:0006807", "GO:0051171", "GO:0051173", "GO:0022622", "GO:0034641", "GO:0044271")
+
+convert_from_agi <- function(ids){
+  x <- org.At.tair.db::org.At.tairENTREZID
+  mapped_genes <- AnnotationDbi::mappedkeys(x)
+  xx <- as.list(x[mapped_genes])
+  return(unlist(xx[as.vector(ids)]))
+}
+
+
+get_gsea <- function(nets, settings){
+  g <- setNames(rep(0, length(genes)), genes)
+  for(net in names(nets)){
+    
+    # g[names(table(nets[[net]]$to))]<-g[names(table(nets[[net]]$to))]+
+    #   igraph::betweenness(igraph::graph_from_data_frame(nets[[net]], directed = T),
+    #                       v = names(table(nets[[net]]$to)), directed = F)
+    
+    # g[names(table(nets[[net]]$to))]<-g[names(table(nets[[net]]$to))]+
+    #   igraph::transitivity(igraph::graph_from_data_frame(nets[[net]], directed = T),
+    #                       vids = names(table(nets[[net]]$to)), type = "local")
+    #g[names(table(nets[[net]]$from))] <- g[names(table(nets[[net]]$from))] + table(nets[[net]]$from)/length(nets)
+    
+    # g[genes] <- g[genes] + (table(nets[[net]]$from)[genes]+table(nets[[net]]$to)[genes])/length(nets)
+    ge <- intersect(genes, unique(c(nets[[net]]$from, nets[[net]]$to)))
+    g[ge]<-g[ge]+
+      igraph::degree(igraph::graph_from_data_frame(nets[[net]], directed = T),
+                     v = ge, mode = "total")
+  }
+  df <- data.frame(genes = genes, average_degree = g[genes],
+                   label = annot[match(genes, rownames(annot)), "label"])
+  
+  df <- df[df$average_degree>0,]
+  degrees <- sort(setNames(df$average_degree,convert_from_agi(df$genes)),
+                  decreasing = T)
+  
+  degree <- degrees[!is.na(names(degrees))]
+  
+  gse <- gseGO(geneList=degrees,
+               ont ="BP",
+               maxGSSize = length(degrees)-1, nPerm =1000,
+               pvalueCutoff = 1,
+               verbose = TRUE, scoreType = "pos",
+               OrgDb = org.At.tair.db::org.At.tair.db,
+               pAdjustMethod = "BH")
+  
+  res <- gse@result[gse@result$ID %in% N_go,c("Description", "enrichmentScore", "p.adjust")]
+  res$settings = settings
+  return(res)
 }
 
