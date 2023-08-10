@@ -583,61 +583,6 @@ ggexport(venn, filename = "results/classes_intersection.pdf", width = 4, height 
 Not really, even though the intersection is clearly significant.
 
 
-# Motif enrichment in gene with $\alpha > 1$
-
-Can we find TFBMs significantly enriched in the promoters of genes benefitting from data integration?
-
-## For weightedRF :
-
-```{r}
-load("rdata/pwm_prom_jaspar_dap.rdata")
-
-load("results/alpha_per_gene_weighted_LASSO_test_mean_true_shuff_sd.rdata")
-load("results/alpha_per_gene_weighted_RF_mean_true_shuff_sd.rdata")
-
-pos_class_rf <- names(alphas_rf[alphas_rf!=0])
-pos_class_lasso <- names(alphas_lasso[alphas_lasso!=0])
-common <- intersect(pos_class_lasso, pos_class_rf)
-
-known_tfs <- tfs[which(tfs %in% pwm_prom$TF)]
-
-get_number_of_motifs_per_tfs <- function(genes){
-  table(pwm_prom[pwm_prom$target %in% genes & 
-                   pwm_prom$TF %in% tfs,"TF"])[known_tfs]
-}
-
-get_motif_enrichment <- function(gene_list){
-  enrichments_per_pwm <- setNames(rep(1, length(known_tfs)), known_tfs)
-  n_targets_lasso_in_all <- get_number_of_motifs_per_tfs(genes)
-  n_targets_lasso_in_group <- get_number_of_motifs_per_tfs(gene_list)
-  n_group_lasso <- length(gene_list)
-  
-  for(tf in known_tfs){
-    
-    # number of genes with that motif in all genes
-    n_targets_in_all_tf <- n_targets_lasso_in_all[tf]
-    
-    # number of genes with that motif in the lasso group
-    n_targets_lasso_in_group_tf <- n_targets_lasso_in_group[tf]
-    p_lasso <- phyper(q=n_targets_lasso_in_group_tf-1,
-           m=n_targets_in_all_tf, #white balls
-           n=length(genes)-n_targets_in_all_tf, # black balls
-           k=n_group_lasso, lower.tail = FALSE)
-    
-    
-    enrichments_per_pwm[tf]<- p_lasso
-  }
-  enriched_tfs <- names(which(enrichments_per_pwm < 0.05))
-  return(DIANE::get_gene_information(enriched_tfs, organism = "Arabidopsis thaliana"))
-  
-}
-get_motif_enrichment(pos_class_rf)
-get_motif_enrichment(pos_class_lasso)
-get_motif_enrichment(common)
-```
-
-
-
 # Properties of th gene-specifically optimized GRNs
 
 The following code chunks learns GRNs with the optimal values of alpha determined by our approach, and stores the results.
@@ -1367,544 +1312,169 @@ setdiff(get_hubs(lasso_nets)$top25 ,
               get_hubs(lasso_nets_1)$top25))
 ```
 
+Regulators that are in all top connected genes :
+
 ```{r}
 intersect(common_lasso, common_rf)
 ```
 
 
-Nitrate GSEA :
+# Study of the genes with $\alpha > 1$
 
-```{r, eval = T}
-
-
-
-gsea_nitrogen <- rbind.data.frame(get_gsea(rf_nets_0, "weightedRF_0"), 
-                 get_gsea(rf_nets_1, "weightedRF_1"), 
-                 get_gsea(rf_nets, "weightedRF_specific"),
-                 get_gsea(lasso_nets_0, "weightedLASSO_0"), 
-                 get_gsea(lasso_nets_1, "weightedLASSO_1"), 
-                 get_gsea(lasso_nets, "weightedLASSO_specific"))
-
-gsea_nitrogen <- gsea_nitrogen %>%
-  separate(settings, into = c("model", "alpha"), sep = "_")
-# res_rf <- res
-# 
-# gs <- rbind.data.frame(res_rf_0, res_rf_1, res_rf)
-# gs$alpha<- c(rep("alpha_0",4), rep("alpha_1", 4), rep("alpha_specific",4))
-# gs$model <- "weightedRF"
-# 
-# gs_lasso <- rbind.data.frame(res_lasso_0, res_lasso_1, res_lasso)
-# gs_lasso$alpha <- c(rep("alpha_0",4), rep("alpha_1", 4), rep("alpha_specific",4))
-# gs_lasso$model <- "weightedLASSO"
-# 
-
-# gsea_nitrogen <- rbind.data.frame(gs, gs_lasso) 
-# save(gsea_nitrogen, file = "results/gsea_nitrogen.rdata")
-
-
-gsea_nitrogen %>%
-  ggplot(aes(x=alpha, y = enrichmentScore, color = Description)) + 
-  ggh4x::facet_nested_wrap(vars(Description,model), nrow = 2)+ theme_bw()+ 
-  theme(strip.background = element_blank())+
-  geom_point() +ggtitle("Enrichment score (GSEA)")
-
-
-gsea_nitrogen %>%
-  ggplot(aes(x=alpha, y = -log(p.adjust), color = Description)) + 
-  ggh4x::facet_nested_wrap(vars(Description,model), nrow = 2)+ theme_bw()+ 
-  theme(strip.background = element_blank())+
-  geom_point() + ggtitle("Enrichment p adjusted pavlue (GSEA)")
-
-```
-# degree distributions of TFs with and without PWMs
+Can we find TFBMs significantly enriched in the promoters of genes benefitting from data integration?
 
 ```{r}
-
-# load("rdata/pwm_prom_jaspar_dap.rdata")
-known_tfs <- intersect(genes,unique(pwm_prom$TF))
-get_degree_hist <- function(nets, title){
-  g <- setNames(rep(0, length(genes)), genes)
-  for(net in names(nets)){
-    g[names(table(nets[[net]]$to))] <- g[names(table(nets[[net]]$to))] + table(nets[[net]]$to)/length(nets)
-  }
-  df <- data.frame(genes = genes, average_degree = g[genes],
-                   label = annot[match(genes, rownames(annot)), "label"])%>%
-    mutate(pwm = ifelse(genes %in% known_tfs, "Available", "Missing"))
-  
-  df %>%
-    filter(genes %in% tfs) %>%
-    ggplot(aes(x=average_degree, fill = pwm)) + 
-    geom_histogram()+facet_wrap(~ pwm)+ theme_bw()+
-    ggtitle(title) + theme(legend.position = "none")
-}
-(get_degree_hist(rf_nets_0, "weightedRF alpha 0")+
-  get_degree_hist(rf_nets_1, "weightedRF alpha 1")+
-  get_degree_hist(rf_nets, "weightedRF alpha specific"))/
-  (get_degree_hist(lasso_nets_0, "weightedLASSO alpha 0")+
-  get_degree_hist(lasso_nets_1, "weightedLASSO alpha 1")+
-  get_degree_hist(lasso_nets, "weightedLASSO alpha specific"))
-
-```
-
-
-```{r, eval=FALSE}
-# TGA4
-DIANE::get_gene_information(net_rf[net_rf$from == "AT5G10030",]$to, organism = "Arabidopsis thaliana")
-DIANE::get_gene_information(net_lasso[net_lasso$from == "AT5G10030",]$to, organism = "Arabidopsis thaliana")
-
-#TGA1
-DIANE::get_gene_information(net_rf[net_rf$from == "AT5G65210",]$to, organism = "Arabidopsis thaliana")
-DIANE::get_gene_information(net_lasso[net_lasso$from == "AT5G65210",]$to, organism = "Arabidopsis thaliana")
-
-
-# HH02
-DIANE::get_gene_information(net_rf[net_rf$from == "AT1G68670",]$to, organism = "Arabidopsis thaliana")
-DIANE::get_gene_information(net_lasso[net_lasso$from == "AT1G68670",]$to, organism = "Arabidopsis thaliana")
-
-get_in_hubs <- function(net){
-  hubs <- names(table(net$to)[order(table(net$to), decreasing = T)])[1:25]
-  DIANE::get_gene_information(hubs, organism = "Arabidopsis thaliana")
-}
-get_in_hubs(net_lasso)
-get_in_hubs(net_rf)
-
-DIANE::get_gene_information(net_rf[net_rf$to == "AT1G08090",]$from, organism = "Arabidopsis thaliana")
-
-```
-
-
-```{r}
-
-# load("results/alpha_per_gene_weighted_LASSO_test.rdata")
-# load("results/alpha_per_gene_weighted_RF.rdata")
-# 
-
 load("rdata/pwm_prom_jaspar_dap.rdata")
+load("results/alpha_per_gene_weighted_LASSO_test_mean_true_shuff_sd.rdata")
+load("results/alpha_per_gene_weighted_RF_mean_true_shuff_sd.rdata")
+
+pos_class_rf <- names(alphas_rf[alphas_rf!=0])
+pos_class_lasso <- names(alphas_lasso[alphas_lasso!=0])
+common <- intersect(pos_class_lasso, pos_class_rf)
+
+known_tfs <- tfs[which(tfs %in% pwm_prom$TF)]
+
+get_number_of_motifs_per_tfs <- function(genes){
+  table(pwm_prom[pwm_prom$target %in% genes & 
+                   pwm_prom$TF %in% tfs,"TF"])[known_tfs]
+}
+
+get_motif_enrichment <- function(gene_list){
+  enrichments_per_pwm <- setNames(rep(1, length(known_tfs)), known_tfs)
+  n_targets_lasso_in_all <- get_number_of_motifs_per_tfs(genes)
+  n_targets_lasso_in_group <- get_number_of_motifs_per_tfs(gene_list)
+  n_group_lasso <- length(gene_list)
+  
+  for(tf in known_tfs){
+    
+    # number of genes with that motif in all genes
+    n_targets_in_all_tf <- n_targets_lasso_in_all[tf]
+    
+    # number of genes with that motif in the lasso group
+    n_targets_lasso_in_group_tf <- n_targets_lasso_in_group[tf]
+    p_lasso <- phyper(q=n_targets_lasso_in_group_tf-1,
+           m=n_targets_in_all_tf, #white balls
+           n=length(genes)-n_targets_in_all_tf, # black balls
+           k=n_group_lasso, lower.tail = FALSE)
+    
+    
+    enrichments_per_pwm[tf]<- p_lasso
+  }
+  enriched_tfs <- names(which(enrichments_per_pwm < 0.05))
+  return(DIANE::get_gene_information(enriched_tfs, organism = "Arabidopsis thaliana"))
+  
+}
+get_motif_enrichment(pos_class_rf)
+get_motif_enrichment(pos_class_lasso)
+get_motif_enrichment(common)
+```
+
+Looking at other potentially enriched characteristics of these genes on which we integrate TFBM :
+
+```{r, fig.width=8, fig.height=8}
 load("rdata/gene_structure.rdata")
 
-
-# load("results/gene_specific_grns.rdata")
-# load("results/gene_specific_mse.rdata")
-# load("results/gene_specific_edges.rdata")
-
+# building the dataframe with gene functional informations
 mean_expr <- rowMeans(counts)[genes]
 var_expr <- matrixStats::rowSds(counts[genes,])*matrixStats::rowSds(counts[genes,])
 pwm_prom_n_TFs <- pwm_prom[pwm_prom$TF %in% tfs,]
-
-
-# to comment for new version where mse is already normalized per genes
-# norm_mse <- exp(as.matrix(cbind(lmses, lmses_lasso)))/var_expr
 genes_info <- data.frame(genes = genes,
-                         cluster_rf = alphas_rf,
-                         cluster_lasso = alphas_lasso)
-
+                         RF = factor(alphas_rf),
+                         LASSO = factor(alphas_lasso))
 genes_info$is_tf <- genes %in% tfs
-genes_info$var <- var_expr
-genes_info$expr <- mean_expr
+genes_info$expression_variance <- log(var_expr+min(var_expr)*0.75)
+genes_info$expression <- log(mean_expr+min(mean_expr)*0.75)
 genes_info$nb_motifs <- table(pwm_prom$target)[genes]
 genes_info$nb_motifs_n_tfs <- table(pwm_prom_n_TFs$target)[genes]
-genes_info$common <- genes %in% common
-
+genes_info$common <- ifelse(genes %in% common, "alpha > 0 in\nboth models", "other genes") 
+genes_info$never <- ifelse(genes_info$RF == 0 & genes_info$LASSO == 0, 
+                           "alpha < 0 in\nboth models", "other genes") 
 genes_info[,c("n_introns", "n_transcripts")] <-
   gene_structure[match(genes_info$gene, gene_structure$gene),
                  c("n_introns", "n_transcripts")]
 
-
-# for rf
-genes_info%>%
-  ggplot(aes(x=factor(cluster_rf), y=log(n_introns))) +
-  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
-  geom_boxplot(width=0.1, fill = "white")+
-  ggtitle(("Number of introns for RF groups")) +
-genes_info%>%
-  ggplot(aes(x=factor(cluster_rf), y=n_transcripts)) +
-  geom_boxplot(width=0.1, fill = "white")+
-  geom_violin(fill="darkblue", alpha=0.2)+
-  ggtitle(("Number of transcripts for RF groups")) +
-  stat_compare_means()
-
-genes_info%>%
-  ggplot(aes(x=factor(cluster_rf), y=nb_motifs)) +
-  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
-  geom_boxplot(width=0.1, fill = "white")+
-  ggtitle(("Number of motifs in promoter for RF groups")) +
-  genes_info%>%
-  ggplot(aes(x=factor(cluster_rf), y=nb_motifs_n_tfs)) +
-  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
-  geom_boxplot(width=0.1, fill = "white")+
-  ggtitle(("Number of motifs of N-responsive TFs in promoter for RF groups")) +
-  stat_compare_means() 
+# plotting each characteristics
+always_plot <- genes_info %>%
+  reshape2::melt() %>%
+  ggplot(aes(x=factor(common), y = value, color = common)) +
+  geom_jitter() + geom_boxplot(width=0.5) +
+  facet_nested_wrap(vars(variable), nest_line = T, ncol = 3, scales = 'free')+
+  theme_bw() + theme(strip.background = element_blank()) +
+  stat_compare_means() + 
+  scale_color_brewer(palette = "Accent") +
+  ggtitle("Genes for which TFBM are \nintegrated in both models")
 
 
-genes_info%>%
-  ggplot(aes(x=factor(cluster_rf), y=var)) +
-  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
-  geom_boxplot(width=0.1, fill = "white")+
-  ggtitle(("Gene variance for RF groups")) + scale_y_log10()+
-  stat_compare_means()+ genes_info%>%
-  ggplot(aes(x=factor(cluster_rf), y=expr)) +
-  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
-  geom_boxplot(width=0.1, fill = "white")+
-  ggtitle(("Gene expression for RF groups")) + scale_y_log10()+
-  stat_compare_means()
+# plotting each characteristics
+never_plot <- genes_info %>%
+  reshape2::melt() %>%
+  ggplot(aes(x=factor(never), y = value, color = never)) +
+  geom_jitter() + geom_boxplot(width=0.5) +
+  facet_nested_wrap(vars(variable), nest_line = T, ncol = 3, scales = 'free')+
+  theme_bw() + theme(strip.background = element_blank()) +
+  stat_compare_means() + 
+  scale_color_brewer(palette = "Accent")+
+  ggtitle("Genes for which TFBM are \nnot integrated in any model")
 
+never <- genes_info[genes_info$never != "other genes",]$genes
 
-genes_info %>%
-  group_by(cluster_rf) %>%
-  summarise(n=n(),
-            tf_frac=sum(is_tf)/n()) %>%
-  ggplot(aes(x=cluster_rf, y=tf_frac,
-                          label = paste("n=",n))) +
-  geom_bar(stat = "identity", aes(fill=tf_frac), alpha = 1)+
-  geom_hline(yintercept = length(tfs)/length(genes)) +
-  geom_text(y=0.2) + xlab("cluster RF") +
-  ggtitle("Fraction of TFs in RF groups")+ylim(c(0,0.2))
+# enrichment of TFs
+pval <- phyper(q=length(intersect(common, tfs)), 
+       m = length(tfs), 
+       n = length(genes) - length(tfs),
+       k = length(common),lower.tail = F)
 
-
-
-
-
-###########" for lasso
-
-genes_info%>%
-  ggplot(aes(x=factor(cluster_lasso), y=log(n_introns))) +
-  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
-  geom_boxplot(width=0.1, fill = "white")+
-  ggtitle(("Number of introns for LASSO groups")) +
-genes_info%>%
-  ggplot(aes(x=factor(cluster_lasso), y=n_transcripts)) +
-  geom_boxplot(width=0.1, fill = "white")+
-  geom_violin(fill="darkblue", alpha=0.2)+
-  ggtitle(("Number of transcripts for LASSO groups")) +
-  stat_compare_means()
-
-genes_info%>%
-  ggplot(aes(x=factor(cluster_lasso), y=nb_motifs)) +
-  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
-  geom_boxplot(width=0.1, fill = "white")+
-  ggtitle(("Number of motifs in promoter for LASSO groups")) +
-  genes_info%>%
-  ggplot(aes(x=factor(cluster_lasso), y=nb_motifs_n_tfs)) +
-  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
-  geom_boxplot(width=0.1, fill = "white")+
-  ggtitle(("Number of motifs of N-responsive TFs in promoter for LASSO groups")) +
-  stat_compare_means() 
-
-
-genes_info%>%
-  ggplot(aes(x=factor(cluster_lasso), y=var)) +
-  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
-  geom_boxplot(width=0.1, fill = "white")+
-  ggtitle(("Gene variance for LASSO groups")) + scale_y_log10()+
-  stat_compare_means()+ genes_info%>%
-  ggplot(aes(x=factor(cluster_lasso), y=expr)) +
-  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
-  geom_boxplot(width=0.1, fill = "white")+
-  ggtitle(("Gene expression for LASSO groups")) + scale_y_log10()+
-  stat_compare_means()
-
-
-genes_info %>%
-  group_by(cluster_lasso) %>%
-  summarise(n=n(),
-            tf_frac=sum(is_tf)/n()) %>%
-  ggplot(aes(x=cluster_lasso, y=tf_frac,
-                          label = paste("n=",n))) +
-  geom_bar(stat = "identity", aes(fill=tf_frac), alpha = 1)+
-  geom_hline(yintercept = length(tfs)/length(genes)) +
-  geom_text(y=0.2) + xlab("cluster RF") +
-  ggtitle("Fraction of TFs in RF groups")+ylim(c(0,0.2))
-
-######## common classes of interest as compared to the rest
-length(intersect(common, tfs))/length(common)
-
-
-genes_info%>%
-  ggplot(aes(x=common, y=log(n_introns))) +
-  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
-  geom_boxplot(width=0.1, fill = "white")+
-  ggtitle(("Number of introns for common genes of interest")) +
-genes_info%>%
-  ggplot(aes(x=common, y=n_transcripts)) +
-  geom_boxplot(width=0.1, fill = "white")+
-  geom_violin(fill="darkblue", alpha=0.2)+
-  ggtitle(("Number of transcripts for common groups")) +
-  stat_compare_means()
-
-genes_info%>%
-  ggplot(aes(x=common, y=nb_motifs)) +
-  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
-  geom_boxplot(width=0.1, fill = "white")+
-  ggtitle(("Number of motifs in promoter for common groups")) +
-  genes_info%>%
-  ggplot(aes(x=common, y=nb_motifs_n_tfs)) +
-  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
-  geom_boxplot(width=0.1, fill = "white")+
-  ggtitle(("Number of motifs of N-responsive TFs in promoter for common groups")) +
-  stat_compare_means() 
-
-
-genes_info%>%
-  ggplot(aes(x=common, y=var)) +
-  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
-  geom_boxplot(width=0.1, fill = "white")+
-  ggtitle(("Gene variance for common groups")) + scale_y_log10()+
-  stat_compare_means()+ genes_info%>%
-  ggplot(aes(x=common, y=expr)) +
-  geom_violin(fill="darkblue", alpha=0.2)+geom_jitter(width=0.1)+
-  geom_boxplot(width=0.1, fill = "white")+
-  ggtitle(("Gene expression for common groups")) + scale_y_log10()+
-  stat_compare_means()
-
-
-genes_info %>%
+TFs_always <- genes_info %>%
   group_by(common) %>%
   summarise(n=n(),
             tf_frac=sum(is_tf)/n()) %>%
   ggplot(aes(x=common, y=tf_frac,
                           label = paste("n=",n))) +
-  geom_bar(stat = "identity", aes(fill=tf_frac), alpha = 1)+
+  geom_bar(stat = "identity", aes(fill=common), alpha = 1)+
   geom_hline(yintercept = length(tfs)/length(genes)) +
-  geom_text(y=0.2) + xlab("cluster common") +
-  ggtitle("Fraction of TFs in common groups")+ylim(c(0,0.22))
+  scale_fill_brewer(palette = "Accent")+
+  geom_text(y=0.2) + xlab("cluster RF") + theme_bw() + xlab("")+
+  ggtitle(paste("Fraction of TFs, TFBM always integrated. \nHypergeometric test pvalue :", round(pval, 3)))+ylim(c(0,0.2))
 
 
-phyper(q=length(intersect(common, tfs)), 
+# enrichment of TFs
+pval <- phyper(q=length(intersect(never, tfs)), 
        m = length(tfs), 
        n = length(genes) - length(tfs),
-       k = length(common),lower.tail = F)
+       k = length(never),lower.tail = F)
+
+TFs_never <- genes_info %>%
+  group_by(never) %>%
+  summarise(n=n(),
+            tf_frac=sum(is_tf)/n()) %>%
+  ggplot(aes(x=never, y=tf_frac,
+                          label = paste("n=",n))) +
+  geom_bar(stat = "identity", aes(fill=never), alpha = 1)+
+  geom_hline(yintercept = length(tfs)/length(genes)) +
+  geom_text(y=0.2) + theme_bw() + xlab("")+
+  scale_fill_brewer(palette = "Accent")+
+  ggtitle(paste("Fraction of TFs, TFBM never integrated. \nHypergeometric test pvalue :", round(pval, 3)))+ylim(c(0,0.2))
+
+charact <- always_plot + theme(legend.position = "none") + 
+  never_plot + theme(legend.position = "none")+ 
+  TFs_always + TFs_never + plot_layout(ncol = 2, heights = c(3,1))
+
+ggexport(charact, width = 14, height = 12, 
+         filename = "results/supp_figures/genes_characteristics_TFBM_integration.pdf")
 ```
 
+Are some biological functions enriched in the genes for which we always or never perform data integration?
 
+```{r}
+# Gene ontology enrichment
+library(DIANE)
 
+go <- enrich_go(convert_from_agi(common), convert_from_agi(genes), 
+                GO_type = "MF", fdr = 0.1)
 
-<!-- ```{r} -->
-<!-- # promoteurs enrichis en certains motifs de TFs? -->
-<!-- known_tfs <- tfs[which(tfs %in% pwm_prom$TF)] -->
-
-<!-- get_number_of_motifs_per_tfs <- function(genes){ -->
-<!--   table(pwm_prom[pwm_prom$target %in% genes & pwm_prom$TF %in% tfs,"TF"])[known_tfs] -->
-<!-- } -->
-
-<!-- targets_per_pwm <- data.frame(row.names = known_tfs) -->
-<!-- for(group in unique(clusters_rf)){ -->
-<!--   targets_per_pwm[paste("lasso", group)] <- get_number_of_motifs_per_tfs(names( -->
-<!--     which(clusters_lasso == group)))/sum(clusters_lasso == group) -->
-<!--   targets_per_pwm[paste("rf", group)] <- get_number_of_motifs_per_tfs(names( -->
-<!--     which(clusters_rf == group)))/sum(clusters_rf == group) -->
-
-<!-- } -->
-
-<!-- enrichments_per_pwm <- data.frame(row.names = known_tfs) -->
-<!-- n_genes <- length(genes) -->
-<!-- for(group in unique(clusters_rf)){ -->
-<!--   # number of motifs in all the genes -->
-<!--   n_targets_lasso_in_all <- get_number_of_motifs_per_tfs(genes) -->
-
-<!--   n_targets_lasso_in_group <- get_number_of_motifs_per_tfs(names( -->
-<!--     which(clusters_lasso == group))) -->
-<!--   n_group_lasso <- length(names(which(clusters_lasso == group))) -->
-
-<!--   n_targets_rf_in_group <- get_number_of_motifs_per_tfs(names( -->
-<!--     which(clusters_rf == group))) -->
-<!--   n_group_rf <- length(names(which(clusters_rf == group))) -->
-
-<!--   for(tf in known_tfs){ -->
-
-<!--     # number of genes with that motif in all genes -->
-<!--     n_targets_in_all_tf <- n_targets_lasso_in_all[tf] -->
-
-<!--     # number of genes with that motif in the lasso group -->
-<!--     n_targets_lasso_in_group_tf <- n_targets_lasso_in_group[tf] -->
-<!--     p_lasso <- phyper(q=n_targets_lasso_in_group_tf-1, -->
-<!--            m=n_targets_in_all_tf, #white balls -->
-<!--            n=n_genes-n_targets_in_all_tf, # black balls -->
-<!--            k=n_group_lasso, lower.tail = FALSE) -->
-
-<!--      # number of genes with that motif in the rf group -->
-<!--     n_targets_rf_in_group_tf <- n_targets_rf_in_group[tf] -->
-<!--     p_rf <- phyper(q=n_targets_rf_in_group_tf-1, -->
-<!--            m=n_targets_in_all_tf,  -->
-<!--            n=n_genes-n_targets_in_all_tf, -->
-<!--            k=n_group_rf, lower.tail = FALSE) -->
-
-<!--     enrichments_per_pwm[tf, paste0(group, "lasso")]<- p_lasso -->
-<!--     enrichments_per_pwm[tf, paste0(group, "rf")]<- p_rf -->
-<!--   } -->
-<!-- } -->
-
-<!-- enrichments_per_pwm[enrichments_per_pwm<0.05] <- 0 -->
-<!-- enrichments_per_pwm[enrichments_per_pwm>=0.05] <- 1 -->
-<!-- Heatmap(enrichments_per_pwm, cluster_columns = F) -->
-
-
-<!-- tfs_rf_pwm_pos <- rownames(enrichments_per_pwm[enrichments_per_pwm$`2rf`==0,]) -->
-<!-- tfs_lasso_pwm_pos <- rownames(enrichments_per_pwm[enrichments_per_pwm$`1lasso`==0,]) -->
-<!-- DIANE::get_gene_information(tfs_rf_pwm_pos, organism = "Arabidopsis thaliana") -->
-<!-- DIANE::get_gene_information(tfs_lasso_pwm_pos, organism = "Arabidopsis thaliana") -->
-<!-- DIANE::get_gene_information(intersect(tfs_rf_pwm_pos, tfs_lasso_pwm_pos ), organism = "Arabidopsis thaliana") -->
-
-<!-- tfs_rf_pwm_bad <- rownames(enrichments_per_pwm[enrichments_per_pwm$`1rf`==0,]) -->
-<!-- tfs_lasso_pwm_bad <- rownames(enrichments_per_pwm[enrichments_per_pwm$`2lasso`==0,]) -->
-<!-- DIANE::get_gene_information(tfs_rf_pwm_bad, organism = "Arabidopsis thaliana") -->
-<!-- DIANE::get_gene_information(tfs_lasso_pwm_bad, organism = "Arabidopsis thaliana") -->
-
-<!-- tfs_rf_pwm_pretty_bad <- rownames(enrichments_per_pwm[enrichments_per_pwm$`no diffrf`==0,]) -->
-<!-- tfs_lasso_pwm_pretty_bad <- rownames(enrichments_per_pwm[enrichments_per_pwm$`no difflasso`==0,]) -->
-<!-- DIANE::get_gene_information(tfs_rf_pwm_pretty_bad, organism = "Arabidopsis thaliana") -->
-<!-- DIANE::get_gene_information(tfs_lasso_pwm_pretty_bad, organism = "Arabidopsis thaliana") -->
-<!-- ``` -->
-
-
-<!-- # Network ranks of the Tfs that have enriched motifs in some gene clusters -->
-
-
-
-<!-- ```{r, fig.width=10, fig.height=10, eval=FALSE} -->
-<!-- load("results/100_permutations_bRF_edges.rdata") -->
-<!-- # 10 first replicates -->
-<!-- edges <- edges[names(edges)[as.numeric(str_split_fixed(names(edges), '_', 5)[,4])<=10]] -->
-<!-- net <- edges$bRF_1_trueData_1_0.005 -->
-<!-- # nodes <-  -->
-<!-- get_nodes_relative_rank <- function(net, nodes){ -->
-<!--   return(setNames(rank(table(net$from))[nodes]/length(unique(net$from)),nodes)) -->
-<!-- } -->
-
-<!-- positive_genes <- names(clusters_rf[clusters_rf==2]) -->
-<!-- edges_positives <- lapply(edges, function(net){net[net$to %in% positive_genes,]}) -->
-
-<!-- negative_genes <- names(clusters_rf[clusters_rf==1]) -->
-<!-- edges_negatives <- lapply(edges, function(net){net[net$to %in% negative_genes,]}) -->
-
-
-<!-- relative_rank <- lapply(edges, get_nodes_relative_rank, tfs_rf_pwm_pos) -->
-<!-- relative_rank_pos <- lapply(edges_positives, get_nodes_relative_rank, tfs_rf_pwm_pos) -->
-
-<!-- data.frame(relative_rank) %>% -->
-<!--   rownames_to_column("gene") %>% -->
-<!--   reshape2::melt() %>% -->
-<!--   separate(variable, into = c("method", "alpha", "dataset", "rep", "density"), sep = '_', remove = F) %>% -->
-<!--   mutate(alpha = as.numeric(alpha)) %>% -->
-<!--   ggplot(aes(x=alpha, y=value, color = dataset)) +  -->
-<!--   ggh4x::facet_nested_wrap(vars(density, gene), nest_line = T) +  -->
-<!--   geom_point() + geom_smooth() + -->
-<!--   theme(strip.background = element_blank(), axis.title.x = element_text(size = 22), -->
-<!--         title = element_text(size = 16), strip.text = element_text(size = 16),  -->
-<!--         legend.text = element_text(size = 15), axis.text = element_text(size = 12),  -->
-<!--         legend.position = 'left') + ggtitle("TFs with motifs enriched in positive genes promoters : relative out-degree rank") -->
-
-
-<!-- data.frame(relative_rank_pos) %>% -->
-<!--   rownames_to_column("gene") %>% -->
-<!--   reshape2::melt() %>% -->
-<!--   separate(variable, into = c("method", "alpha", "dataset", "rep", "density"), sep = '_', remove = F) %>% -->
-<!--   mutate(alpha = as.numeric(alpha)) %>% -->
-<!--   ggplot(aes(x=alpha, y=value, color = dataset)) +  -->
-<!--   ggh4x::facet_nested_wrap(vars(density, gene), nest_line = T) +  -->
-<!--   geom_point() + geom_smooth() + -->
-<!--   theme(strip.background = element_blank(), axis.title.x = element_text(size = 22), -->
-<!--         title = element_text(size = 16), strip.text = element_text(size = 16),  -->
-<!--         legend.text = element_text(size = 15), axis.text = element_text(size = 12),  -->
-<!--         legend.position = 'left') + ggtitle("TFs with motifs enriched in positive genes promoters : relative out-degree rank in positive subset") -->
-
-
-
-<!-- relative_rank_bad <- lapply(edges, get_nodes_relative_rank, tfs_rf_pwm_bad) -->
-<!-- relative_rank_bad_subset <- lapply(edges_negatives, get_nodes_relative_rank, tfs_rf_pwm_bad) -->
-
-<!-- data.frame(relative_rank_bad) %>% -->
-<!--   rownames_to_column("gene") %>% -->
-<!--   reshape2::melt() %>% -->
-<!--   separate(variable, into = c("method", "alpha", "dataset", "rep", "density"), sep = '_', remove = F) %>% -->
-<!--   mutate(alpha = as.numeric(alpha)) %>% -->
-<!--   ggplot(aes(x=alpha, y=value, color = dataset)) +  -->
-<!--   ggh4x::facet_nested_wrap(vars(density, gene), nest_line = T) +  -->
-<!--   geom_point() + geom_smooth() + -->
-<!--   theme(strip.background = element_blank(), axis.title.x = element_text(size = 22), -->
-<!--         title = element_text(size = 16), strip.text = element_text(size = 16),  -->
-<!--         legend.text = element_text(size = 15), axis.text = element_text(size = 12),  -->
-<!--         legend.position = 'left') + ggtitle("TFs with motifs enriched in negative genes promoters : relative out-degree rank") -->
-
-<!-- data.frame(relative_rank_bad_subset) %>% -->
-<!--   rownames_to_column("gene") %>% -->
-<!--   reshape2::melt() %>% -->
-<!--   separate(variable, into = c("method", "alpha", "dataset", "rep", "density"), sep = '_', remove = F) %>% -->
-<!--   mutate(alpha = as.numeric(alpha)) %>% -->
-<!--   ggplot(aes(x=alpha, y=value, color = dataset)) +  -->
-<!--   ggh4x::facet_nested_wrap(vars(density, gene), nest_line = T) +  -->
-<!--   geom_point() + geom_smooth() + -->
-<!--   theme(strip.background = element_blank(), axis.title.x = element_text(size = 22), -->
-<!--         title = element_text(size = 16), strip.text = element_text(size = 16),  -->
-<!--         legend.text = element_text(size = 15), axis.text = element_text(size = 12),  -->
-<!--         legend.position = 'left') + ggtitle("TFs with motifs enriched in negative genes promoters : relative out-degree rank in negative subset") -->
-
-<!-- ``` -->
-
-
-
-<!-- # Go enrichments -->
-
-<!-- ```{r, eval=T} -->
-<!-- library(DIANE) -->
-<!-- background <- convert_from_agi(genes) -->
-
-<!-- for(group in unique(clusters_rf)){ -->
-
-<!--   genes_i <- names(which(clusters_lasso == group)) -->
-
-<!--   print(paste("LASSO", length(genes_i), "genes,", group, "\n")) -->
-<!--   genes_i <- convert_from_agi(genes_i) -->
-<!--   go_lasso <- enrich_go(genes_i, background) -->
-<!--   DIANE::draw_enrich_go(go_lasso) -->
-<!--   print(go_lasso) -->
-<!--   genes_i <- names(which(clusters_rf == group)) -->
-<!--   print(paste("RF", length(genes_i), "genes, group", group)) -->
-<!--   genes_i <- convert_from_agi(genes_i) -->
-<!--   go_rf <- enrich_go(genes_i, background) -->
-<!--   DIANE::draw_enrich_go(go_rf) -->
-<!--   print(go_rf) -->
-<!-- } 
-
--->
-
-
-
-<!-- ``` -->
-
-<!-- # Expression -->
-
-<!-- ```{r} -->
-<!-- expression <- data.frame(counts) -->
-<!-- expression <- (expression-rowMeans(expression)) / matrixStats::rowSds(as.matrix(expression)) -->
-
-<!-- Heatmap(expression, cluster_columns = F, show_row_names = F)+ -->
-<!--   rowAnnotation( -->
-<!--     clusters_rf = clusters_rf[rownames(expression)], -->
-<!--     clusters_lasso = clusters_lasso[rownames(true_mse)], -->
-<!--     col=list(clusters_lasso= setNames(c( "darkgreen","darkorange", "lightgrey"),  -->
-<!--                                        nm = names(table(clusters_lasso))), -->
-<!--       clusters_rf= setNames(c("darkorange", "darkgreen", "lightgrey"),  -->
-<!--                                        nm = names(table(clusters_rf))))) -->
-<!-- ``` -->
-
-
-<!-- # intersection of groups -->
-
-<!-- ```{r} -->
-<!-- load("results/clusters_mse_bRF_100permutations.rdata") -->
-<!-- load("results/clusters_mse_lasso_100permutations.rdata") -->
-<!-- DIANE::draw_venn(list("positive for lasso" = names(clusters_lasso[clusters_lasso==1]), -->
-<!--                       "positive for RFs" = names(clusters_rf[clusters_rf==2]))) -->
-
-<!-- DIANE::draw_venn(list("negative for lasso" = names(clusters_lasso[clusters_lasso==2]), -->
-<!--                       "negative for RFs" = names(clusters_rf[clusters_rf==1]))) -->
-
-<!-- DIANE::draw_venn(list("no diff for lasso" = names(clusters_lasso[clusters_lasso=="no diff"]), -->
-<!--                       "no diff for RFs" = names(clusters_rf[clusters_rf=="no diff"]))) -->
-<!-- ``` -->
-
-
-
+go <- enrich_go(convert_from_agi(never), 
+                convert_from_agi(genes), GO_type = "BP", fdr = 0.1)
+```
 
 
 
