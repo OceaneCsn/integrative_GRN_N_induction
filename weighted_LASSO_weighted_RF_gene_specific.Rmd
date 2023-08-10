@@ -1457,7 +1457,8 @@ TFs_never <- genes_info %>%
 
 charact <- always_plot + theme(legend.position = "none") + 
   never_plot + theme(legend.position = "none")+ 
-  TFs_always + TFs_never + plot_layout(ncol = 2, heights = c(3,1))
+  TFs_always +theme(legend.position = "none")+  TFs_never +theme(legend.position = "none")+ 
+  plot_layout(ncol = 2, heights = c(3,1))
 
 ggexport(charact, width = 14, height = 12, 
          filename = "results/supp_figures/genes_characteristics_TFBM_integration.pdf")
