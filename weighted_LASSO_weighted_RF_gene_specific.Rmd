@@ -351,9 +351,23 @@ bad <- get_opt_alpha_per_gene("AT1G56230", mats = mats, lmses = lmses) +
   labs(subtitle = "AT2G29990")
 
 
+# min mse but not our approach
+
+lost <- get_opt_alpha_per_gene("AT1G47395", mats = mats, lmses = lmses)+
+  labs(subtitle = "AT1G47395")
+
+saved <- get_opt_alpha_per_gene("AT3G20320", mats = mats, lmses = lmses)+
+  labs(subtitle = "AT3G20320")
+
+get_opt_alpha_per_gene("AT5G43420", mats = mats, lmses = lmses)
+get_opt_alpha_per_gene("AT3G07590", mats = mats, lmses = lmses)
+
 ggexport(ideal, filename = "results/ismb_talk/wRF_ideal.pdf", width = 6, height = 5)
 ggexport(compromise, filename = "results/ismb_talk/wRF_compromise.pdf", width = 10, height = 5)
 ggexport(bad, filename = "results/ismb_talk/wRF_bad.pdf", width = 10, height = 5)
+
+ggexport(lost, filename = "results/supp_figures/wRF_example_gene_lost.pdf", width = 10, height = 5)
+ggexport(saved, filename = "results/supp_figures/wRF_example_gene_saved.pdf", width = 10, height = 5)
 
 
 eff_data <- draw_gene_effective_integration("AT1G14720", mats = mats)+
@@ -1161,7 +1175,7 @@ matrix(c(length(same_rf), length(lost_rf), length(saved_rf),
                                             c("data integration min", "no data integration min")))
 ```
 
-# Comparing the precision and recall of min and dev GRNs
+## Comparing the precision and recall of min and dev GRNs
 
 ```{r, fig.width=10}
 load("results/gene_specific_validation_min.rdata")
@@ -1171,13 +1185,56 @@ load("results/gene_specific_validation_mean_true_shuff_sd.rdata")
 val_specific_dev <- val_specific%>%
   mutate(criterion = "proposed approach")
 
-rbind.data.frame(val_specific_dev, val_specific_min) %>%
+precision_recall_min_dev <- rbind.data.frame(val_specific_dev, val_specific_min) %>%
   filter(dataset == "trueData" & density < 0.05) %>%
+  mutate(model = paste0("weighted", model),
+         density = paste0("D = ", density)) %>%
   ggplot(aes(y = precision, x = recall, color = criterion, label = density)) + 
   geom_jitter()+
-  facet_nested_wrap(vars(model, density), ncol = 2, scales = "free") + theme_bw()+
+  facet_nested_wrap(vars(density, model), ncol = 2, scales = "free") + theme_bw()+
   theme(strip.background = element_blank()) +
-  stat_ellipse()
+  stat_ellipse() + ggtitle("Precision and recall")
+```
+
+
+## Comparing the ME of the two approaches
+
+```{r, fig.width = 10, fig.height=5}
+load("results/gene_specific_mse_min.rdata")
+mse_min <- lmses
+colnames(mse_min) <- paste0(colnames(mse_min), '_min')
+mse_min$genes <- rownames(mse_min)
+
+load("results/gene_specific_mse_mean_true_shuff_sd.rdata")
+mse_dev <- lmses
+colnames(mse_dev) <- paste0(colnames(mse_dev), '_dev')
+mse_dev$genes <- rownames(mse_dev)
+
+
+mse_plot <- full_join(mse_dev, mse_min, by = c("genes"))  %>%
+reshape2::melt()%>%
+  separate(variable,
+           into = c("model", "dataset",  "rep", "criterion"),
+           sep = "_") %>%
+filter(dataset == "trueData") %>%
+group_by(rep, model, criterion) %>%
+summarise(median_MSE = median(value, na.rm=T))%>%
+  mutate(criterion = str_replace(criterion, "min", "min MSE"),
+         criterion = str_replace(criterion, "dev", "proposed\napproach"),
+         model = paste0("weighted", model)) %>%
+  ggplot(aes(x=criterion, y = median_MSE, color = criterion, fill = criterion)) +
+  geom_jitter(show.legend = F)+ ylab("Median MSE") + xlab("") +
+  facet_nested_wrap(vars(model), nest_line = T) +
+  theme_bw() + theme(strip.background = element_blank(), 
+                     legend.position = "none") +
+  ggtitle("Median MSE")
+
+min_dev_plot <- mse_plot + precision_recall_min_dev + 
+  plot_layout(guides = "collect", widths = c(1.5,2)) & 
+  theme(legend.position = "bottom") 
+
+
+ggexport(min_dev_plot, filename = "results/supp_figures/min_mse_comparison.pdf", width = 10, height = 5)
 ```
 
 By using our approach over the min MSE approach to chose alpha, we lose some edges and gain some. Do we loose low precision/recall edges and gain high precision/recall edges?
@@ -1185,50 +1242,45 @@ By using our approach over the min MSE approach to chose alpha, we lose some edg
 
 ```{r, eval=T, fig.width=10}
 
-load("results/gene_specific_edges_min.rdata")
-edges_min <- edges
-
-load(file = "results/gene_specific_edges_mean_true_shuff_sd.rdata")
-edges_dev <- edges
-
-
-edges_diff <- list()
-for(name in names(edges)){
-  print(name)
-  edges_diff[[paste0(name, "_gained")]] <- setdiff(edges_dev[[name]], edges_min[[name]])
-  edges_diff[[paste0(name, "_lost")]] <- setdiff(edges_min[[name]], edges_dev[[name]])
-}
-
-settings = c("model", "dataset", "rep", "density", "edge")
-
-val_diff <- evaluate_networks(
-    edges_diff,
-    validation = c("DAPSeq"),
-    nCores = 30,
-    input_genes = genes,
-    input_tfs = tfs)
-
-val_diff[, settings] <-
-  str_split_fixed(val_diff$network_name, '_', length(settings))
-
-val_diff %>%
-  filter(dataset == "trueData" & 
-           density < 0.05) %>%
-  ggplot(aes(x = recall, y = precision, color = edge)) + 
-  geom_point()+
-  facet_nested_wrap(vars(model, density), ncol = 2, scales = "free") + theme_bw()+
-  theme(strip.background = element_blank()) + stat_ellipse()
+# load("results/gene_specific_edges_min.rdata")
+# edges_min <- edges
+# 
+# load(file = "results/gene_specific_edges_mean_true_shuff_sd.rdata")
+# edges_dev <- edges
+# 
+# 
+# edges_diff <- list()
+# for(name in names(edges)){
+#   print(name)
+#   edges_diff[[paste0(name, "_gained")]] <- setdiff(edges_dev[[name]], edges_min[[name]])
+#   edges_diff[[paste0(name, "_lost")]] <- setdiff(edges_min[[name]], edges_dev[[name]])
+# }
+# 
+# settings = c("model", "dataset", "rep", "density", "edge")
+# 
+# val_diff <- evaluate_networks(
+#     edges_diff,
+#     validation = c("DAPSeq"),
+#     nCores = 30,
+#     input_genes = genes,
+#     input_tfs = tfs)
+# 
+# val_diff[, settings] <-
+#   str_split_fixed(val_diff$network_name, '_', length(settings))
+# 
+# val_diff %>%
+#   filter(dataset == "trueData" & 
+#            density < 0.05) %>%
+#   ggplot(aes(x = recall, y = precision, color = edge)) + 
+#   geom_point()+
+#   facet_nested_wrap(vars(model, density), ncol = 2, scales = "free") + theme_bw()+
+#   theme(strip.background = element_blank()) + stat_ellipse()
 ```
 
-Shows the top 25 regulators in terms of out-degree.
-
-```{r}
+# Nitrate signalling analysis
 
 
-
-```
-
-GRNs to be studied :
+GRNs to be studied and compared (global versus gene-specific for the two models) :
 
 ```{r}
 load("results/gene_specific_edges_mean_true_shuff_sd.rdata")
@@ -1319,7 +1371,7 @@ intersect(common_lasso, common_rf)
 ```
 
 
-# Study of the genes with $\alpha > 1$
+# Study of the genes with $\alpha > 1$ or $\alpha = 1$ in both models
 
 Can we find TFBMs significantly enriched in the promoters of genes benefitting from data integration?
 
@@ -1332,11 +1384,18 @@ pos_class_rf <- names(alphas_rf[alphas_rf!=0])
 pos_class_lasso <- names(alphas_lasso[alphas_lasso!=0])
 common <- intersect(pos_class_lasso, pos_class_rf)
 
+
+neg_class_rf <- names(alphas_rf[alphas_rf==0])
+neg_class_lasso <- names(alphas_lasso[alphas_lasso==0])
+neg_common <- intersect(neg_class_lasso, neg_class_rf)
+
 known_tfs <- tfs[which(tfs %in% pwm_prom$TF)]
+#known_tfs <- unique(pwm_prom$TF) # to look for all TFs, not only nitrate responsive
 
 get_number_of_motifs_per_tfs <- function(genes){
-  table(pwm_prom[pwm_prom$target %in% genes & 
+  table(pwm_prom[pwm_prom$target %in% genes &
                    pwm_prom$TF %in% tfs,"TF"])[known_tfs]
+  # table(pwm_prom[pwm_prom$target %in% genes,"TF"])[known_tfs]  # to look for all TFs, not only nitrate responsive
 }
 
 get_motif_enrichment <- function(gene_list){
@@ -1361,20 +1420,29 @@ get_motif_enrichment <- function(gene_list){
     enrichments_per_pwm[tf]<- p_lasso
   }
   enriched_tfs <- names(which(enrichments_per_pwm < 0.05))
-  return(DIANE::get_gene_information(enriched_tfs, organism = "Arabidopsis thaliana"))
+  all_infos <- DIANE::get_gene_information(enriched_tfs, 
+                                           organism = "Arabidopsis thaliana")
+  all_infos$pvalue <- enrichments_per_pwm[enriched_tfs]
+  return(all_infos)
   
 }
-get_motif_enrichment(pos_class_rf)
-get_motif_enrichment(pos_class_lasso)
-get_motif_enrichment(common)
+
+write.table(get_motif_enrichment(common), sep = '\t', row.names = T, col.names = T,
+            quote = F,
+            file = "results/supp_tables/enriched_TFBMs_high_alpha.tsv")
+
+write.table(get_motif_enrichment(neg_common), sep = '\t', row.names = T, col.names = T,
+            quote = F,
+            file = "results/supp_tables/enriched_TFBMs_zero_alpha.tsv")
 ```
 
 Looking at other potentially enriched characteristics of these genes on which we integrate TFBM :
 
-```{r, fig.width=8, fig.height=8}
+```{r, fig.width=15, fig.height=15}
 load("rdata/gene_structure.rdata")
 
 # building the dataframe with gene functional informations
+
 mean_expr <- rowMeans(counts)[genes]
 var_expr <- matrixStats::rowSds(counts[genes,])*matrixStats::rowSds(counts[genes,])
 pwm_prom_n_TFs <- pwm_prom[pwm_prom$TF %in% tfs,]
@@ -1388,10 +1456,15 @@ genes_info$nb_motifs <- table(pwm_prom$target)[genes]
 genes_info$nb_motifs_n_tfs <- table(pwm_prom_n_TFs$target)[genes]
 genes_info$common <- ifelse(genes %in% common, "alpha > 0 in\nboth models", "other genes") 
 genes_info$never <- ifelse(genes_info$RF == 0 & genes_info$LASSO == 0, 
-                           "alpha < 0 in\nboth models", "other genes") 
-genes_info[,c("n_introns", "n_transcripts")] <-
+                           "alpha = 0 in\nboth models", "other genes") 
+genes_info[,c("nb_introns", "nb_transcripts")] <-
   gene_structure[match(genes_info$gene, gene_structure$gene),
                  c("n_introns", "n_transcripts")]
+
+# load("results/brf_perumtations_mse_all_genes_predict.rdata")
+# genes_info$mse_weightedRF <- rowMeans(lmses[str_detect(colnames(lmses[genes,]), "_0_trueData")])
+# load("results/lasso_perumtations_mse_all_genes_test.rdata")
+# genes_info$mse_weightedLASSO <- rowMeans(lmses[str_detect(colnames(lmses[genes,]), "_0_trueData")])
 
 # plotting each characteristics
 always_plot <- genes_info %>%
@@ -1400,7 +1473,7 @@ always_plot <- genes_info %>%
   geom_jitter() + geom_boxplot(width=0.5) +
   facet_nested_wrap(vars(variable), nest_line = T, ncol = 3, scales = 'free')+
   theme_bw() + theme(strip.background = element_blank()) +
-  stat_compare_means() + 
+  stat_compare_means() + xlab("")+
   scale_color_brewer(palette = "Accent") +
   ggtitle("Genes for which TFBM are \nintegrated in both models")
 
@@ -1412,7 +1485,7 @@ never_plot <- genes_info %>%
   geom_jitter() + geom_boxplot(width=0.5) +
   facet_nested_wrap(vars(variable), nest_line = T, ncol = 3, scales = 'free')+
   theme_bw() + theme(strip.background = element_blank()) +
-  stat_compare_means() + 
+  stat_compare_means() + xlab("")+
   scale_color_brewer(palette = "Accent")+
   ggtitle("Genes for which TFBM are \nnot integrated in any model")
 
@@ -1441,7 +1514,7 @@ TFs_always <- genes_info %>%
 pval <- phyper(q=length(intersect(never, tfs)), 
        m = length(tfs), 
        n = length(genes) - length(tfs),
-       k = length(never),lower.tail = F)
+       k = length(never), lower.tail = F)
 
 TFs_never <- genes_info %>%
   group_by(never) %>%
@@ -1453,12 +1526,13 @@ TFs_never <- genes_info %>%
   geom_hline(yintercept = length(tfs)/length(genes)) +
   geom_text(y=0.2) + theme_bw() + xlab("")+
   scale_fill_brewer(palette = "Accent")+
-  ggtitle(paste("Fraction of TFs, TFBM never integrated. \nHypergeometric test pvalue :", round(pval, 3)))+ylim(c(0,0.2))
+  ggtitle(paste("Fraction of TFs, TFBM never integrated. \nHypergeometric test pvalue :", 
+                round(pval, 3)))+ylim(c(0,0.2))
 
 charact <- always_plot + theme(legend.position = "none") + 
   never_plot + theme(legend.position = "none")+ 
   TFs_always +theme(legend.position = "none")+  TFs_never +theme(legend.position = "none")+ 
-  plot_layout(ncol = 2, heights = c(3,1))
+  plot_layout(ncol = 2, heights = c(3,1));charact
 
 ggexport(charact, width = 14, height = 12, 
          filename = "results/supp_figures/genes_characteristics_TFBM_integration.pdf")
@@ -1471,11 +1545,22 @@ Are some biological functions enriched in the genes for which we always or never
 library(DIANE)
 
 go <- enrich_go(convert_from_agi(common), convert_from_agi(genes), 
-                GO_type = "MF", fdr = 0.1)
+                GO_type = "BP", fdr = 0.1)
 
 go <- enrich_go(convert_from_agi(never), 
                 convert_from_agi(genes), GO_type = "BP", fdr = 0.1)
 ```
+
+
+Expression profile of these groups of genes :
+
+
+```{r}
+Heatmap(counts[genes,]/rowMeans(counts[genes,]), cluster_columns = F)
+Heatmap(counts[common,]/rowMeans(counts[common,]), cluster_columns = F)
+Heatmap(counts[never,]/rowMeans(counts[never,]), cluster_columns = F)
+```
+
 
 
 
