@@ -1322,14 +1322,14 @@ ranks_rf <- get_hubs(rf_nets_0)$ranking+ ggtitle("weightedRF alpha = 0") +
   theme(legend.position = "none")+
   get_hubs(rf_nets_1)$ranking+ggtitle("weightedRF alpha = 1") + 
   theme(legend.position = "none")+
-  get_hubs(rf_nets)$ranking+ ggtitle("weightedRF specific alpha")+
-  theme(legend.position = "top")+
+  get_hubs(rf_nets)$ranking+ ggtitle("weightedRF gene-specific alpha")+
+  theme(legend.position = "top", legend.text = element_text(size = 15))+
   plot_layout(guides = "collect") 
 
-ranks_rf <- get_hubs(rf_nets)$ranking+ ggtitle("weightedRF, gene-specific optimsation")+
-  theme(legend.position = "right", legend.text = element_text(size = 15))
+# ranks_rf <- get_hubs(rf_nets)$ranking+ ggtitle("weightedRF, gene-specific optimsation")+
+#   theme(legend.position = "right", legend.text = element_text(size = 15))
 
-ggexport(ranks_rf, filename = "results/weightedRF_ranks_grns.pdf", width = 8, ehight = 7)
+ggexport(ranks_rf, filename = "results/supp_figures/weightedRF_ranks_grns.pdf", width = 20, hight = 7)
 # regulators in the top ranking of all GRNs
 common_rf <- intersect(get_hubs(rf_nets)$top25 , union(get_hubs(rf_nets_0)$top25,
                                         get_hubs(rf_nets_1)$top25))
@@ -1347,11 +1347,11 @@ ranks_lasso <- get_hubs(lasso_nets_0)$ranking+ ggtitle("weightedLASSO alpha = 0"
   theme(legend.position = "none")+
   get_hubs(lasso_nets_1)$ranking+ggtitle("weightedLASSO alpha = 1") +
   theme(legend.position = "none")+
-  get_hubs(lasso_nets)$ranking+ ggtitle("weightedLASSO specific alpha")+
-  theme(legend.position = "top")+
+  get_hubs(lasso_nets)$ranking+ ggtitle("weightedLASSO gene-specific alpha")+
+  theme(legend.position = "top", legend.text = element_text(size = 15))+
   plot_layout(guides = "collect") 
 
-ggexport(ranks_rf, filename = "results/weightedRF_ranks_grns.pdf", width = 8, ehight = 7)
+ggexport(ranks_lasso, filename = "results/supp_figures/weightedLASSO_ranks_grns.pdf", width = 20, hight = 7)
 
 
 # regulators in the top ranking of all GRNs

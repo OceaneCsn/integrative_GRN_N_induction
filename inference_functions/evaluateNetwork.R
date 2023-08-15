@@ -331,8 +331,7 @@ get_hubs <- function(nets, metric = "degree"){
                             v = names(table(nets[[net]]$from)), directed = T)
   }
   df <- data.frame(genes = genes, average_degree = g[genes], 
-                   label = annot[match(genes, rownames(annot)), "label"],
-                   pwm_available =  genes %in% known_tfs)
+                   label = annot[match(genes, rownames(annot)), "label"])
   
   df$regulator <- ifelse(df$label %in% c("DIV1", "TGA1", "TGA4", "HHO2", "HHO3", "HRS1", "BT1", "BT2"), 
                          "Nitrate regulator",
