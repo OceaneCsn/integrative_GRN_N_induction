@@ -2,7 +2,9 @@
 ---
 
 This repository contains code and data for the manuscript "Gene-specific optimization of data integration improves regression-based Gene Regulatory Network inference in _Arabidopsis thaliana_".
-GRNs are inferred from expression profiles of the root response to nitrate induction in *Arabidopsis thaliana*, from [Varala et al, 2018](https://www.pnas.org/doi/abs/10.1073/pnas.1721487115) and from TF binding motifs information (TFBMs). Our work introduces a novel methodology to optimize the intensity of data integration in a hypothesis-driven and gene-specific manner.
+GRNs are inferred from expression profiles of the root response to nitrate induction in *Arabidopsis thaliana*, from [Varala et al, 2018](https://www.pnas.org/doi/abs/10.1073/pnas.1721487115) and from TF binding motifs information (TFBMs). 
+
+**Our work introduces a novel methodology to optimize the intensity of data integration in a hypothesis-driven and gene-specific manner.**
 
 # Repository overview
 
