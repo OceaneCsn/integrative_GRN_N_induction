@@ -1,0 +1,371 @@
+---
+title: "Gene-specific tuning of integrative GRN inference : functional analyses of the results"
+output: 
+  html_document:
+    df_print: paged
+    toc: true
+    toc_float: true
+    toc_depth: 2
+    code_folding: hide
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F, fig.width = 10)
+
+source('inference_functions/weightedRF.R')
+source('inference_functions/weightedLASSO.R')
+source('inference_functions/evaluateNetwork.R')
+source('inference_functions/data_integration_optimization.R')
+
+library(ggplot2)
+library(tidyverse)
+library(ggpubr)
+library(patchwork)
+library(ggVennDiagram)
+library(ComplexHeatmap)
+library(clusterProfiler)
+library(circlize)
+```
+
+This document studies the list of genes for which TFBM are consensually integrated or not, and the modelling of nitrate signalling pathways in inferred GRNs. It can be used to reproduce the supp figures and supp tables of the article.
+
+
+# Data import
+
+Import of the expression data and binding motifs data for the nitrate-responsive genes and regulators :
+
+```{r}
+load('rdata/inference_input_N_response_varala.rdata')
+genes <- input_data$grouped_genes; length(genes)
+tfs <- input_data$grouped_regressors; length(tfs)
+counts <- input_data$counts; dim(counts)
+load("rdata/pwm_occurrences_N_response_varala.rdata")
+dim(pwm_occurrence)
+
+ALPHAS <- seq(0,1, by = 0.1)
+```
+
+
+
+
+# Study of the genes with $\alpha > 1$ or $\alpha = 1$ in both models
+
+## Intersection
+
+Are the genes with $\alpha > 1$ (the ones for which we allow TFBM integration) the same between weightedLASSO and weightedRF?
+
+
+```{r}
+# imports the optimal values of alpha of the proposed approach
+load("results/rdata/gene_specific/alpha_per_gene_weightedLASSO_mean_true_shuff_sd.rdata")
+load("results/rdata/gene_specific/alpha_per_gene_weightedRF_mean_true_shuff_sd.rdata")
+
+venn <- ggVennDiagram(list("weightedRF" = names(alphas_rf[alphas_rf!=0]),
+                   "weightedLASSO" = names(alphas_lasso[alphas_lasso!=0])), edge_size = 2)+ 
+  scale_color_manual( values = c("#C55A11","#E67F87"))+
+  scale_fill_gradient(high="#e6f2ff", low="#e6f2ff")+
+  theme(legend.position = "none");venn
+
+# hypergeometric test to assess the significance of the intersect
+p_enrich <- phyper(q=351, m = length(names(alphas_rf[alphas_rf!=0])), 
+                   n = length(genes) - length(names(alphas_rf[alphas_rf!=0])), 
+                   k = length( names(alphas_lasso[alphas_lasso!=0])), lower.tail = F)
+p_enrich
+ggexport(venn, filename = "results/classes_intersection.pdf", width = 4, height = 4)
+```
+
+Not really, even though the intersection is clearly significant.
+
+## Motifs enrichment analyses
+
+Can we find TFBMs significantly enriched in the promoters of genes benefitting from data integration?
+
+```{r}
+load("rdata/pwm_prom_jaspar_dap.rdata")
+load("results/rdata/gene_specific/alpha_per_gene_weightedLASSO_mean_true_shuff_sd.rdata")
+load("results/rdata/gene_specific/alpha_per_gene_weightedRF_mean_true_shuff_sd.rdata")
+
+pos_class_rf <- names(alphas_rf[alphas_rf!=0])
+pos_class_lasso <- names(alphas_lasso[alphas_lasso!=0])
+common <- intersect(pos_class_lasso, pos_class_rf)
+
+
+neg_class_rf <- names(alphas_rf[alphas_rf==0])
+neg_class_lasso <- names(alphas_lasso[alphas_lasso==0])
+neg_common <- intersect(neg_class_lasso, neg_class_rf)
+
+known_tfs <- tfs[which(tfs %in% pwm_prom$TF)]
+#known_tfs <- unique(pwm_prom$TF) # to look for all TFs, not only nitrate responsive
+
+get_number_of_motifs_per_tfs <- function(genes){
+  table(pwm_prom[pwm_prom$target %in% genes &
+                   pwm_prom$TF %in% tfs,"TF"])[known_tfs]
+  # table(pwm_prom[pwm_prom$target %in% genes,"TF"])[known_tfs]  # to look for all TFs, not only nitrate responsive
+}
+
+get_motif_enrichment <- function(gene_list){
+  enrichments_per_pwm <- setNames(rep(1, length(known_tfs)), known_tfs)
+  n_targets_lasso_in_all <- get_number_of_motifs_per_tfs(genes)
+  n_targets_lasso_in_group <- get_number_of_motifs_per_tfs(gene_list)
+  n_group_lasso <- length(gene_list)
+  
+  for(tf in known_tfs){
+    
+    # number of genes with that motif in all genes
+    n_targets_in_all_tf <- n_targets_lasso_in_all[tf]
+    
+    # number of genes with that motif in the lasso group
+    n_targets_lasso_in_group_tf <- n_targets_lasso_in_group[tf]
+    p_lasso <- phyper(q=n_targets_lasso_in_group_tf-1,
+           m=n_targets_in_all_tf, #white balls
+           n=length(genes)-n_targets_in_all_tf, # black balls
+           k=n_group_lasso, lower.tail = FALSE)
+    
+    
+    enrichments_per_pwm[tf]<- p_lasso
+  }
+  enriched_tfs <- names(which(enrichments_per_pwm < 0.05))
+  all_infos <- DIANE::get_gene_information(enriched_tfs, 
+                                           organism = "Arabidopsis thaliana")
+  all_infos$pvalue <- enrichments_per_pwm[enriched_tfs]
+  return(all_infos)
+  
+}
+
+write.table(get_motif_enrichment(common), sep = '\t', row.names = T, col.names = T,
+            quote = F,
+            file = "results/supp_tables/enriched_TFBMs_high_alpha.tsv")
+
+write.table(get_motif_enrichment(neg_common), sep = '\t', row.names = T, col.names = T,
+            quote = F,
+            file = "results/supp_tables/enriched_TFBMs_zero_alpha.tsv")
+```
+
+
+## Other functional characteristics
+
+Looking at other potentially enriched characteristics of these genes on which we integrate TFBM :
+
+```{r, fig.width=15, fig.height=15}
+load("rdata/gene_structure.rdata")
+
+# building the dataframe with gene functional informations
+
+mean_expr <- rowMeans(counts)[genes]
+var_expr <- matrixStats::rowSds(counts[genes,])*matrixStats::rowSds(counts[genes,])
+pwm_prom_n_TFs <- pwm_prom[pwm_prom$TF %in% tfs,]
+genes_info <- data.frame(genes = genes,
+                         RF = factor(alphas_rf),
+                         LASSO = factor(alphas_lasso))
+genes_info$is_tf <- genes %in% tfs
+genes_info$expression_variance <- log(var_expr+min(var_expr)*0.75)
+genes_info$expression <- log(mean_expr+min(mean_expr)*0.75)
+genes_info$nb_motifs <- table(pwm_prom$target)[genes]
+genes_info$nb_motifs_n_tfs <- table(pwm_prom_n_TFs$target)[genes]
+genes_info$common <- ifelse(genes %in% common, "alpha > 0 in\nboth models", "other genes") 
+genes_info$never <- ifelse(genes_info$RF == 0 & genes_info$LASSO == 0, 
+                           "alpha = 0 in\nboth models", "other genes") 
+genes_info[,c("nb_introns", "nb_transcripts")] <-
+  gene_structure[match(genes_info$gene, gene_structure$gene),
+                 c("n_introns", "n_transcripts")]
+
+# load("results/rdata/weightedRF_mse_100rep.rdata")
+# genes_info$mse_weightedRF <- rowMeans(lmses[str_detect(colnames(lmses[genes,]), "_0_trueData")])
+# load("results/lasso_perumtations_mse_all_genes_test.rdata")
+# genes_info$mse_weightedLASSO <- rowMeans(lmses[str_detect(colnames(lmses[genes,]), "_0_trueData")])
+
+# plotting each characteristics
+always_plot <- genes_info %>%
+  reshape2::melt() %>%
+  ggplot(aes(x=factor(common), y = value, color = common)) +
+  geom_jitter() + geom_boxplot(width=0.5) +
+  facet_nested_wrap(vars(variable), nest_line = T, ncol = 3, scales = 'free')+
+  theme_bw() + theme(strip.background = element_blank()) +
+  stat_compare_means() + xlab("")+
+  scale_color_brewer(palette = "Accent") +
+  ggtitle("Genes for which TFBM are \nintegrated in both models")
+
+
+# plotting each characteristics
+never_plot <- genes_info %>%
+  reshape2::melt() %>%
+  ggplot(aes(x=factor(never), y = value, color = never)) +
+  geom_jitter() + geom_boxplot(width=0.5) +
+  facet_nested_wrap(vars(variable), nest_line = T, ncol = 3, scales = 'free')+
+  theme_bw() + theme(strip.background = element_blank()) +
+  stat_compare_means() + xlab("")+
+  scale_color_brewer(palette = "Accent")+
+  ggtitle("Genes for which TFBM are \nnot integrated in any model")
+
+never <- genes_info[genes_info$never != "other genes",]$genes
+
+# enrichment of TFs
+pval <- phyper(q=length(intersect(common, tfs)), 
+       m = length(tfs), 
+       n = length(genes) - length(tfs),
+       k = length(common),lower.tail = F)
+
+TFs_always <- genes_info %>%
+  group_by(common) %>%
+  summarise(n=n(),
+            tf_frac=sum(is_tf)/n()) %>%
+  ggplot(aes(x=common, y=tf_frac,
+                          label = paste("n=",n))) +
+  geom_bar(stat = "identity", aes(fill=common), alpha = 1)+
+  geom_hline(yintercept = length(tfs)/length(genes)) +
+  scale_fill_brewer(palette = "Accent")+
+  geom_text(y=0.2) + xlab("cluster RF") + theme_bw() + xlab("")+
+  ggtitle(paste("Fraction of TFs, TFBM always integrated. \nHypergeometric test pvalue :", round(pval, 3)))+ylim(c(0,0.2))
+
+
+# enrichment of TFs
+pval <- phyper(q=length(intersect(never, tfs)), 
+       m = length(tfs), 
+       n = length(genes) - length(tfs),
+       k = length(never), lower.tail = F)
+
+TFs_never <- genes_info %>%
+  group_by(never) %>%
+  summarise(n=n(),
+            tf_frac=sum(is_tf)/n()) %>%
+  ggplot(aes(x=never, y=tf_frac,
+                          label = paste("n=",n))) +
+  geom_bar(stat = "identity", aes(fill=never), alpha = 1)+
+  geom_hline(yintercept = length(tfs)/length(genes)) +
+  geom_text(y=0.2) + theme_bw() + xlab("")+
+  scale_fill_brewer(palette = "Accent")+
+  ggtitle(paste("Fraction of TFs, TFBM never integrated. \nHypergeometric test pvalue :", 
+                round(pval, 3)))+ylim(c(0,0.2))
+
+charact <- always_plot + theme(legend.position = "none") + 
+  never_plot + theme(legend.position = "none")+ 
+  TFs_always +theme(legend.position = "none")+  TFs_never +theme(legend.position = "none")+ 
+  plot_layout(ncol = 2, heights = c(3,1));charact
+
+ggexport(charact, width = 14, height = 12, 
+         filename = "results/supp_figures/genes_characteristics_TFBM_integration.pdf")
+```
+
+
+
+## Gene ontology enrichments
+
+Are some biological functions enriched in the genes for which we always or never perform data integration?
+
+```{r}
+# Gene ontology enrichment
+library(DIANE)
+
+go <- enrich_go(convert_from_agi(common), convert_from_agi(genes), 
+                GO_type = "BP", fdr = 0.1)
+
+go <- enrich_go(convert_from_agi(never), 
+                convert_from_agi(genes), GO_type = "BP", fdr = 0.1)
+```
+
+
+## Expression profiles :
+
+
+```{r}
+Heatmap(counts[genes,]/rowMeans(counts[genes,]), cluster_columns = F)
+Heatmap(counts[common,]/rowMeans(counts[common,]), cluster_columns = F)
+Heatmap(counts[never,]/rowMeans(counts[never,]), cluster_columns = F)
+```
+
+
+# Nitrate signalling analysis in inferred GRNs
+
+How are positioned known nitrate regulators in the topology of inferred GRNs?
+
+First loading the GRNs to be studied and compared (global versus gene-specific for the two models) :
+
+```{r}
+load("results/rdata/gene_specific/gene_specific_edges_mean_true_shuff_sd.rdata")
+
+annot <- DIANE::get_gene_information(genes,organism = "Arabidopsis thaliana")
+
+rf_nets <- names(edges)[str_detect(names(edges),"RF_trueData") ]
+rf_nets <- edges[rf_nets[str_detect(rf_nets,"0.005") ]]
+
+
+lasso_nets <- names(edges)[str_detect(names(edges),"LASSO_trueData") ]
+lasso_nets <- edges[lasso_nets[str_detect(lasso_nets,"0.005") ]]
+
+load(file = "results/rdata/weightedLASSO_edges_50rep.rdata")
+
+lasso_nets_0 <- names(edges)[str_detect(names(edges),"LASSO_0_trueData") ]
+lasso_nets_0 <- edges[lasso_nets_0[str_detect(lasso_nets_0,"0.005") ]]
+
+lasso_nets_1 <- names(edges)[str_detect(names(edges),"LASSO_1_trueData") ]
+lasso_nets_1 <- edges[lasso_nets_1[str_detect(lasso_nets_1,"0.005") ]]
+
+
+load(file = "results/rdata/weightedRF_edges_100rep.rdata")
+
+rf_nets_0 <- names(edges)[str_detect(names(edges),"RF_0_trueData") ]
+rf_nets_0 <- edges[rf_nets_0[str_detect(rf_nets_0,"0.005") ]]
+
+rf_nets_1 <- names(edges)[str_detect(names(edges),"RF_1_trueData") ]
+rf_nets_1 <- edges[rf_nets_1[str_detect(rf_nets_1,"0.005") ]]
+
+```
+
+
+Rankings in global alpha networks compared to alpha specific in weightedRF:
+
+```{r}
+
+ranks_rf <- get_hubs(rf_nets_0)$ranking+ ggtitle("weightedRF alpha = 0") + 
+  theme(legend.position = "none")+
+  get_hubs(rf_nets_1)$ranking+ggtitle("weightedRF alpha = 1") + 
+  theme(legend.position = "none")+
+  get_hubs(rf_nets)$ranking+ ggtitle("weightedRF gene-specific alpha")+
+  theme(legend.position = "top", legend.text = element_text(size = 15))+
+  plot_layout(guides = "collect") 
+
+# ranks_rf <- get_hubs(rf_nets)$ranking+ ggtitle("weightedRF, gene-specific optimsation")+
+#   theme(legend.position = "right", legend.text = element_text(size = 15))
+
+ggexport(ranks_rf, filename = "results/supp_figures/weightedRF_ranks_grns.pdf", width = 20, hight = 7)
+# regulators in the top ranking of all GRNs
+common_rf <- intersect(get_hubs(rf_nets)$top25 , union(get_hubs(rf_nets_0)$top25,
+                                        get_hubs(rf_nets_1)$top25))
+
+# regulators in gene-specific GRNs only
+setdiff(get_hubs(rf_nets)$top25 , union(get_hubs(rf_nets_0)$top25,
+                                        get_hubs(rf_nets_1)$top25))
+
+```
+
+Rankings in global alpha networks compared for alpha specific in weightedLASSO:
+
+```{r}
+ranks_lasso <- get_hubs(lasso_nets_0)$ranking+ ggtitle("weightedLASSO alpha = 0") +
+  theme(legend.position = "none")+
+  get_hubs(lasso_nets_1)$ranking+ggtitle("weightedLASSO alpha = 1") +
+  theme(legend.position = "none")+
+  get_hubs(lasso_nets)$ranking+ ggtitle("weightedLASSO gene-specific alpha")+
+  theme(legend.position = "top", legend.text = element_text(size = 15))+
+  plot_layout(guides = "collect") 
+
+ggexport(ranks_lasso, filename = "results/supp_figures/weightedLASSO_ranks_grns.pdf", width = 20, hight = 7)
+
+
+# regulators in the top ranking of all GRNs
+common_lasso <- intersect(get_hubs(lasso_nets)$top25 , union(get_hubs(lasso_nets_0)$top25,
+                                        get_hubs(lasso_nets_1)$top25))
+
+# regulators that were not in the top 25
+setdiff(get_hubs(lasso_nets)$top25 , 
+        union(get_hubs(lasso_nets_0)$top25,
+              get_hubs(lasso_nets_1)$top25))
+```
+
+Regulators that are in all top connected TFs :
+
+```{r}
+intersect(common_lasso, common_rf)
+```
+

@@ -1,0 +1,441 @@
+---
+title: "Gene-specific tuning of integrative GRN inference"
+output: 
+  html_document:
+    df_print: paged
+    toc: true
+    toc_float: true
+    toc_depth: 2
+    code_folding: hide
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F, fig.width = 10)
+
+source('inference_functions/weightedRF.R')
+source('inference_functions/weightedLASSO.R')
+source('inference_functions/evaluateNetwork.R')
+source('inference_functions/data_integration_optimization.R')
+
+library(ggplot2)
+library(tidyverse)
+library(ggpubr)
+library(patchwork)
+library(ggVennDiagram)
+library(ComplexHeatmap)
+library(clusterProfiler)
+library(circlize)
+```
+
+This document launches the computation of numerous globally optimized models over a range of $\alpha$ values, on true data but also in our synthetic null dataset (and thus requires significant computing resources). It then computes the optimal value of TFBM integration strength based on the proposed procedure for each gene, and stores the (large) results as rdata files.
+
+
+# Data import
+
+Import of the expression data and binding motifs data for the nitrate-responsive genes and regulators :
+
+```{r}
+load('rdata/inference_input_N_response_varala.rdata')
+genes <- input_data$grouped_genes; length(genes)
+tfs <- input_data$grouped_regressors; length(tfs)
+counts <- input_data$counts; dim(counts)
+load("rdata/pwm_occurrences_N_response_varala.rdata")
+dim(pwm_occurrence)
+
+ALPHAS <- seq(0,1, by = 0.1)
+```
+
+
+
+# Getting inferred GRNs over a whole range of global alpha values
+
+For $alpha$ from 0 to 1 with a step of 0.1, we infer 100 or 50 integrative models on 
+
++ true data
+
++ a shuffled baseline, corresponding to a simulated null hypothesis.
+
+The following code chunks are very long to run (even in multitasking), and save their results in `reslults/rdata`, a folder which should be created beforehand.
+Results are a matrix of TF-target importances, edges, MSE values, and validation against DAP-Seq. 
+
+## For weightedRF
+
+```{r, eval=FALSE}
+nCores = 45
+mats <- list()
+nrep <- 100
+for(alpha in ALPHAS){ # exploring PWM integration strength
+  for(rep in 1:nrep){ # exploring inherent variability
+    
+    mat_rf <- weightedRF_inference(counts, genes, tfs, nTrees = 2000,
+                            alpha = alpha,
+                            pwm_occurrence = pwm_occurrence,
+                            nCores = nCores,
+                            importance = "%IncMSE")
+    
+    mat_rf_perm <- weightedRF_inference(counts, genes, tfs, nTrees = 2000,
+                            alpha = alpha, tf_expression_permutation = TRUE,
+                            pwm_occurrence = pwm_occurrence,
+                            nCores = nCores,
+                            importance = "%IncMSE")
+    
+    mats[[paste0("bRF_", as.character(alpha),  '_trueData_', rep)]] <- mat_rf
+    mats[[paste0("bRF_", as.character(alpha),  '_shuffled_', rep)]] <- mat_rf_perm
+    
+  }
+}
+save(mats, file = "results/rdata/weightedRF_importances_100rep.rdata")
+
+# thresholds the regulatory weights at a certain density to build GRNs
+edges <- list()
+lmses <- data.frame(row.names = genes)
+densities <- c(0.005, 0.01,0.05)
+for(name in names(mats)){ 
+      for(density in densities){# exploring importance threshold stringency
+        edges[[paste0(name, '_', density)]] <-
+        weightedRF_network(mats[[name]], density = density, pwm_occurrence, genes, tfs)
+        lmses[,name] <- mats[[name]]["mse",]
+      }
+}
+save(edges, file = "results/rdata/weightedRF_edges_100rep.rdata")
+save(lmses, file = "results/rdata/weightedRF_mse_100rep.rdata")
+
+# validation of GRN edges against DAP-Seq
+settings <- c("model", "alpha", "dataset", "rep", "density")
+val_dap <-
+  evaluate_networks(
+    edges,
+    validation = c("DAPSeq"),
+    nCores = 35,
+    input_genes = genes,
+    input_tfs = tfs
+  )
+val_dap[, settings] <-
+  str_split_fixed(val_dap$network_name, '_', length(settings))
+save(val_dap, file = "results/rdata/weightedRF_validation_100rep.rdata")
+```
+
+## For weightedLASSO
+
+```{r, eval=FALSE}
+nCores = 40
+# mats <- list()
+nrep <- 50
+for(alpha in c(1)){ # exploring PWM integration strength
+  for(rep in 1:nrep){ # exploring inherent variability
+    
+    mat_lasso <- weightedLASSO_inference(counts = counts, genes = genes, tfs = tfs,
+                                     alpha = alpha, N = 50, 
+                                     tf_expression_permutation = FALSE,
+                                     int_pwm_noise = 0, mda_type = "shuffle",
+                                     pwm_occurrence = pwm_occurrence,
+                                     nCores = nCores)
+    
+    mat_lasso_perm <- weightedLASSO_inference(counts, genes, tfs,
+                                     alpha = alpha, N = 50, 
+                                     tf_expression_permutation = TRUE,
+                                     int_pwm_noise = 0, mda_type = "shuffle",
+                                     pwm_occurrence = pwm_occurrence,
+                                     nCores = nCores)
+    
+    mats[[paste0("LASSO_", as.character(alpha),  '_trueData_', rep)]] <- mat_lasso
+    mats[[paste0("LASSO_", as.character(alpha),  '_shuffled_', rep)]] <- mat_lasso_perm
+    
+  }
+}
+
+save(mats, file = "results/rdata/weightedLASSO_importances_50rep.rdata")
+
+# thresholds the regulatory weights at certain densities to build GRNs
+edges <- list()
+lmses <- data.frame(row.names = genes)
+densities <- c(0.005, 0.01,0.05)
+for(name in names(mats)){ 
+      for(density in densities){# exploring importance threshold stringency
+        edges[[paste0(name, '_', density)]] <-
+        weightedLASSO_network(mats[[name]], density = density, pwm_occurrence, 
+                          genes, tfs, decreasing = TRUE)
+        
+        lmses[,name] <- mats[[name]]["mse",]
+      }
+}
+
+save(edges, file = "results/rdata/weightedLASSO_edges_50rep.rdata")
+save(lmses, file = "results/rdata/weightedLASSO_mse_50rep.rdata")
+
+
+# validation of GRN edges against DAP-Seq
+settings <- c("model", "alpha", "dataset", "rep", "density")
+val_dap <-
+  evaluate_networks(
+    edges,
+    validation = c("DAPSeq"),
+    nCores = 35,
+    input_genes = genes,
+    input_tfs = tfs
+  )
+val_dap[, settings] <-
+  str_split_fixed(val_dap$network_name, '_', length(settings))
+save(val_dap, file = "results/rdata/weightedLASSO_validation_50rep.rdata")
+
+```
+
+
+# Gene specific optimization of TFBM integration
+
+For weightedRF :
+
+```{r, eval=F}
+# loads the MSE data for weightRF
+load("results/rdata/weightedRF_mse_100rep.rdata")
+
+# loads the importances
+load("results/rdata/weightedRF_importances_100rep.rdata")
+
+# value of alpha per genes:
+alphas_rf <- mcsapply(genes, get_opt_alpha_per_gene,
+                          return_alpha=T, mc.cores=34)
+save(alphas_rf, file = "results/rdata/gene_specific/alpha_per_gene_weightedRF_mean_true_shuff_sd.rdata")
+
+# doing the same but with the value of alpha minimising the mse:
+alphas_rf <- mcsapply(genes, get_opt_alpha_per_gene, metric = "min",
+                          return_alpha=T, mc.cores=34)
+save(alphas_rf, file = "results/rdata/gene_specific/alpha_per_gene_weightedRF_min.rdata")
+```
+
+
+For weightedLASSO :
+
+```{r, eval=FALSE}
+# loads mse and importances for weightedLASSO
+load("results/rdata/weightedLASSO_mse_50rep.rdata")
+load("results/rdata/weightedLASSO_importances_50rep.rdata")
+
+
+# value of alpha per genes:
+alphas_lasso <- mcsapply(genes, get_opt_alpha_per_gene, mats = mats, 
+                         lmses = lmses,
+                          return_alpha=T, mc.cores=34)
+save(alphas_lasso, file = "results/rdata/gene_specific/alpha_per_gene_weightedLASSO_mean_true_shuff_sd.rdata")
+
+# doing the same but with the value of alpha minimising the mse:
+alphas_lasso <- mcsapply(genes, get_opt_alpha_per_gene, 
+                          return_alpha=T, metric = "min", mc.cores=34)
+save(alphas_lasso, file = "results/rdata/gene_specific/alpha_per_gene_weightedLASSO_min.rdata")
+```
+
+
+## Some gene examples to illustrate our gene-specific optimization of alpha
+
+`get_opt_alpha_per_gene` is the function returning the optimal value of $\alpha$ for one gene, or drawing the corresponding plot.
+The optimal value of $\alpha$ is set to where the deviation from the shuffled baseline in terms of MSE is the greater, and if it exceeds a certain dispersion threshold.
+
+### In weightedRF
+
+Plots the results for the proposed gene-specific criterion for some gene examples :
+
+```{r, fig.width=9, fig.height=8}
+# loads the MSE data for weightRF
+load("results/rdata/weightedRF_mse_100rep.rdata")
+
+# loads the importances
+load("results/rdata/weightedRF_importances_100rep.rdata")
+
+gene_no_benefit <- "AT1G30270"
+gene_benefit_optimum <- "AT1G14720"
+gene_benefit <- "AT5G48970"
+
+n <- draw_gene_effective_integration(gene_no_benefit, mats = mats, prior = 1) +
+  draw_gene_mse(gene_no_benefit, lmses = lmses)+
+  get_opt_alpha_per_gene(gene_no_benefit, mats = mats, lmses = lmses)+
+  plot_annotation(title = gene_no_benefit) 
+o <- draw_gene_effective_integration(gene_benefit_optimum, mats = mats, prior = 1) +
+  draw_gene_mse(gene_benefit_optimum, lmses = lmses)+theme(legend.position = "none")+
+  get_opt_alpha_per_gene(gene_benefit_optimum, mats = mats, lmses = lmses)+
+  plot_annotation(title = gene_benefit_optimum) 
+p <- draw_gene_effective_integration(gene_benefit, mats = mats, prior = 1) +
+  draw_gene_mse(gene_benefit, lmses = lmses)+theme(legend.position = "none")+
+  get_opt_alpha_per_gene(gene_benefit, mats = mats, lmses = lmses)+
+  plot_annotation(title = gene_benefit)
+
+
+figure <- n/o/p;figure
+ggexport(figure, filename = "results/gene_examples_weightedRF.pdf", width = 10, height = 9)
+
+```
+
+
+
+
+Some more figures illustrating the approach on several gene cases for the ISMB 2023 talk and for the paper supp figures : 
+
+
+```{r}
+# mse increase (or AT5G64660)
+compromise <- get_opt_alpha_per_gene("AT1G14720", mats = mats, lmses = lmses)+
+  labs(subtitle = "AT1G14720")+
+  get_opt_alpha_per_gene("AT5G16650", mats = mats, lmses = lmses)+
+  labs(subtitle = "AT5G16650")
+ 
+
+# mse decrease
+ideal <- get_opt_alpha_per_gene("AT1G70790", mats = mats, lmses = lmses)+
+  theme(legend.position = "right") + 
+  labs(subtitle = "AT1G70790")
+
+
+# mse increase_bad
+bad <- get_opt_alpha_per_gene("AT1G56230", mats = mats, lmses = lmses) +
+  labs(subtitle = "AT1G56230")+ 
+  get_opt_alpha_per_gene("AT2G29990", mats = mats, lmses = lmses)+
+  labs(subtitle = "AT2G29990")
+
+
+# TFBM integration with min mse but not our approach
+lost <- get_opt_alpha_per_gene("AT1G47395", mats = mats, lmses = lmses)+
+  labs(subtitle = "AT1G47395")
+
+# TFBM integration with our approach but not min MSE
+saved <- get_opt_alpha_per_gene("AT3G20320", mats = mats, lmses = lmses)+
+  labs(subtitle = "AT3G20320")
+
+get_opt_alpha_per_gene("AT5G43420", mats = mats, lmses = lmses)
+get_opt_alpha_per_gene("AT3G07590", mats = mats, lmses = lmses)
+
+ggexport(ideal, filename = "results/ismb_talk/wRF_ideal.pdf", width = 6, height = 5)
+ggexport(compromise, filename = "results/ismb_talk/wRF_compromise.pdf", width = 10, height = 5)
+ggexport(bad, filename = "results/ismb_talk/wRF_bad.pdf", width = 10, height = 5)
+
+ggexport(lost, filename = "results/supp_figures/wRF_example_gene_lost.pdf", width = 5, height = 5)
+ggexport(saved, filename = "results/supp_figures/wRF_example_gene_saved.pdf", width = 5, height = 5)
+
+
+eff_data <- draw_gene_effective_integration("AT1G14720", mats = mats)+
+   theme(legend.position = "right") 
+
+ggexport(eff_data, filename = "results/ismb_talk/wRF_eff_data_int.pdf", 
+         width = 6, height = 5)
+
+mse <- draw_gene_mse("AT1G70790", lmses = lmses)+
+   theme(legend.position = "right") 
+
+ggexport(mse, filename = "results/ismb_talk/wRF_mse.pdf", 
+         width = 6, height = 5)
+```
+
+
+
+
+
+### In weightedLASSO:
+
+
+```{r fig.height=10, fig.width=10}
+# loads mse and importances for weightedLASSO
+load("results/rdata/weightedLASSO_mse_50rep.rdata")
+load("results/rdata/weightedLASSO_importances_50rep.rdata")
+
+n <- draw_gene_effective_integration(gene_no_benefit, mats = mats, prior = 1) +
+  draw_gene_mse(gene_no_benefit, lmses = lmses)+
+  get_opt_alpha_per_gene(gene_no_benefit, mats = mats, lmses = lmses)+
+  plot_annotation(title = gene_no_benefit) 
+o <- draw_gene_effective_integration(gene_benefit_optimum, mats = mats, prior = 1) +
+  draw_gene_mse(gene_benefit_optimum, lmses = lmses)+theme(legend.position = "none")+
+  get_opt_alpha_per_gene(gene_benefit_optimum, mats = mats, lmses = lmses)+
+  plot_annotation(title = gene_benefit_optimum) 
+p <- draw_gene_effective_integration(gene_benefit, mats = mats, prior = 1) +
+  draw_gene_mse(gene_benefit, lmses = lmses)+theme(legend.position = "none")+
+  get_opt_alpha_per_gene(gene_benefit, mats = mats, lmses = lmses)+
+  plot_annotation(title = gene_benefit)
+
+
+n/o/p
+figure <- n/o/p
+ggexport(figure, filename = "results/gene_examples_weightedLASSO.pdf", width = 10, height = 9)
+```
+
+
+# Inference of gene-specifically optimized GRNs
+
+The following code chunks learns GRNs with the optimal values of alpha determined by our approach, and stores the results.
+
+```{r, eval = F}
+# imports the optimal values of alpha of the proposed approach
+load("results/rdata/gene_specific/alpha_per_gene_weightedLASSO_mean_true_shuff_sd.rdata")
+load("results/rdata/gene_specific/alpha_per_gene_weightedRF_mean_true_shuff_sd.rdata")
+
+nCores = 34
+mats <- list()
+nrep <- 10
+for(rep in 1:nrep){ # exploring inherent variability
+  
+  mat_lasso <- weightedLASSO_inference(counts, genes, tfs,
+                                   alpha = alphas_lasso, N = 50,
+                                   tf_expression_permutation = FALSE,
+                                   int_pwm_noise = 0, mda_type = "shuffle",
+                                   pwm_occurrence = pwm_occurrence,
+                                   nCores = nCores)
+
+  mat_lasso_perm <- weightedLASSO_inference(counts, genes, tfs,
+                                   alpha = alphas_lasso, N = 50,
+                                   tf_expression_permutation = TRUE,
+                                   int_pwm_noise = 0, mda_type = "shuffle",
+                                   pwm_occurrence = pwm_occurrence,
+                                   nCores = nCores)
+
+  mats[[paste0("LASSO_trueData_", rep)]] <- mat_lasso
+  mats[[paste0("LASSO_shuffled_", rep)]] <- mat_lasso_perm
+  
+   mat_rf <- weightedRF_inference(counts, genes, tfs, nTrees = 2000,
+                            alpha = alphas_rf,
+                            pwm_occurrence = pwm_occurrence,
+                            nCores = nCores,
+                            importance = "%IncMSE")
+    
+    mat_rf_perm <- weightedRF_inference(counts, genes, tfs, nTrees = 2000,
+                            alpha = alphas_rf, 
+                            tf_expression_permutation = TRUE,
+                            pwm_occurrence = pwm_occurrence,
+                            nCores = nCores,
+                            importance = "%IncMSE")
+  
+  mats[[paste0("RF_trueData_", rep)]] <- mat_rf
+  mats[[paste0("RF_shuffled_", rep)]] <- mat_rf_perm
+}
+save(mats, file = "results/rdata/gene_specific/gene_specific_grns_mean_true_shuff_sd.rdata")
+
+
+edges <- list()
+lmses <- data.frame(row.names = genes)
+for(name in names(mats)){ 
+      for(density in c(0.005,0.01,0.05)){# exploring importance threshold stringency
+        
+        if(str_detect(name, "LASSO"))
+          edges[[paste0(name, '_', density)]] <-
+        weightedLASSO_network(mats[[name]], density = density, pwm_occurrence, 
+                          genes, tfs, decreasing = TRUE)
+        else
+          edges[[paste0(name, '_', density)]] <-
+        weightedRF_network(mats[[name]], density = density, pwm_occurrence, 
+                          genes, tfs)
+        lmses[,name] <- mats[[name]]["mse",]
+      }
+}
+save(lmses, file = "results/rdata/gene_specific/gene_specific_mse_mean_true_shuff_sd.rdata") 
+save(edges, file = "results/rdata/gene_specific/gene_specific_edges_mean_true_shuff_sd.rdata") 
+
+# validation against DAP-Seq
+settings <- c("model", "dataset", "rep", "density")
+val_specific <-
+  evaluate_networks(
+    edges,
+    validation = c("DAPSeq"),
+    nCores = 30,
+    input_genes = genes,
+    input_tfs = tfs
+  )
+val_specific[, settings] <-
+  str_split_fixed(val_specific$network_name, '_', length(settings))
+save(val_specific, file = "results/rdata/gene_specific/gene_specific_validation_mean_true_shuff_sd.rdata")
+```
