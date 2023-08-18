@@ -40,3 +40,4 @@ Many packages are used in the R scripts, and can be installed from the CRAN in t
 library(remotes)
 install_github("OceaneCsn/DIANE")
 ```
+
