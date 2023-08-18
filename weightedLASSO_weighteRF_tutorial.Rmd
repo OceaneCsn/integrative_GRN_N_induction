@@ -114,5 +114,5 @@ dapseq_validation <- evaluate_networks(list("bRF" = grn_RF, "LASSO-D3S" = grn_la
 
 In this example, approximately approximately 42% of predicted edges by weightedRF and 37% of weightedLASSO are supported by DAPSeq experiments.
 
-> In agreement with the article results, we encourage the use of gene-specific alphas, that can be determined by finding for each gene the value of alpha offering low prediction error as a function data integration, as comapred to baseline (shuffled) data. This is demonstrated in another notebook of this repository, namely _weighted_LASSO_weighted_RF_gene_specific.Rmd_. 
+> In agreement with the article results, we encourage the use of gene-specific alphas, that can be determined by finding for each gene the value of alpha offering low prediction error as a function data integration, as comapred to baseline (shuffled) data. This is demonstrated in another notebook of this repository, namely _weightedLASSO_weightedRF_gene_specific.Rmd_. 
 
