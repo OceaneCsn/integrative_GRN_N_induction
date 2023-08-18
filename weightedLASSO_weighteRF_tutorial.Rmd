@@ -106,7 +106,7 @@ The returned MSE is actually normalized by th evariance of the target gene, so i
 The following function computes precision and recall on experimental TF-DNA *in vitro* interactions in Arabidopsis (DAP-Seq data):
 
 ```{r}
-dapseq_validation <- evaluate_networks(list("bRF" = grn_RF, "LASSO-D3S" = grn_lasso), 
+dapseq_validation <- evaluate_networks(list("weightedRF" = grn_RF, "weightedLASSO" = grn_lasso), 
                                          input_genes = genes, input_tfs = tfs, 
                                          validation = c("DAPSeq"),
                                          nCores =2);dapseq_validation
