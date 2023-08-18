@@ -7,4 +7,6 @@ rdata/pwm_prom_jaspar_dap.rdata
 *.o
 *.dll
 results/*.rdata
+results/rdata/*.rdata
+results/rdata/gene_specific/*.rdata
 *.gff

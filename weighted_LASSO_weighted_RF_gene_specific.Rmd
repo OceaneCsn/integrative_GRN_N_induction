@@ -84,7 +84,7 @@ for(alpha in ALPHAS){ # exploring PWM integration strength
     
   }
 }
-save(mats, file = "results/100_permutations_bRF_importances_inf.rdata")
+save(mats, file = "results/rdata/weightedRF_importances_100rep.rdata")
 
 # thresholds the regulatory weights at a certain density to build GRNs
 edges <- list()
@@ -97,8 +97,8 @@ for(name in names(mats)){
         lmses[,name] <- mats[[name]]["mse",]
       }
 }
-save(edges, file = "results/100_permutations_bRF_edges_inf.rdata")
-save(lmses, file = "results/brf_perumtations_mse_all_genes_predict.rdata")
+save(edges, file = "results/rdata/weightedRF_edges_100rep.rdata")
+save(lmses, file = "results/rdata/weightedRF_mse_100rep.rdata")
 
 # validation of GRN edges against DAP-Seq
 settings <- c("model", "alpha", "dataset", "rep", "density")
@@ -112,7 +112,7 @@ val_dap <-
   )
 val_dap[, settings] <-
   str_split_fixed(val_dap$network_name, '_', length(settings))
-save(val_dap, file = "results/100_permutations_rf_validation_dap_inf.rdata")
+save(val_dap, file = "results/rdata/weightedRF_validation_100rep.rdata")
 ```
 
 ## For weightedLASSO
@@ -144,7 +144,7 @@ for(alpha in c(1)){ # exploring PWM integration strength
   }
 }
 
-save(mats, file = "results/100_permutations_lasso_mda_shuffle.rdata")
+save(mats, file = "results/rdata/weightedLASSO_importances_50rep.rdata")
 
 # thresholds the regulatory weights at certain densities to build GRNs
 edges <- list()
@@ -160,8 +160,8 @@ for(name in names(mats)){
       }
 }
 
-save(edges, file = "results/100_permutations_lasso_edges.rdata")
-save(lmses, file = "results/lasso_perumtations_mse_all_genes_test.rdata")
+save(edges, file = "results/rdata/weightedLASSO_edges_50rep.rdata")
+save(lmses, file = "results/rdata/weightedLASSO_mse_50rep.rdata")
 
 
 # validation of GRN edges against DAP-Seq
@@ -176,7 +176,7 @@ val_dap <-
   )
 val_dap[, settings] <-
   str_split_fixed(val_dap$network_name, '_', length(settings))
-save(val_dap, file = "results/100_permutations_lasso_validation_dap.rdata")
+save(val_dap, file = "results/rdata/weightedLASSO_validation_50rep.rdata")
 
 ```
 
@@ -195,7 +195,7 @@ How does the effective data integration vary when alpha increases?
 col_fun = colorRamp2(c(1, 201), hcl_palette = "Blue-Red 3")
 
 # loads the mats object (importance of TF-target interactions)
-load("results/100_permutations_bRF_importances_inf.rdata")
+load("results/rdata/weightedRF_importances_100rep.rdata")
 
 
 # getting mean EDI values for all genes as a function of alpha
@@ -226,7 +226,7 @@ dev.off()
 
 ```{r, fig.height=20}
 # loads the mats object (importance of TF-target interactions)
-load("results/100_permutations_lasso_mda_shuffle.rdata")
+load("results/rdata/weightedLASSO_importances_50rep.rdata")
 
 # getting mean EDI values for all genes as a function of alpha
 edi_lasso <- mcsapply(genes, draw_gene_effective_integration, mats = mats,
@@ -252,7 +252,7 @@ TFBM support of globally optimized networks :
 
 ```{r}
 # loads lasso edges
-load(file = "results/100_permutations_lasso_edges.rdata")
+load(file = "results/rdata/weightedLASSO_edges_50rep.rdata")
 edges_num <- lapply(edges, function(df) df[sapply(df, is.numeric)])
 d <- data.frame(settings = names(unlist(lapply(edges_num, FUN = nrow))),
                 pwm = unlist(lapply(edges_num, FUN = colMeans)))
@@ -261,7 +261,7 @@ d_lasso <- d
 
 
 # loads rf edges
-load(file = "results/100_permutations_bRF_edges_inf.rdata")
+load(file = "results/rdata/weightedRF_edges_100rep.rdata")
 edges_num <- lapply(edges, function(df) df[sapply(df, is.numeric)])
 d <- data.frame(settings = names(unlist(lapply(edges_num, FUN = nrow))),
                 pwm = unlist(lapply(edges_num, FUN = colMeans)))
@@ -298,10 +298,10 @@ Plots the results for the proposed gene-specific criterion for some gene example
 
 ```{r, fig.width=9, fig.height=8}
 # loads the MSE data for weightRF
-load("results/brf_perumtations_mse_all_genes_predict.rdata")
+load("results/rdata/weightedRF_mse_100rep.rdata")
 
 # loads the importances
-load("results/100_permutations_bRF_importances_inf.rdata")
+load("results/rdata/weightedRF_importances_100rep.rdata")
 
 gene_no_benefit <- "AT1G30270"
 gene_benefit_optimum <- "AT1G14720"
@@ -395,12 +395,12 @@ Returns the optimal value of alpha for all nitrate responsive genes :
 # value of alpha per genes:
 alphas_rf <- mcsapply(genes, get_opt_alpha_per_gene,
                           return_alpha=T, mc.cores=34)
-save(alphas_rf, file = "results/alpha_per_gene_weighted_RF_mean_true_shuff_sd.rdata")
+save(alphas_rf, file = "results/rdata/gene_specific/alpha_per_gene_weightedRF_mean_true_shuff_sd.rdata")
 
 # doing the same but with the value of alpha minimising the mse:
 alphas_rf <- mcsapply(genes, get_opt_alpha_per_gene, metric = "min",
                           return_alpha=T, mc.cores=34)
-save(alphas_rf, file = "results/alpha_per_gene_weighted_RF_min.rdata")
+save(alphas_rf, file = "results/rdata/gene_specific/alpha_per_gene_weightedRF_min.rdata")
 ```
 
 
@@ -409,8 +409,8 @@ save(alphas_rf, file = "results/alpha_per_gene_weighted_RF_min.rdata")
 
 ```{r fig.height=10, fig.width=10}
 # loads mse and importances for weightedLASSO
-load("results/lasso_perumtations_mse_all_genes_test.rdata")
-load("results/100_permutations_lasso_mda_shuffle.rdata")
+load("results/rdata/weightedLASSO_mse_50rep.rdata")
+load("results/rdata/weightedLASSO_importances_50rep.rdata")
 
 n <- draw_gene_effective_integration(gene_no_benefit, mats = mats, prior = 1) +
   draw_gene_mse(gene_no_benefit, lmses = lmses)+
@@ -438,12 +438,12 @@ ggexport(figure, filename = "results/gene_examples_weightedLASSO.pdf", width = 1
 alphas_lasso <- mcsapply(genes, get_opt_alpha_per_gene, mats = mats, 
                          lmses = lmses,
                           return_alpha=T, mc.cores=34)
-save(alphas_lasso, file = "results/alpha_per_gene_weighted_LASSO_test_mean_true_shuff_sd.rdata")
+save(alphas_lasso, file = "results/rdata/gene_specific/alpha_per_gene_weightedLASSO_mean_true_shuff_sd.rdata")
 
 # doing the same but with the value of alpha minimising the mse:
 alphas_lasso <- mcsapply(genes, get_opt_alpha_per_gene, 
                           return_alpha=T, metric = "min", mc.cores=34)
-save(alphas_lasso, file = "results/alpha_per_gene_weighted_LASSO_min.rdata")
+save(alphas_lasso, file = "results/rdata/gene_specific/alpha_per_gene_weightedLASSO_min.rdata")
 ```
 
 
@@ -453,8 +453,8 @@ For maximal divergence from permutation criterion :
 
 ```{r}
 # optimal values of alpha :
-load("results/alpha_per_gene_weighted_LASSO_test_mean_true_shuff_sd.rdata")
-load("results/alpha_per_gene_weighted_RF_mean_true_shuff_sd.rdata")
+load("results/rdata/gene_specific/alpha_per_gene_weightedLASSO_mean_true_shuff_sd.rdata")
+load("results/rdata/gene_specific/alpha_per_gene_weightedRF_mean_true_shuff_sd.rdata")
 
 hists <- data.frame(weightedLASSO = alphas_lasso, 
                     weightedRF = alphas_rf) %>%
@@ -479,8 +479,8 @@ Depending on their class (optimal alpha different from 0 or not).
 ## weightedRF
 
 ```{r, fig.height=10}
-load("results/brf_perumtations_mse_all_genes_predict.rdata")
-load(file = "results/alpha_per_gene_weighted_RF_mean_true_shuff_sd.rdata")
+load("results/rdata/weightedRF_mse_100rep.rdata")
+load(file = "results/rdata/gene_specific/alpha_per_gene_weightedRF_mean_true_shuff_sd.rdata")
 
 pos_class <- names(alphas_rf[alphas_rf!=0])
 
@@ -528,8 +528,8 @@ dev.off()
 
 ```{r, fig.height=10}
 
-load("results/lasso_perumtations_mse_all_genes_test.rdata")
-load("results/alpha_per_gene_weighted_LASSO_test_mean_true_shuff_sd.rdata")
+load("results/rdata/weightedLASSO_mse_50rep.rdata")
+load("results/rdata/gene_specific/alpha_per_gene_weightedLASSO_mean_true_shuff_sd.rdata")
 
 
 pos_class <- names(alphas_lasso[alphas_lasso!=0])
@@ -640,7 +640,7 @@ for(rep in 1:nrep){ # exploring inherent variability
   mats[[paste0("RF_trueData_", rep)]] <- mat_rf
   mats[[paste0("RF_shuffled_", rep)]] <- mat_rf_perm
 }
-save(mats, file = "results/gene_specific_grns_mean_true_shuff_sd.rdata")
+save(mats, file = "results/rdata/gene_specific/gene_specific_grns_mean_true_shuff_sd.rdata")
 
 
 edges <- list()
@@ -659,8 +659,8 @@ for(name in names(mats)){
         lmses[,name] <- mats[[name]]["mse",]
       }
 }
-save(lmses, file = "results/gene_specific_mse_mean_true_shuff_sd.rdata") 
-save(edges, file = "results/gene_specific_edges_mean_true_shuff_sd.rdata") 
+save(lmses, file = "results/rdata/gene_specific/gene_specific_mse_mean_true_shuff_sd.rdata") 
+save(edges, file = "results/rdata/gene_specific/gene_specific_edges_mean_true_shuff_sd.rdata") 
 
 # validation against DAP-Seq
 settings <- c("model", "dataset", "rep", "density")
@@ -674,7 +674,7 @@ val_specific <-
   )
 val_specific[, settings] <-
   str_split_fixed(val_specific$network_name, '_', length(settings))
-save(val_specific, file = "results/gene_specific_validation_mean_true_shuff_sd.rdata")
+save(val_specific, file = "results/rdata/gene_specific/gene_specific_validation_mean_true_shuff_sd.rdata")
 ```
 
 
@@ -685,9 +685,9 @@ The following code validates globally inferred GRNs, with a given density, again
 
 ```{r, fig.width=10, fig.height=10}
 
-load(file = "results/100_permutations_bRF_validation_dap_inf.rdata")
+load(file = "results/rdata/weightedRF_validation_100rep.rdata")
 val_rf <- val_dap
-load(file = "results/100_permutations_lasso_validation_dap.rdata")
+load(file = "results/rdata/weightedLASSO_validation_50rep.rdata")
 val_lasso <- val_dap
 
 precision_lasso <- draw_validation(validation = val_lasso)+
@@ -712,8 +712,8 @@ ggexport(precision_rf, filename = "results/supp_figures/precision_recall_weighte
 ```{r, warning=TRUE}
 settings <- c("model", "dataset", "rep", "density")
 
-load("results/gene_specific_mse_mean_true_shuff_sd.rdata")
-load("results/gene_specific_validation_mean_true_shuff_sd.rdata")
+load("results/rdata/gene_specific/gene_specific_mse_mean_true_shuff_sd.rdata")
+load("results/rdata/gene_specific/gene_specific_validation_mean_true_shuff_sd.rdata")
 
 val_spec <- val_specific %>%
   separate(network_name, into = settings, sep = "_") %>%
@@ -831,10 +831,10 @@ theme(
 )+ ylab("MSE")
 }
 
-load("results/lasso_perumtations_mse_all_genes_test.rdata")
+load("results/rdata/weightedLASSO_mse_50rep.rdata")
 mse_lasso <- draw_mse("LASSO")
 
-load("results/brf_perumtations_mse_all_genes_predict.rdata")
+load("results/rdata/weightedRF_mse_100rep.rdata")
 mse_rf <- draw_mse("RF")
 x_min <- 0.19
 
@@ -924,10 +924,10 @@ theme(
 )+ ylab("MSE")
 }
 
-load("results/lasso_perumtations_mse_all_genes_test.rdata")
+load("results/rdata/weightedLASSO_mse_50rep.rdata")
 mse_lasso <- draw_mse("LASSO")
 
-load("results/brf_perumtations_mse_all_genes_predict.rdata")
+load("results/rdata/weightedRF_mse_100rep.rdata")
 mse_rf <- draw_mse("RF")
 x_min <- 0.19
 
@@ -988,8 +988,8 @@ Intersection between genes benefiting from data integration with the minimal MSE
 
 ```{r}
 
-load("results/alpha_per_gene_weighted_LASSO_min.rdata")
-load("results/alpha_per_gene_weighted_RF_min.rdata")
+load("results/rdata/gene_specific/alpha_per_gene_weightedLASSO_min.rdata")
+load("results/rdata/gene_specific/alpha_per_gene_weightedRF_min.rdata")
 
 venn <- ggVennDiagram(list("weightedRF" = names(alphas_rf[alphas_rf!=0]),
                    "weightedLASSO" = names(alphas_lasso[alphas_lasso!=0])), edge_size = 2)+ 
@@ -1010,11 +1010,11 @@ ggexport(venn, filename = "results/classes_intersection_min.pdf", width = 4, hei
 don't know if it will be used
 
 ```{r, fig.width=10, fig.height=10, eval = F}
-load("results/gene_specific_grns_min.rdata")
-load("results/gene_specific_mse_min.rdata")
-load("results/gene_specific_edges_min.rdata")
+load("results/rdata/gene_specific/gene_specific_grns_min.rdata")
+load("results/rdata/gene_specific/gene_specific_mse_min.rdata")
+load("results/rdata/gene_specific/gene_specific_edges_min.rdata")
 
-load("results/gene_specific_validation_min.rdata")
+load("results/rdata/gene_specific/gene_specific_validation_min.rdata")
 
 spec_rf <- val_specific %>%
   separate(network_name, into = settings, sep = "_") %>%
@@ -1134,8 +1134,8 @@ Differences between the two criteria for the same model :
 alphas_lasso_min <- alphas_lasso
 alphas_rf_min <- alphas_rf
 
-load("results/alpha_per_gene_weighted_LASSO_test.rdata")
-load("results/alpha_per_gene_weighted_RF.rdata")
+load("results/rdata/gene_specific/alpha_per_gene_weightedLASSO.rdata")
+load("results/rdata/gene_specific/alpha_per_gene_weightedRF.rdata")
 
 alphas_lasso_div <- alphas_lasso
 alphas_rf_div <- alphas_rf
@@ -1178,10 +1178,10 @@ matrix(c(length(same_rf), length(lost_rf), length(saved_rf),
 ## Comparing the precision and recall of min and dev GRNs
 
 ```{r, fig.width=10}
-load("results/gene_specific_validation_min.rdata")
+load("results/rdata/gene_specific/gene_specific_validation_min.rdata")
 val_specific_min <- val_specific %>%
   mutate(criterion = "min MSE")
-load("results/gene_specific_validation_mean_true_shuff_sd.rdata")
+load("results/rdata/gene_specific/gene_specific_validation_mean_true_shuff_sd.rdata")
 val_specific_dev <- val_specific%>%
   mutate(criterion = "proposed approach")
 
@@ -1200,12 +1200,12 @@ precision_recall_min_dev <- rbind.data.frame(val_specific_dev, val_specific_min)
 ## Comparing the ME of the two approaches
 
 ```{r, fig.width = 10, fig.height=5}
-load("results/gene_specific_mse_min.rdata")
+load("results/rdata/gene_specific/gene_specific_mse_min.rdata")
 mse_min <- lmses
 colnames(mse_min) <- paste0(colnames(mse_min), '_min')
 mse_min$genes <- rownames(mse_min)
 
-load("results/gene_specific_mse_mean_true_shuff_sd.rdata")
+load("results/rdata/gene_specific/gene_specific_mse_mean_true_shuff_sd.rdata")
 mse_dev <- lmses
 colnames(mse_dev) <- paste0(colnames(mse_dev), '_dev')
 mse_dev$genes <- rownames(mse_dev)
@@ -1242,10 +1242,10 @@ By using our approach over the min MSE approach to chose alpha, we lose some edg
 
 ```{r, eval=T, fig.width=10}
 
-# load("results/gene_specific_edges_min.rdata")
+# load("results/rdata/gene_specific/gene_specific_edges_min.rdata")
 # edges_min <- edges
 # 
-# load(file = "results/gene_specific_edges_mean_true_shuff_sd.rdata")
+# load(file = "results/rdata/gene_specific/gene_specific_edges_mean_true_shuff_sd.rdata")
 # edges_dev <- edges
 # 
 # 
@@ -1283,7 +1283,7 @@ By using our approach over the min MSE approach to chose alpha, we lose some edg
 GRNs to be studied and compared (global versus gene-specific for the two models) :
 
 ```{r}
-load("results/gene_specific_edges_mean_true_shuff_sd.rdata")
+load("results/rdata/gene_specific/gene_specific_edges_mean_true_shuff_sd.rdata")
 
 annot <- DIANE::get_gene_information(genes,organism = "Arabidopsis thaliana")
 
@@ -1294,7 +1294,7 @@ rf_nets <- edges[rf_nets[str_detect(rf_nets,"0.005") ]]
 lasso_nets <- names(edges)[str_detect(names(edges),"LASSO_trueData") ]
 lasso_nets <- edges[lasso_nets[str_detect(lasso_nets,"0.005") ]]
 
-load(file = "results/100_permutations_lasso_edges.rdata")
+load(file = "results/rdata/weightedLASSO_edges_50rep.rdata")
 
 lasso_nets_0 <- names(edges)[str_detect(names(edges),"LASSO_0_trueData") ]
 lasso_nets_0 <- edges[lasso_nets_0[str_detect(lasso_nets_0,"0.005") ]]
@@ -1303,7 +1303,7 @@ lasso_nets_1 <- names(edges)[str_detect(names(edges),"LASSO_1_trueData") ]
 lasso_nets_1 <- edges[lasso_nets_1[str_detect(lasso_nets_1,"0.005") ]]
 
 
-load(file = "results/100_permutations_bRF_edges_inf.rdata")
+load(file = "results/rdata/weightedRF_edges_100rep.rdata")
 
 rf_nets_0 <- names(edges)[str_detect(names(edges),"RF_0_trueData") ]
 rf_nets_0 <- edges[rf_nets_0[str_detect(rf_nets_0,"0.005") ]]
@@ -1377,8 +1377,8 @@ Can we find TFBMs significantly enriched in the promoters of genes benefitting f
 
 ```{r}
 load("rdata/pwm_prom_jaspar_dap.rdata")
-load("results/alpha_per_gene_weighted_LASSO_test_mean_true_shuff_sd.rdata")
-load("results/alpha_per_gene_weighted_RF_mean_true_shuff_sd.rdata")
+load("results/rdata/gene_specific/alpha_per_gene_weightedLASSO_mean_true_shuff_sd.rdata")
+load("results/rdata/gene_specific/alpha_per_gene_weightedRF_mean_true_shuff_sd.rdata")
 
 pos_class_rf <- names(alphas_rf[alphas_rf!=0])
 pos_class_lasso <- names(alphas_lasso[alphas_lasso!=0])
@@ -1461,7 +1461,7 @@ genes_info[,c("nb_introns", "nb_transcripts")] <-
   gene_structure[match(genes_info$gene, gene_structure$gene),
                  c("n_introns", "n_transcripts")]
 
-# load("results/brf_perumtations_mse_all_genes_predict.rdata")
+# load("results/rdata/weightedRF_mse_100rep.rdata")
 # genes_info$mse_weightedRF <- rowMeans(lmses[str_detect(colnames(lmses[genes,]), "_0_trueData")])
 # load("results/lasso_perumtations_mse_all_genes_test.rdata")
 # genes_info$mse_weightedLASSO <- rowMeans(lmses[str_detect(colnames(lmses[genes,]), "_0_trueData")])
