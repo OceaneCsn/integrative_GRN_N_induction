@@ -1,5 +1,5 @@
 ---
-title: "Gene specific tuning of integrative GRN inference"
+title: "Gene-specific tuning of integrative GRN inference"
 output: 
   html_document:
     df_print: paged
@@ -48,15 +48,16 @@ ALPHAS <- seq(0,1, by = 0.1)
 ```
 
 
-# Getting the MSE and importance metrics of inferred GRNs
+# Getting inferred GRNs over a whole range of global alpha values
 
-For $alpha$ from 0 to 1 with a step of 0.1, infers 100 integrative models on 
+For $alpha$ from 0 to 1 with a step of 0.1, we infer 100 or 50 integrative models on 
 
 + true data
 
-+ a shuffled baseline.
++ a shuffled baseline, corresponding to a simulated null hypothesis.
 
-The following code chunks are very long to run.
+The following code chunks are very long to run (even in multitasking), and save their results in `reslults/rdata`, a folder which should be created beforehand.
+Results are a matrix of TF-target importances, edges, MSE values, and validation against DAP-Seq. 
 
 ## For weightedRF
 
@@ -183,10 +184,12 @@ save(val_dap, file = "results/rdata/weightedLASSO_validation_50rep.rdata")
 
 # Gene-level optimisation of TFBM information
 
+From the stored results, we now provide some code to examine the results and then optimize alpha.
+
 
 ## Plotting EDI behaviour for all genes
 
-How does the effective data integration vary when alpha increases?
+How does the effective data integration (EDI) vary when alpha increases?
 
 ### In weightedRF
 
@@ -222,7 +225,7 @@ rf
 dev.off()
 ```
 
-# In weightedLASSO
+### In weightedLASSO
 
 ```{r, fig.height=20}
 # loads the mats object (importance of TF-target interactions)
@@ -248,7 +251,7 @@ dev.off()
 ```
 
 
-TFBM support of globally optimized networks :
+## TFBM support of globally optimized networks :
 
 ```{r}
 # loads lasso edges
@@ -288,9 +291,13 @@ pwm_support <- d %>%
 ggsave(pwm_support, file = "results/supp_figures/TFBM_support.pdf", width = 11, height = 8)
 ```
 
+Wo do reach a TFBM support of 1 for $\alpha = 1$, which is the desired behavior.
+
 
 ## Some gene examples to illustrate our gene-specific optimization of alpha
 
+`get_opt_alpha_per_gene` is the function returning the optimal value of $\alpha$ for one gene, or drawing the corresponding plot.
+The optimal value of $\alpha$ is set to where the deviation from the shuffled baseline in terms of MSE is the greater, and if it exceeds a certain dispersion threshold.
 
 ### In weightedRF
 
@@ -327,7 +334,7 @@ ggexport(figure, filename = "results/gene_examples_weightedRF.pdf", width = 10, 
 ```
 
 
-Some more figures illustrating the approach on several gene cases for the ISMB 2023 talk : 
+Some more figures illustrating the approach on several gene cases for the ISMB 2023 talk and for the paper supp figures : 
 
 
 ```{r}
@@ -385,11 +392,7 @@ ggexport(mse, filename = "results/ismb_talk/wRF_mse.pdf",
 ```
 
 
-
-
-
-
-Returns the optimal value of alpha for all nitrate responsive genes :
+After these illustrations, we returns the optimal value of alpha for all nitrate responsive genes :
 
 ```{r, eval=F}
 # value of alpha per genes:
@@ -431,7 +434,7 @@ figure <- n/o/p
 ggexport(figure, filename = "results/gene_examples_weightedLASSO.pdf", width = 10, height = 9)
 ```
 
-
+Computing $\alpha$ for all genes :
 
 ```{r, eval=FALSE}
 # value of alpha per genes:
@@ -474,7 +477,7 @@ ggexport(hists, filename  = "results/alpha_histograms.pdf", height = 3, width = 
 
 # Plotting MSE behaviour for all genes
 
-Depending on their class (optimal alpha different from 0 or not).
+How does the MSE change with $\alpha$? Depending on their class (optimal alpha different from 0 or not).
 
 ## weightedRF
 
@@ -492,7 +495,6 @@ mse <- as.matrix(mse[str_detect(colnames(mse), "alpha")])
 mse_interest <- mse[pos_class,]
 mse_other <- mse[setdiff(rownames(mse), pos_class),]
 
-library(circlize)
 col_fun = colorRamp2(c(-2, 0, 2), hcl_palette = "Blue-Red 3")
 
 ha = HeatmapAnnotation(
@@ -510,7 +512,6 @@ Heatmap((mse_interest-rowMeans(mse_interest))/matrixStats::rowSds(mse_interest),
                 col = list(class = setNames(c("#70AD47", "grey"), 
                                             nm = c("class of interest", "no integration"))))
 dev.off()
-#pdf("results/rf_mse_others.pdf", height = 10)
 png("results/rf_mse_others.png", res = 300, height = 2200, width = 2000)
 Heatmap((mse_other-rowMeans(mse_other))/matrixStats::rowSds(mse_other),
         col = col_fun,show_column_names = F,
@@ -524,7 +525,7 @@ Heatmap((mse_other-rowMeans(mse_other))/matrixStats::rowSds(mse_other),
 dev.off()
 ```
 
-# For the lasso
+## weightedLASSO
 
 ```{r, fig.height=10}
 
@@ -549,7 +550,6 @@ ha = HeatmapAnnotation(
     alpha = anno_simple(as.numeric(str_remove(colnames(mse), "alpha "))),
     annotation_name_side = "left")
 
-#pdf("results/lasso_mse_interest.pdf", height = 7)
 png("results/lasso_mse_interest.png", res = 300, height = 2000, width = 2000)
 Heatmap((mse_interest-rowMeans(mse_interest))/matrixStats::rowSds(mse_interest), 
         col = col_fun, show_column_names = F,
@@ -561,7 +561,6 @@ Heatmap((mse_interest-rowMeans(mse_interest))/matrixStats::rowSds(mse_interest),
                 col = list(class = setNames(c("#70AD47", "grey"), 
                                             nm = c("class of interest", "no integration"))))
 dev.off()
-#pdf("results/lasso_mse_others.pdf", height = 7)
 png("results/lasso_mse_others.png", res = 300, height = 2200, width = 2000)
 Heatmap((mse_other-rowMeans(mse_other))/matrixStats::rowSds(mse_other),
         col = col_fun,show_column_names = F,
@@ -595,7 +594,6 @@ p_enrich
 ggexport(venn, filename = "results/classes_intersection.pdf", width = 4, height = 4)
 ```
 Not really, even though the intersection is clearly significant.
-
 
 # Properties of th gene-specifically optimized GRNs
 
@@ -678,7 +676,7 @@ save(val_specific, file = "results/rdata/gene_specific/gene_specific_validation_
 ```
 
 
-## Global optimisation of alpha
+## Precision and recall of global optimisation of alpha
 
 The following code validates globally inferred GRNs, with a given density, against an experimental gold standard (here, DAP-Seq interactions).
 
@@ -707,7 +705,8 @@ ggexport(precision_rf, filename = "results/supp_figures/precision_recall_weighte
 ```
 
 
-## Gene-specific optimisation of alpha
+## Precision and recall of gene-specific optimisation of alpha
+
 
 ```{r, warning=TRUE}
 settings <- c("model", "dataset", "rep", "density")
@@ -757,7 +756,10 @@ pr_curves <- data_val %>%
                                        c("shuffled.gene-specific","shuffled.global",
                                          "trueData.gene-specific", "trueData.global")));pr_curves
 ```
-Figure including permutations :
+
+## MSE, precision and recall of all networks
+
+Summarized in one figure, including the synthetic permutations :
 
 
 ```{r, fig.width=12, fig.height=10}
@@ -856,7 +858,7 @@ ggexport(plot_final, filename = "results/specific_grns_mean_true_shuff_sd.pdf", 
 ```
 
 
-Figure without permutations :
+Final figure without permutations, clearer for the article :
 
 
 ```{r, fig.width=12, fig.height=10}
@@ -980,8 +982,10 @@ ggexport(plot_final, filename = "results/specific_grns_no_permutations_mean_sds.
 
 ```
 
+In summary, gene-specific optimization of alpha allows to minimize the MSE, while still achieving near-optimal precision and a good recall in both models.
 
-# Comparison of our approach with the simplest min MSE criterion
+
+# Comparison of our approach with the simplest minimal MSE criterion
 
 
 Intersection between genes benefiting from data integration with the minimal MSE criterion.
@@ -1004,129 +1008,6 @@ p_enrich <- phyper(q=582, m = length(names(alphas_rf[alphas_rf!=0])),
 p_enrich
 ggexport(venn, filename = "results/classes_intersection_min.pdf", width = 4, height = 4)
 ```
-
-## MSE, precision and recall plots
-
-don't know if it will be used
-
-```{r, fig.width=10, fig.height=10, eval = F}
-load("results/rdata/gene_specific/gene_specific_grns_min.rdata")
-load("results/rdata/gene_specific/gene_specific_mse_min.rdata")
-load("results/rdata/gene_specific/gene_specific_edges_min.rdata")
-
-load("results/rdata/gene_specific/gene_specific_validation_min.rdata")
-
-spec_rf <- val_specific %>%
-  separate(network_name, into = settings, sep = "_") %>%
-    filter(density == 0.005 & model == "RF") %>%
-  mutate(density = paste("D =", density),
-           model = str_replace(model, "RF", "weightedRF"),
-           model = str_replace(model, "LASSO", "weightedLASSO"))%>%
-  ggplot(aes(x=dataset, y = precision, color = dataset, fill = dataset)) + 
-  scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
-    scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData"))) +
-  geom_hline(color = "#C55A11", yintercept = 0.331042, size= 1.5, show.legend = T) + 
-  geom_boxplot(size = 1, alpha = 0.5, outlier.alpha = 0) +
-  theme_pubr() + geom_jitter(width = 0.2, size = 2)+
-  theme(
-    strip.background = element_blank(),
-    axis.title.x = element_text(size = 22),
-    title = element_text(size = 16),
-    strip.text = element_text(size = 16),
-    legend.text = element_text(size = 15),
-    axis.text = element_blank(),
-    legend.position = 'none'
-  ) + xlab("") + ylim(c(0.2,0.46))+ ylab("")
-
-spec_lasso <- val_specific %>%
-  separate(network_name, into = settings, sep = "_") %>%
-    filter(density == 0.005 & model == "LASSO") %>%
-  mutate(density = paste("D =", density),
-           model = str_replace(model, "RF", "weightedRF"),
-           model = str_replace(model, "LASSO", "weightedLASSO"))%>%
-  ggplot(aes(x=dataset, y = precision, color = dataset, fill = dataset)) + 
-  scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
-    scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData"))) +
-  geom_hline(color = "#C55A11", yintercept = 0.331042, size= 1.5, show.legend = T) + 
-  geom_boxplot(size = 1, alpha = 0.5, outlier.alpha = 0) +
-  theme_pubr() + geom_jitter(width = 0.2, size = 2)+
-  theme(
-    strip.background = element_blank(),
-    axis.title.x = element_text(size = 22),
-    title = element_text(size = 16),
-    strip.text = element_text(size = 16),
-    legend.text = element_text(size = 15),
-    axis.text = element_blank(),
-    legend.position = 'none'
-  )+ xlab("")+ ylim(c(0.2,0.46))+ ylab("")
-
-
-mse_lasso_spec <- lmses %>%
-rownames_to_column("gene") %>%
-reshape2::melt()%>%
-  separate(variable,
-           into = c("model", "dataset",  "rep"),
-           sep = "_") %>%
-filter(model == "LASSO") %>%
-group_by(dataset, rep) %>%
-summarise(median_MSE = median(value, na.rm=T))%>%
-  ggplot(aes(x=dataset, y = median_MSE, color = dataset, fill = dataset)) + 
-scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
-  scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData"))) +
-geom_boxplot(size = 1, alpha = 0.5, outlier.alpha = 0) +
-theme_pubr() + geom_jitter(width = 0.2, size = 2)+
-theme(
-  strip.background = element_blank(),
-  axis.title.x = element_text(size = 22),
-  title = element_text(size = 16),
-  strip.text = element_text(size = 16),
-  legend.text = element_text(size = 15),
-  axis.text.x = element_blank(),
-  legend.position = 'none'
-)+ xlab("")+ ylab("")
-
-mse_rf_spec <- lmses %>%
-rownames_to_column("gene") %>%
-reshape2::melt()%>%
-  separate(variable,
-           into = c("model", "dataset",  "rep"),
-           sep = "_") %>%
-filter(model == "RF") %>%
-group_by(dataset, rep) %>%
-summarise(median_MSE = median(value, na.rm=T))%>%
-  ggplot(aes(x=dataset, y = median_MSE, color = dataset, fill = dataset)) + 
-scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
-  scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData"))) +
-geom_boxplot(size = 1, alpha = 0.5, outlier.alpha = 0) +
-theme_pubr() + geom_jitter(width = 0.2, size = 2)+
-theme(
-  strip.background = element_blank(),
-  axis.title.x = element_text(size = 22),
-  title = element_text(size = 16),
-  strip.text = element_text(size = 16),
-  legend.text = element_text(size = 15),
-  axis.text.x = element_blank(),
-  legend.position = 'none'
-)+ xlab("")+ ylab("") 
-
-
-mse_lasso + ylim(c(0.17,0.265)) +labs(subtitle = "LASSO")+ ggtitle("MSE") + 
-  mse_lasso_spec+ ylim(c(0.17,0.265)) +labs(subtitle = "LASSO")+
-  mse_rf +  ylim(c(0.17,0.265)) +labs(subtitle = "RF") +
-  mse_rf_spec+ ylim(c(0.17,0.265))  +labs(subtitle = "RF")+
-  precision_lasso + ylim(c(0.2,0.46)) + ggtitle("Precision") + labs(subtitle = "LASSO")+
-  theme(legend.position = 'none') + 
-  spec_lasso + labs(subtitle = "LASSO")+
-  precision_rf + labs(subtitle = "RF") +ylim(c(0.2,0.46))+
-  theme(legend.position = 'none')+ggtitle("") + 
-  spec_rf +labs(subtitle = "RF") +
-plot_layout(guides = "collect", ncol = 4, widths = c(1,1,1,1)) 
-```
-
-# Do genes lost by our metric have a lower precision?
-
-
-## Differences between gene lists for the two criteria : Maximal divergence from permutations and minimal MSE.
 
 Differences between the two criteria for the same model : 
 
@@ -1175,7 +1056,9 @@ matrix(c(length(same_rf), length(lost_rf), length(saved_rf),
                                             c("data integration min", "no data integration min")))
 ```
 
-## Comparing the precision and recall of min and dev GRNs
+
+## MSE, precision and recall analysis
+
 
 ```{r, fig.width=10}
 load("results/rdata/gene_specific/gene_specific_validation_min.rdata")
@@ -1197,7 +1080,6 @@ precision_recall_min_dev <- rbind.data.frame(val_specific_dev, val_specific_min)
 ```
 
 
-## Comparing the ME of the two approaches
 
 ```{r, fig.width = 10, fig.height=5}
 load("results/rdata/gene_specific/gene_specific_mse_min.rdata")
@@ -1237,45 +1119,7 @@ min_dev_plot <- mse_plot + precision_recall_min_dev +
 ggexport(min_dev_plot, filename = "results/supp_figures/min_mse_comparison.pdf", width = 10, height = 5)
 ```
 
-By using our approach over the min MSE approach to chose alpha, we lose some edges and gain some. Do we loose low precision/recall edges and gain high precision/recall edges?
 
-
-```{r, eval=T, fig.width=10}
-
-# load("results/rdata/gene_specific/gene_specific_edges_min.rdata")
-# edges_min <- edges
-# 
-# load(file = "results/rdata/gene_specific/gene_specific_edges_mean_true_shuff_sd.rdata")
-# edges_dev <- edges
-# 
-# 
-# edges_diff <- list()
-# for(name in names(edges)){
-#   print(name)
-#   edges_diff[[paste0(name, "_gained")]] <- setdiff(edges_dev[[name]], edges_min[[name]])
-#   edges_diff[[paste0(name, "_lost")]] <- setdiff(edges_min[[name]], edges_dev[[name]])
-# }
-# 
-# settings = c("model", "dataset", "rep", "density", "edge")
-# 
-# val_diff <- evaluate_networks(
-#     edges_diff,
-#     validation = c("DAPSeq"),
-#     nCores = 30,
-#     input_genes = genes,
-#     input_tfs = tfs)
-# 
-# val_diff[, settings] <-
-#   str_split_fixed(val_diff$network_name, '_', length(settings))
-# 
-# val_diff %>%
-#   filter(dataset == "trueData" & 
-#            density < 0.05) %>%
-#   ggplot(aes(x = recall, y = precision, color = edge)) + 
-#   geom_point()+
-#   facet_nested_wrap(vars(model, density), ncol = 2, scales = "free") + theme_bw()+
-#   theme(strip.background = element_blank()) + stat_ellipse()
-```
 
 # Nitrate signalling analysis
 
