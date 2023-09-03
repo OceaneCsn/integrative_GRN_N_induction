@@ -4,6 +4,7 @@ library(limma)
 library(tidyverse)
 library(ggpubr)
 
+# raw expression data
 data <- read.csv("data/Arabidopsis_Varala_2018_nitrate_response_roots_with_control.txt",
                  sep = '\t', row.names = "Gene",
                  h = T, check.names = F)
@@ -16,22 +17,22 @@ tcc_object <-
 threshold = 10 * ncol(data)
 tcc_object <- DIANE::filter_low_counts(tcc_object, threshold)
 normalized_counts <- TCC::getNormalizedData(tcc_object)
+
+# PCA
 pca <- draw_PCA(normalized_counts)
 ggexport(pca, filename = "results/supp_figures/PCA.pdf", width = 15, height = 12)
-
 
 ## samples 10min and 15min seem really odd, like generated in another experiment or something
 normalized_counts <- normalized_counts[,!str_detect(colnames(normalized_counts), '10|15')]
 draw_PCA(normalized_counts)
 
-##### DEGs by N*control
 
-
+##### DEGs by N*time
 N_treatment <- ifelse(str_detect(colnames(normalized_counts), "N"), "N", "C")
 time <- as.numeric(substr(str_split_fixed(colnames(normalized_counts), '_', 2)[,1], start = 2, 
                           stop = length(str_split_fixed(colnames(normalized_counts), '_', 2)[,1])))
 
-### Differential expression via a spline design
+### limma with a spline design
 X<-ns(time, df=5)
 design<-model.matrix(~X*N_treatment)
 fit<-lmFit(normalized_counts,design)

@@ -265,6 +265,18 @@ ggexport(figure, filename = "results/gene_examples_weightedRF.pdf", width = 10, 
 
 ```
 
+<!-- To see some genes saved by our criteria and true SD :  -->
+
+<!-- ```{r} -->
+<!-- for(g in sample(saved_rf, size = 10, replace = F)){ -->
+<!--  print(get_opt_alpha_per_gene(g, mats = mats, lmses = lmses, dev = "true")) -->
+<!-- } -->
+<!-- ``` -->
+# ```{r}
+# for(g in sample(lost_rf, size = 10, replace = F)){
+#  print(get_opt_alpha_per_gene(g, mats = mats, lmses = lmses, dev = "true"))
+# }
+# ```
 
 
 

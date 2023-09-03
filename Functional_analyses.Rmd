@@ -61,6 +61,10 @@ Are the genes with $\alpha > 1$ (the ones for which we allow TFBM integration) t
 load("results/rdata/gene_specific/alpha_per_gene_weightedLASSO_mean_true_shuff_sd.rdata")
 load("results/rdata/gene_specific/alpha_per_gene_weightedRF_mean_true_shuff_sd.rdata")
 
+# optimal values of alpha :
+# load("results/rdata/gene_specific/alpha_per_gene_weightedLASSO_min.rdata")
+# load("results/rdata/gene_specific/alpha_per_gene_weightedRF_min.rdata")
+
 venn <- ggVennDiagram(list("weightedRF" = names(alphas_rf[alphas_rf!=0]),
                    "weightedLASSO" = names(alphas_lasso[alphas_lasso!=0])), edge_size = 2)+ 
   scale_color_manual( values = c("#C55A11","#E67F87"))+
@@ -83,8 +87,6 @@ Can we find TFBMs significantly enriched in the promoters of genes benefitting f
 
 ```{r}
 load("rdata/pwm_prom_jaspar_dap.rdata")
-load("results/rdata/gene_specific/alpha_per_gene_weightedLASSO_mean_true_shuff_sd.rdata")
-load("results/rdata/gene_specific/alpha_per_gene_weightedRF_mean_true_shuff_sd.rdata")
 
 pos_class_rf <- names(alphas_rf[alphas_rf!=0])
 pos_class_lasso <- names(alphas_lasso[alphas_lasso!=0])
@@ -223,7 +225,7 @@ TFs_always <- genes_info %>%
 pval <- phyper(q=length(intersect(never, tfs)), 
        m = length(tfs), 
        n = length(genes) - length(tfs),
-       k = length(never), lower.tail = F)
+       k = length(never))
 
 TFs_never <- genes_info %>%
   group_by(never) %>%
@@ -243,8 +245,8 @@ charact <- always_plot + theme(legend.position = "none") +
   TFs_always +theme(legend.position = "none")+  TFs_never +theme(legend.position = "none")+ 
   plot_layout(ncol = 2, heights = c(3,1));charact
 
-ggexport(charact, width = 14, height = 12, 
-         filename = "results/supp_figures/genes_characteristics_TFBM_integration.pdf")
+# ggexport(charact, width = 14, height = 12, 
+#          filename = "results/supp_figures/genes_characteristics_TFBM_integration.pdf")
 ```
 
 
@@ -283,6 +285,7 @@ First loading the GRNs to be studied and compared (global versus gene-specific f
 
 ```{r}
 load("results/rdata/gene_specific/gene_specific_edges_mean_true_shuff_sd.rdata")
+load("results/rdata/gene_specific/gene_specific_edges_true_sd.rdata")
 
 annot <- DIANE::get_gene_information(genes,organism = "Arabidopsis thaliana")
 
@@ -328,7 +331,7 @@ ranks_rf <- get_hubs(rf_nets_0)$ranking+ ggtitle("weightedRF alpha = 0") +
 # ranks_rf <- get_hubs(rf_nets)$ranking+ ggtitle("weightedRF, gene-specific optimsation")+
 #   theme(legend.position = "right", legend.text = element_text(size = 15))
 
-ggexport(ranks_rf, filename = "results/supp_figures/weightedRF_ranks_grns.pdf", width = 20, hight = 7)
+# ggexport(ranks_rf, filename = "results/supp_figures/weightedRF_ranks_grns.pdf", width = 20, hight = 7)
 # regulators in the top ranking of all GRNs
 common_rf <- intersect(get_hubs(rf_nets)$top25 , union(get_hubs(rf_nets_0)$top25,
                                         get_hubs(rf_nets_1)$top25))
@@ -350,7 +353,7 @@ ranks_lasso <- get_hubs(lasso_nets_0)$ranking+ ggtitle("weightedLASSO alpha = 0"
   theme(legend.position = "top", legend.text = element_text(size = 15))+
   plot_layout(guides = "collect") 
 
-ggexport(ranks_lasso, filename = "results/supp_figures/weightedLASSO_ranks_grns.pdf", width = 20, hight = 7)
+# ggexport(ranks_lasso, filename = "results/supp_figures/weightedLASSO_ranks_grns.pdf", width = 20, hight = 7)
 
 
 # regulators in the top ranking of all GRNs
