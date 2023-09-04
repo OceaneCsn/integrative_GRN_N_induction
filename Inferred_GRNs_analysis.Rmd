@@ -807,17 +807,18 @@ draw_importances_comparison <- function(m1, m2, saved, lost, same, edge_type = "
 return(importances %>%
          # filter(baseline > 0) %>%
 ggplot(aes(x = log(baseline+min),
-             y = interaction(pi,target_type), fill = interaction(target_type))) +
+             y = interaction(target_type), fill = interaction(target_type))) +
   stat_density_ridges(scale = 2, geom = "density_ridges_gradient", calc_ecdf = TRUE,
     quantiles = 2, quantile_lines = TRUE, alpha = 0.5, rel_min_height = 0.01) + 
   scale_fill_viridis_d(name = "Target gene")+
-  geom_vline(xintercept = thr_dev, color = "darkorange", linewidth = 1.5)+
+  geom_vline(xintercept = thr_dev, color = "darkorange", linewidth = 1.5)
+  +
   importances%>%
          # filter(min_MSE > 0) %>%
 ggplot(aes(x = log(min_MSE+min),
-             y = interaction(pi, target_type), fill = interaction(target_type))) +
+             y = interaction(target_type), fill = interaction(target_type))) +
   stat_density_ridges(scale = 2, geom = "density_ridges_gradient", calc_ecdf = TRUE,
-    quantiles = 2, quantile_lines = TRUE, alpha = 0.5, rel_min_height = 0.01) + 
+    quantiles = 2, quantile_lines = TRUE, alpha = 0.5, rel_min_height = 0.01) +
   scale_fill_viridis_d(name = "Target gene")+
   geom_vline(xintercept = thr_min, color = "darkorange", linewidth = 1.5)+
   plot_layout(guides = "collect") & theme(legend.position = "top"))
@@ -826,21 +827,10 @@ ggplot(aes(x = log(min_MSE+min),
 
 draw_importances_comparison(m1 = mean_mats_min_rf, m2 = mean_mats_dev_rf, 
                             saved = saved_rf, lost = lost_rf, same = same_rf)
-
 draw_importances_comparison(m1 = mean_mats_min_lasso, mean_mats_dev_lasso, 
                             saved_lasso, lost_lasso, same_lasso)
 
-
-draw_importances_comparison(m1 = mean_mats_min_rf, m2 = mean_mats_dev_rf, 
-                            saved = saved_rf, lost = lost_rf, same = same_rf, 
-                            edge_type = "unsupported by DAP-Seq")
-
-draw_importances_comparison(m1 = mean_mats_min_lasso, mean_mats_dev_lasso, 
-                            saved_lasso, lost_lasso, same_lasso, 
-                            edge_type = "unsupported by DAP-Seq")
-
 ```
-
 
 
 Pour wRF, on observe un mode de valeurs d'importance à 0 pour les TFs qui n'ont pas pi = 1. En effet, avec note critère, quand on fait de l'intégration, cette intégration est souvent poussée à alpha = 1, ce qui interdit l'utilisation de TFs non supprtés par un TFBM. On observe donc cette bimodalité uniquement pour les gènes chez qui on intègre avec notre critère, et dans les GRN appris avec notre critère. On n'observe cette bimodalité beaucoup moins pour min_MSE, car cette approche a tendence à moins pousser alpha vers de fortes valeurs : 
@@ -862,3 +852,84 @@ ggplot(aes(x = alpha, fill = model)) +
         legend.position = "none")+
   xlab(expression(alpha))+ ylab("Number of genes");hists
 ```
+
+On pourrait à la place, afficher les courbes précision rappel pour plein de valeurs d'importance.
+For weightedRF:
+
+```{r}
+saved_curve_dev <- evaluate_fully_connected(mean_mats_dev_rf[,saved_rf], N = 20, 
+                                            validation = "DAPSeq", nCores = 20, 
+                                            input_tfs = tfs,
+                                            input_genes = c(saved_rf))%>%
+  mutate(targets = "dev saved")
+
+lost_curve_min <- evaluate_fully_connected(mean_mats_min_rf[,lost_rf], N = 20, 
+                                            validation = "DAPSeq", nCores = 20, 
+                                           input_tfs = tfs,
+                                            input_genes = c(lost_rf)) %>%
+  mutate(targets = "min lost")
+
+
+ lost_saved_rf <- rbind.data.frame(saved_curve_dev, lost_curve_min) %>%
+  ggplot(aes(x=recall, y = precision, color = targets, label = network_name)) + 
+  geom_line() + geom_point()+ geom_text(nudge_x = 0.02)
+
+saved_curve_dev <- evaluate_fully_connected(mean_mats_dev_rf, N = 20, 
+                                            validation = "DAPSeq", nCores = 20,
+                                            input_genes = genes, input_tfs = tfs)%>%
+  mutate(targets = "dev")
+
+lost_curve_min <- evaluate_fully_connected(mean_mats_min_rf, N = 20, 
+                                            validation = "DAPSeq", nCores = 20,
+                                            input_genes =genes, input_tfs = tfs) %>%
+  mutate(targets = "min")
+
+all_targets <- rbind.data.frame(saved_curve_dev, lost_curve_min) %>%
+  ggplot(aes(x=recall, y = precision, color = targets, label = network_name)) + 
+  geom_line() + geom_point()+ geom_text()
+
+lost_saved_rf+all_targets
+
+```
+
+```{r}
+saved_curve_dev <- evaluate_fully_connected(mean_mats_dev_lasso[,saved_lasso], N = 20, 
+                                            validation = "DAPSeq", nCores = 20, 
+                                            input_tfs = tfs,
+                                            input_genes = c(saved_lasso))%>%
+  mutate(targets = "dev saved")
+
+lost_curve_min <- evaluate_fully_connected(mean_mats_min_lasso[,lost_lasso], N = 20, 
+                                            validation = "DAPSeq", nCores = 20, 
+                                           input_tfs = tfs,
+                                            input_genes = c(lost_lasso)) %>%
+  mutate(targets = "min lost")
+
+
+lost_saved_lasso <- rbind.data.frame(saved_curve_dev, lost_curve_min) %>%
+  ggplot(aes(x=recall, y = precision, color = targets, label = network_name)) + 
+  geom_line() + geom_point()+ geom_text(nudge_x = 0.02) + 
+  ggtitle("Precision-recall for weightedLASSO")
+
+
+saved_curve_dev <- evaluate_fully_connected(mean_mats_dev_lasso, N = 20, 
+                                            validation = "DAPSeq", nCores = 20, 
+                                            input_tfs = tfs,
+                                            input_genes = genes)%>%
+  mutate(targets = "dev")
+
+lost_curve_min <- evaluate_fully_connected(mean_mats_min_lasso, N = 20, 
+                                            validation = "DAPSeq", nCores = 20, 
+                                           input_tfs = tfs,
+                                            input_genes = genes) %>%
+  mutate(targets = "min")
+
+
+all_targets_lasso <- rbind.data.frame(saved_curve_dev, lost_curve_min) %>%
+  ggplot(aes(x=recall, y = precision, color = targets, label = network_name)) + 
+  geom_line() + geom_point()+ geom_text(nudge_x = 0.02) + 
+  ggtitle("Precision-recall for weightedLASSO")
+
+lost_saved_lasso+all_targets_lasso
+```
+

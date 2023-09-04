@@ -207,7 +207,9 @@ evaluate_network <-
 
 
 
-
+# runs the evaluate network function in parallel for a list of networks
+# returns the results as a dataframe with precision and recall for each network
+# of the list
 evaluate_networks <- function(edges_list, validation = c("TARGET", "CHIPSeq", "DAPSeq"), nCores = 32,
                               input_genes = NULL, input_tfs = NULL, tf_validation_subset = NULL){
   
@@ -236,6 +238,55 @@ evaluate_networks <- function(edges_list, validation = c("TARGET", "CHIPSeq", "D
   return(result.validation)
 }
 
+
+# return a precision/recall curve for a range of N different importance threshold
+# this is useful to draw precision and recall curves
+evaluate_fully_connected <- function(mat, N, validation = c("TARGET", "CHIPSeq", "DAPSeq"), nCores = 32,
+                              input_genes = NULL, input_tfs = NULL, tf_validation_subset = NULL){
+  
+  # reads the input matrix
+  imp <-  reshape2::melt(mat) %>%
+    rename(from = Var1, to = Var2, importance = value) %>%
+    mutate(importance = ifelse(importance<0, 0, importance))
+  
+  # probs <- seq(0, 1, length.out = N)
+  # densities <- quantile(imp$importance, probs)
+  # or
+  # densities <- seq(min(imp$importance), max(imp$importance), length.out = N)
+  
+  top_edges <- c(1, 0.5,0.2,0.1,0.075, 0.05,0.025,0.01,0.0075,
+                 0.005, 0.0025,0.002,0.0015, 0.001)
+  
+  edges_list <- list()
+  for(t in top_edges){
+    edges_list[[as.character(t)]] <- imp %>%
+      top_frac(t, wt = importance)
+  }
+  
+  registerDoParallel(cores = nCores)
+  message(paste("\nParallel network validation using", foreach::getDoParWorkers(), "cores."))
+  "%dopar%" <- foreach::"%dopar%"
+  tic()
+  suppressPackageStartupMessages(
+    result.validation <-
+      doRNG::"%dorng%"(foreach::foreach(network_name = names(edges_list), .combine = rbind),
+                       {
+                         val <- evaluate_network(edges_list[[network_name]], 
+                                                 validation = validation, 
+                                                 input_genes = input_genes, 
+                                                 input_tfs = input_tfs, 
+                                                 tf_validation_subset = tf_validation_subset)
+                         
+                         data.frame("network_name" = c(network_name), 
+                                    "precision" = c(val$tpr), 
+                                    "recall" = c(val$recall))
+                         
+                       })
+  )
+  toc()
+  attr(result.validation, "rng") <- NULL # It contains the whole sequence of RNG seeds
+  return(result.validation)
+}
 
 
 
