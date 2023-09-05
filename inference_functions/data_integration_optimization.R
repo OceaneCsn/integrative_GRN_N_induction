@@ -61,9 +61,7 @@ draw_gene_effective_integration <- function(gene, mats, prior=1, type = "rank", 
     geom_ribbon(aes(ymin = mean_imp - sd_imp , 
                     ymax = mean_imp + sd_imp  ), 
                 alpha = .4)  +theme_pubr(legend = "none")+
-    ylab("Effective data integration")+
-    ggtitle("Effective data integration") + 
-    labs(subtitle = gene)+
+    xlab(expression(alpha))+ylab("EDI")+ ggtitle(gene)+
     scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
     scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))
   plot + xlab(expression(alpha))
@@ -97,10 +95,10 @@ draw_gene_mse <- function(gene, lmses, title = NULL){
       y = value,
       color = dataset,
       fill = dataset
-    )) +ggtitle(paste("MSE"))+ylab("MSE/Var(gene)")+
+    )) +ylab("MSE")+ xlab(expression(alpha))+
     geom_ribbon(aes(ymin = mean_mse - sd_mse , 
                     ymax = mean_mse + sd_mse  ), 
-                alpha = .4)  +theme_pubr(legend = "top")+
+                alpha = .4)  +theme_pubr(legend = "top")+ggtitle(gene)+
     geom_point(alpha = 0.1) + geom_line(aes(y=mean_mse))+xlab(expression(alpha))+ 
     scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
     scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))
@@ -122,7 +120,7 @@ draw_gene_mse <- function(gene, lmses, title = NULL){
 #'
 #' @return A ggplot object of a value of alpha.
 #' @export
-get_opt_alpha_per_gene <- function(gene, mats, lmses, type = "rank", dev = "mean",
+get_opt_alpha_per_gene <- function(gene, mats, lmses, type = "rank", dev = "true",
                                    return_alpha = F, metric = 'div'){
   tfs_with_motif <- names(which(pwm_occurrence[gene,]==1))
   # gene with no TFBS has an optimal alpha of 0
@@ -222,7 +220,7 @@ get_opt_alpha_per_gene <- function(gene, mats, lmses, type = "rank", dev = "mean
       # geom_line(aes(x=mean_imp, y = mean_mse), size=1) + 
       # geom_line(aes(x=imps, y = approx_mse), col="black")+
       theme_pubr(legend = "none") +
-      ylab("MSE/Var(gene)") + xlab("Effective data integration") + ggtitle("MSE=f(effective integration)")+ 
+      ylab("MSE") + xlab("EDI") + ggtitle(gene)+
       scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
       scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
       geom_vline(xintercept = eff_opt, size = 2, col="#4670CD") +

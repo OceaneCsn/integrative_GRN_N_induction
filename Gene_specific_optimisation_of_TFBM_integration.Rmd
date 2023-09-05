@@ -243,8 +243,9 @@ load("results/rdata/weightedRF_mse_100rep.rdata")
 load("results/rdata/weightedRF_importances_100rep.rdata")
 
 gene_no_benefit <- "AT1G30270"
-gene_benefit_optimum <- "AT1G14720"
+gene_benefit_optimum <- "AT5G60670"
 gene_benefit <- "AT5G48970"
+gene_saved <- "AT3G20320"
 
 n <- draw_gene_effective_integration(gene_no_benefit, mats = mats, prior = 1) +
   draw_gene_mse(gene_no_benefit, lmses = lmses)+
@@ -260,23 +261,30 @@ p <- draw_gene_effective_integration(gene_benefit, mats = mats, prior = 1) +
   plot_annotation(title = gene_benefit)
 
 
-figure <- n/o/p;figure
-ggexport(figure, filename = "results/gene_examples_weightedRF.pdf", width = 10, height = 9)
+figure <- (draw_gene_effective_integration(gene_benefit, mats = mats, prior = 1) +
+  draw_gene_mse(gene_benefit, lmses = lmses)+ylim(c(0.045, 0.1))+
+  get_opt_alpha_per_gene(gene_benefit, mats = mats, lmses = lmses))+
+  plot_layout(tag_level = 'new')+
+  get_opt_alpha_per_gene(gene_benefit_optimum, mats = mats, lmses = lmses)+
+  xlim(c(90,160))+ylim(c(0.245, 0.360))+
+  get_opt_alpha_per_gene(gene_saved, mats = mats, lmses = lmses)+
+  get_opt_alpha_per_gene(gene_no_benefit, mats = mats, lmses = lmses)+ 
+  plot_annotation(tag_levels = c('a', '1'))
+
+ggexport(figure, filename = "results/gene_examples_weightedRF.pdf", width = 10, height = 8)
 
 ```
 
-<!-- To see some genes saved by our criteria and true SD :  -->
 
-<!-- ```{r} -->
-<!-- for(g in sample(saved_rf, size = 10, replace = F)){ -->
-<!--  print(get_opt_alpha_per_gene(g, mats = mats, lmses = lmses, dev = "true")) -->
-<!-- } -->
-<!-- ``` -->
-# ```{r}
-# for(g in sample(lost_rf, size = 10, replace = F)){
-#  print(get_opt_alpha_per_gene(g, mats = mats, lmses = lmses, dev = "true"))
-# }
-# ```
+```{r}
+# genes lost by our approach but for which min MSE integrates TFBM
+genes_removed <- get_opt_alpha_per_gene("AT4G22570", mats = mats, lmses = lmses, dev = "true")+ggtitle("AT4G22570")+
+  get_opt_alpha_per_gene("AT3G04530", mats = mats, lmses = lmses, dev = "true")+ggtitle("AT3G04530")
+
+ggexport(genes_removed, filename = "results/supp_figures/wRF_example_gene_lost.pdf", width = 10, height = 5)
+
+```
+
 
 
 
@@ -335,8 +343,6 @@ mse <- draw_gene_mse("AT1G70790", lmses = lmses)+
 ggexport(mse, filename = "results/ismb_talk/wRF_mse.pdf", 
          width = 6, height = 5)
 ```
-
-
 
 
 
