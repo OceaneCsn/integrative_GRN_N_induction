@@ -269,7 +269,7 @@ figure <- (draw_gene_effective_integration(gene_benefit, mats = mats, prior = 1)
   xlim(c(90,160))+ylim(c(0.245, 0.360))+
   get_opt_alpha_per_gene(gene_saved, mats = mats, lmses = lmses)+
   get_opt_alpha_per_gene(gene_no_benefit, mats = mats, lmses = lmses)+ 
-  plot_annotation(tag_levels = c('a', '1'))
+  plot_annotation(tag_levels = c('a', '1')) + plot_layout(heights = c(0.8,1))
 
 ggexport(figure, filename = "results/gene_examples_weightedRF.pdf", width = 10, height = 8)
 
