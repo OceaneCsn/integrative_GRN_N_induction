@@ -286,66 +286,6 @@ ggexport(genes_removed, filename = "results/supp_figures/wRF_example_gene_lost.p
 ```
 
 
-
-
-Some more figures illustrating the approach on several gene cases for the ISMB 2023 talk and for the paper supp figures : 
-
-
-```{r}
-# mse increase (or AT5G64660)
-compromise <- get_opt_alpha_per_gene("AT1G14720", mats = mats, lmses = lmses)+
-  labs(subtitle = "AT1G14720")+
-  get_opt_alpha_per_gene("AT5G16650", mats = mats, lmses = lmses)+
-  labs(subtitle = "AT5G16650")
- 
-
-# mse decrease
-ideal <- get_opt_alpha_per_gene("AT1G70790", mats = mats, lmses = lmses)+
-  theme(legend.position = "right") + 
-  labs(subtitle = "AT1G70790")
-
-
-# mse increase_bad
-bad <- get_opt_alpha_per_gene("AT1G56230", mats = mats, lmses = lmses) +
-  labs(subtitle = "AT1G56230")+ 
-  get_opt_alpha_per_gene("AT2G29990", mats = mats, lmses = lmses)+
-  labs(subtitle = "AT2G29990")
-
-
-# TFBM integration with min mse but not our approach
-lost <- get_opt_alpha_per_gene("AT1G47395", mats = mats, lmses = lmses)+
-  labs(subtitle = "AT1G47395")
-
-# TFBM integration with our approach but not min MSE
-saved <- get_opt_alpha_per_gene("AT3G20320", mats = mats, lmses = lmses)+
-  labs(subtitle = "AT3G20320")
-
-get_opt_alpha_per_gene("AT5G43420", mats = mats, lmses = lmses)
-get_opt_alpha_per_gene("AT3G07590", mats = mats, lmses = lmses)
-
-ggexport(ideal, filename = "results/ismb_talk/wRF_ideal.pdf", width = 6, height = 5)
-ggexport(compromise, filename = "results/ismb_talk/wRF_compromise.pdf", width = 10, height = 5)
-ggexport(bad, filename = "results/ismb_talk/wRF_bad.pdf", width = 10, height = 5)
-
-ggexport(lost, filename = "results/supp_figures/wRF_example_gene_lost.pdf", width = 5, height = 5)
-ggexport(saved, filename = "results/supp_figures/wRF_example_gene_saved.pdf", width = 5, height = 5)
-
-
-eff_data <- draw_gene_effective_integration("AT1G14720", mats = mats)+
-   theme(legend.position = "right") 
-
-ggexport(eff_data, filename = "results/ismb_talk/wRF_eff_data_int.pdf", 
-         width = 6, height = 5)
-
-mse <- draw_gene_mse("AT1G70790", lmses = lmses)+
-   theme(legend.position = "right") 
-
-ggexport(mse, filename = "results/ismb_talk/wRF_mse.pdf", 
-         width = 6, height = 5)
-```
-
-
-
 ### In weightedLASSO:
 
 
@@ -353,6 +293,11 @@ ggexport(mse, filename = "results/ismb_talk/wRF_mse.pdf",
 # loads mse and importances for weightedLASSO
 load("results/rdata/weightedLASSO_mse_50rep.rdata")
 load("results/rdata/weightedLASSO_importances_50rep.rdata")
+
+
+gene_benefit = "AT3G52060"
+gene_benefit_optimum = "AT2G41440"
+gene_no_benefit = "AT5G11210"
 
 n <- draw_gene_effective_integration(gene_no_benefit, mats = mats, prior = 1) +
   draw_gene_mse(gene_no_benefit, lmses = lmses)+
@@ -367,10 +312,9 @@ p <- draw_gene_effective_integration(gene_benefit, mats = mats, prior = 1) +
   get_opt_alpha_per_gene(gene_benefit, mats = mats, lmses = lmses)+
   plot_annotation(title = gene_benefit)
 
-
 n/o/p
 figure <- n/o/p
-ggexport(figure, filename = "results/gene_examples_weightedLASSO.pdf", width = 10, height = 9)
+ggexport(figure, filename = "results/supp_figures/gene_examples_weightedLASSO.pdf", width = 10, height = 9)
 ```
 
 
