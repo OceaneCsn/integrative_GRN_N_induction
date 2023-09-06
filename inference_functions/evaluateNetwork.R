@@ -371,7 +371,7 @@ draw_validation <- function(validation, densities = c(0.005,0.01,0.05),
 
 # Plots the ranking of TFs based on their out degree and highlights
 # the known nitrate regulators
-get_hubs <- function(nets, metric = "degree"){
+get_hubs <- function(nets, metric = "degree", unique_regs = c()){
   g <- setNames(rep(0, length(genes)), genes)
   for(net in names(nets)){
     if(metric == "degree")
@@ -387,7 +387,7 @@ get_hubs <- function(nets, metric = "degree"){
   df$regulator <- ifelse(df$label %in% c("DIV1", "TGA1", "TGA4", "HHO2", "HHO3", "HRS1", "BT1", "BT2"), 
                          "Nitrate regulator",
                          ifelse(df$label %in%  c("VRN1", "CRF4"), "Candidate nitrate\nregulator",
-                                ifelse(df$label %in% c("NLP7", "PHL1", "BZIP53", "HHO6", "JKD"),
+                                ifelse(df$label %in% unique_regs,
                                        "Retreived by gene\nspecific data integration\n optimisation", "No knowlege")))
   
   
@@ -428,6 +428,68 @@ get_transitivity <- function(nets, settings){
   res$settings <- settings
   return(res)
 }
+
+
+
+
+# draw density of importances values of edges present in the gold standard,
+# and compares two models (m1, m2), given as importance matrices.
+draw_importances_comparison <- function(m1, m2, saved, lost, same, edge_type = "DAPSeq"){
+  # m1 : min mse
+  # m2 : dev criterion
+  m2 <-  reshape2::melt(m2) %>%
+    rename(from = Var1, to = Var2, baseline = value) 
+  
+  min <- 0.75*min(m2$baseline[m2$baseline>0])
+  
+  known_tfs <- unique(validated_edges[validated_edges$type=="DAPSeq",]$from)
+  
+  importances <- reshape2::melt(m1) %>%
+    rename(from = Var1, to = Var2, min_MSE = value) %>%
+    left_join(m2, by = c("from", "to")) %>%
+    left_join(validated_edges, by = c("from", "to")) %>%
+    left_join(prior, by = c("from", "to")) %>%
+    mutate(importance_change = baseline - min_MSE)  %>%
+    mutate(type = ifelse(is.na(type), 
+                         ifelse(from %in% known_tfs, "unsupported by DAP-Seq", "unknown"), 
+                         type)) %>%
+    mutate(target_type = ifelse(to %in% saved, "2. saved",
+                                ifelse(to %in% lost, "3. lost", 
+                                       ifelse(to %in% same, "1. both", "4. none")))) %>%
+    filter(type == edge_type) %>%
+    mutate(pi = paste("pi =", pi, "-")) %>%
+    mutate(baseline = ifelse(baseline <0, 0, baseline),
+           min_MSE=ifelse(min_MSE<0, 0, min_MSE))
+  
+  baseline_ranking <- importances %>%
+    top_n(1432, wt = baseline)
+  thr_dev <- log(baseline_ranking[nrow(baseline_ranking),]$baseline+min)
+  
+  min_ranking <- importances %>%
+    top_n(1432, wt = min_MSE)
+  thr_min <- log(min_ranking[nrow(min_ranking),]$min_MSE+min)
+  
+  return(importances %>%
+           # filter(baseline > 0) %>%
+           ggplot(aes(x = log(baseline+min),
+                      y = interaction(target_type), fill = interaction(target_type))) +
+           stat_density_ridges(scale = 2, geom = "density_ridges_gradient", calc_ecdf = TRUE,
+                               quantiles = 2, quantile_lines = TRUE, alpha = 0.5, rel_min_height = 0.01) + 
+           scale_fill_viridis_d(name = "Target gene")+
+           geom_vline(xintercept = thr_dev, color = "darkorange", linewidth = 1.5)
+         +
+           importances%>%
+           # filter(min_MSE > 0) %>%
+           ggplot(aes(x = log(min_MSE+min),
+                      y = interaction(target_type), fill = interaction(target_type))) +
+           stat_density_ridges(scale = 2, geom = "density_ridges_gradient", calc_ecdf = TRUE,
+                               quantiles = 2, quantile_lines = TRUE, alpha = 0.5, rel_min_height = 0.01) +
+           scale_fill_viridis_d(name = "Target gene")+
+           geom_vline(xintercept = thr_min, color = "darkorange", linewidth = 1.5)+
+           plot_layout(guides = "collect") & theme(legend.position = "top"))
+}
+
+
 
 
 

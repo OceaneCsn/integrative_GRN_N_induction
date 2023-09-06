@@ -58,8 +58,8 @@ Are the genes with $\alpha > 1$ (the ones for which we allow TFBM integration) t
 
 ```{r}
 # imports the optimal values of alpha of the proposed approach
-load("results/rdata/gene_specific/alpha_per_gene_weightedLASSO_mean_true_shuff_sd.rdata")
-load("results/rdata/gene_specific/alpha_per_gene_weightedRF_mean_true_shuff_sd.rdata")
+load("results/rdata/gene_specific/alpha_per_gene_weightedLASSO_true_sd.rdata")
+load("results/rdata/gene_specific/alpha_per_gene_weightedRF_true_sd.rdata")
 
 # optimal values of alpha :
 # load("results/rdata/gene_specific/alpha_per_gene_weightedLASSO_min.rdata")
@@ -72,14 +72,14 @@ venn <- ggVennDiagram(list("weightedRF" = names(alphas_rf[alphas_rf!=0]),
   theme(legend.position = "none");venn
 
 # hypergeometric test to assess the significance of the intersect
-p_enrich <- phyper(q=351, m = length(names(alphas_rf[alphas_rf!=0])), 
+p_enrich <- phyper(q=572, m = length(names(alphas_rf[alphas_rf!=0])), 
                    n = length(genes) - length(names(alphas_rf[alphas_rf!=0])), 
                    k = length( names(alphas_lasso[alphas_lasso!=0])), lower.tail = F)
 p_enrich
 ggexport(venn, filename = "results/classes_intersection.pdf", width = 4, height = 4)
 ```
 
-Not really, even though the intersection is clearly significant.
+The intersection is clearly significant.
 
 ## Motifs enrichment analyses
 
@@ -245,8 +245,8 @@ charact <- always_plot + theme(legend.position = "none") +
   TFs_always +theme(legend.position = "none")+  TFs_never +theme(legend.position = "none")+ 
   plot_layout(ncol = 2, heights = c(3,1));charact
 
-# ggexport(charact, width = 14, height = 12, 
-#          filename = "results/supp_figures/genes_characteristics_TFBM_integration.pdf")
+ggexport(charact, width = 14, height = 12,
+         filename = "results/supp_figures/genes_characteristics_TFBM_integration.pdf")
 ```
 
 
@@ -266,6 +266,7 @@ go <- enrich_go(convert_from_agi(never),
                 convert_from_agi(genes), GO_type = "BP", fdr = 0.1)
 ```
 
+NO.
 
 ## Expression profiles :
 
@@ -276,6 +277,8 @@ Heatmap(counts[common,]/rowMeans(counts[common,]), cluster_columns = F)
 Heatmap(counts[never,]/rowMeans(counts[never,]), cluster_columns = F)
 ```
 
+No clear differences in expression profiles seem to appear.
+
 
 # Nitrate signalling analysis in inferred GRNs
 
@@ -284,7 +287,6 @@ How are positioned known nitrate regulators in the topology of inferred GRNs?
 First loading the GRNs to be studied and compared (global versus gene-specific for the two models) :
 
 ```{r}
-load("results/rdata/gene_specific/gene_specific_edges_mean_true_shuff_sd.rdata")
 load("results/rdata/gene_specific/gene_specific_edges_true_sd.rdata")
 
 annot <- DIANE::get_gene_information(genes,organism = "Arabidopsis thaliana")
@@ -324,14 +326,14 @@ ranks_rf <- get_hubs(rf_nets_0)$ranking+ ggtitle("weightedRF alpha = 0") +
   theme(legend.position = "none")+
   get_hubs(rf_nets_1)$ranking+ggtitle("weightedRF alpha = 1") + 
   theme(legend.position = "none")+
-  get_hubs(rf_nets)$ranking+ ggtitle("weightedRF gene-specific alpha")+
+  get_hubs(rf_nets, unique_regs = c("HHO6", "BZIP53", "JKD"))$ranking+ ggtitle("weightedRF gene-specific alpha")+
   theme(legend.position = "top", legend.text = element_text(size = 15))+
   plot_layout(guides = "collect") 
 
 # ranks_rf <- get_hubs(rf_nets)$ranking+ ggtitle("weightedRF, gene-specific optimsation")+
 #   theme(legend.position = "right", legend.text = element_text(size = 15))
 
-# ggexport(ranks_rf, filename = "results/supp_figures/weightedRF_ranks_grns.pdf", width = 20, hight = 7)
+ggexport(ranks_rf, filename = "results/supp_figures/weightedRF_ranks_grns.pdf", width = 20, hight = 7)
 # regulators in the top ranking of all GRNs
 common_rf <- intersect(get_hubs(rf_nets)$top25 , union(get_hubs(rf_nets_0)$top25,
                                         get_hubs(rf_nets_1)$top25))
@@ -349,11 +351,11 @@ ranks_lasso <- get_hubs(lasso_nets_0)$ranking+ ggtitle("weightedLASSO alpha = 0"
   theme(legend.position = "none")+
   get_hubs(lasso_nets_1)$ranking+ggtitle("weightedLASSO alpha = 1") +
   theme(legend.position = "none")+
-  get_hubs(lasso_nets)$ranking+ ggtitle("weightedLASSO gene-specific alpha")+
+  get_hubs(lasso_nets, unique_regs = c("NLP7", "PHL1", "TGA4"))$ranking+ ggtitle("weightedLASSO gene-specific alpha")+
   theme(legend.position = "top", legend.text = element_text(size = 15))+
   plot_layout(guides = "collect") 
 
-# ggexport(ranks_lasso, filename = "results/supp_figures/weightedLASSO_ranks_grns.pdf", width = 20, hight = 7)
+ggexport(ranks_lasso, filename = "results/supp_figures/weightedLASSO_ranks_grns.pdf", width = 20, hight = 7)
 
 
 # regulators in the top ranking of all GRNs

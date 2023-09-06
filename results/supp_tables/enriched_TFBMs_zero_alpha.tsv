@@ -1,5 +1,5 @@
 label	description	pvalue
-AT1G13260	RAV1	Encodes an AP2/B3 domain transcription factor which is upregulated in response to low temperature. It contains a B3 DNA binding domain. It has circadian regulation and may function as a negative growth regulator. The mRNA is cell-to-cell mobile.	0.0238322788823488
-AT4G36540	BEE2	Encodes the brassinosteroid signaling component BEE2 (BR-ENHANCED EXPRESSION 2). Positively modulates the shade avoidance syndrome in Arabidopsis seedlings.	0.0285733740668993
-AT1G32510	NAC011	NAC domain containing protein 11	0.0365689697832127
-AT3G15170	CUC1	Encodes a transcription factor involved in shoot apical meristem formation and auxin-mediated lateral root formation. The gene is thought not to be involved in stress responses (NaCl, auxins, ethylene). <i>Cuc</i> mutant was first recognized at the heart stage, where embryos lacking two distinct bulges of cotyledonary primordia were observed.	0.0203849840219967
+AT1G12630	AT1G12630	encodes a member of the DREB subfamily A-4 of ERF/AP2 transcription factor family. The protein contains one AP2 domain. There are 17 members in this subfamily including TINY.	0.0428767622413547
+AT5G47230	ERF5	encodes a member of the ERF (ethylene response factor) subfamily B-3 of ERF/AP2 transcription factor family (ATERF-5). The protein contains one AP2 domain. There are 18 members in this subfamily including ATERF-1, ATERF-2, AND ATERF-5. The mRNA is cell-to-cell mobile.	0.0422696501496978
+AT2G22430	HB6	Encodes a homeodomain leucine zipper class I (HD-Zip I) protein that is a target of the protein phosphatase ABI1 and regulates hormone responses in Arabidopsis.	0.00267203308867986
+AT5G23930	MTERF34	Mitochondrial transcription termination factor family protein	0.0133890888443878
