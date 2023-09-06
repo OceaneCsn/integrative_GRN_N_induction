@@ -165,21 +165,22 @@ How is distributed the optimal value of TFBM integration across all nitrate resp
 
 ```{r}
 # optimal values of alpha :
-load("results/rdata/gene_specific/alpha_per_gene_weightedLASSO_mean_true_shuff_sd.rdata")
-load("results/rdata/gene_specific/alpha_per_gene_weightedRF_mean_true_shuff_sd.rdata")
+load("results/rdata/gene_specific/alpha_per_gene_weightedLASSO_true_sd.rdata")
+load("results/rdata/gene_specific/alpha_per_gene_weightedRF_true_sd.rdata")
 
 hists <- data.frame(weightedLASSO = alphas_lasso, 
                     weightedRF = alphas_rf) %>%
   gather(key = "model", value = "alpha") %>%
 ggplot(aes(x = alpha, fill = model)) +
   geom_histogram()+
-  facet_wrap(~model)+
+  facet_wrap(~model, ncol = 1)+
   theme(axis.title.y = element_blank(), legend.position = "none")+
   scale_fill_manual( values = c("#C55A11","#E67F87"))+theme_bw()+
   theme(strip.background = element_blank(),
-        legend.position = "none")+
+        legend.position = "none", strip.text = element_text(size = 12),
+        axis.title = element_text(size = 12))+
   xlab(expression(alpha))+ ylab("Number of genes")
-ggexport(hists, filename  = "results/alpha_histograms.pdf", height = 3, width = 7)
+ggexport(hists, filename  = "results/alpha_histograms.pdf", height = 7, width = 5)
 ```
 
 
@@ -191,10 +192,9 @@ How does the MSE change with $\alpha$? Depending on their class (optimal alpha d
 
 ```{r, fig.height=10}
 load("results/rdata/weightedRF_mse_100rep.rdata")
-load(file = "results/rdata/gene_specific/alpha_per_gene_weightedRF_mean_true_shuff_sd.rdata")
+load(file = "results/rdata/gene_specific/alpha_per_gene_weightedRF_true_sd.rdata")
 
 pos_class <- names(alphas_rf[alphas_rf!=0])
-
 mse <- lmses[str_detect(colnames(lmses), "trueData")]
 for(alpha in seq(0,1, by = 0.1)){
   mse[,paste("alpha",alpha)] <- rowMeans(mse[,str_detect(colnames(mse), paste0("RF_",as.character(alpha), "_"))])
@@ -209,27 +209,27 @@ ha = HeatmapAnnotation(
     alpha = anno_simple(as.numeric(str_remove(colnames(mse), "alpha "))),
     annotation_name_side = "left")
 
-png("results/rf_mse_interest.png", res = 300, height = 1700, width = 2000)
+png("results/rf_mse_interest.png", res = 300, height = 2000, width = 2000)
 Heatmap((mse_interest-rowMeans(mse_interest))/matrixStats::rowSds(mse_interest), 
-        col = col_fun, show_column_names = F,
+        col = col_fun, show_column_names = F,name = "MSE",
          width = ncol(mse_interest)*unit(10, "mm"), 
       height = nrow(mse_interest)*unit(0.2, "mm"),
         cluster_columns = F, show_row_names = F)+ 
   rowAnnotation(class = ifelse(alphas_rf[rownames(mse_interest)]>0, 
-                               "class of interest", "no integration"), 
+                               "TFBM integration", "no TFBM integration"), 
                 col = list(class = setNames(c("#70AD47", "grey"), 
-                                            nm = c("class of interest", "no integration"))))
+                                            nm = c("TFBM integration", "no TFBM integration"))))
 dev.off()
-png("results/rf_mse_others.png", res = 300, height = 2200, width = 2000)
+png("results/rf_mse_others.png", res = 300, height = 2000, width = 2000)
 Heatmap((mse_other-rowMeans(mse_other))/matrixStats::rowSds(mse_other),
         col = col_fun,show_column_names = F,
         width = ncol(mse_other)*unit(10, "mm"), 
       height = nrow(mse_other)*unit(0.2, "mm"),
         cluster_columns = F, show_row_names = F)+ 
   rowAnnotation(class = ifelse(alphas_rf[rownames(mse_other)]>0, 
-                               "class of interest", "no integration"), 
+                               "TFBM integration", "no TFBM integration"), 
                 col = list(class = setNames(c("#70AD47", "grey"), 
-                                            nm = c("class of interest", "no integration"))))
+                                            nm = c("TFBM integration", "no TFBM integration"))))
 dev.off()
 ```
 
@@ -265,20 +265,20 @@ Heatmap((mse_interest-rowMeans(mse_interest))/matrixStats::rowSds(mse_interest),
       height = nrow(mse_interest)*unit(0.2, "mm"),
         cluster_columns = F, show_row_names = F)+ 
   rowAnnotation(class = ifelse(alphas_lasso[rownames(mse_interest)]>0, 
-                               "class of interest", "no integration"), 
+                               "TFBM integration", "no TFBM integration"), 
                 col = list(class = setNames(c("#70AD47", "grey"), 
-                                            nm = c("class of interest", "no integration"))))
+                                            nm = c("TFBM integration", "no TFBM integration"))))
 dev.off()
-png("results/lasso_mse_others.png", res = 300, height = 2200, width = 2000)
+png("results/lasso_mse_others.png", res = 300, height = 2000, width = 2000)
 Heatmap((mse_other-rowMeans(mse_other))/matrixStats::rowSds(mse_other),
         col = col_fun,show_column_names = F,
         width = ncol(mse_other)*unit(10, "mm"), 
       height = nrow(mse_other)*unit(0.2, "mm"),
         cluster_columns = F, show_row_names = F)+ 
   rowAnnotation(class = ifelse(alphas_lasso[rownames(mse_other)]>0, 
-                               "class of interest", "no integration"), 
+                               "TFBM integration", "no TFBM integration"), 
                 col = list(class = setNames(c("#70AD47", "grey"), 
-                                            nm = c("class of interest", "no integration"))))
+                                            nm = c("TFBM integration", "no TFBM integration"))))
 dev.off()
 ```
 
@@ -321,8 +321,8 @@ ggexport(precision_rf, filename = "results/supp_figures/precision_recall_weighte
 ```{r, warning=TRUE}
 settings <- c("model", "dataset", "rep", "density")
 
-load("results/rdata/gene_specific/gene_specific_mse_mean_true_shuff_sd.rdata")
-load("results/rdata/gene_specific/gene_specific_validation_mean_true_shuff_sd.rdata")
+load("results/rdata/gene_specific/gene_specific_mse_true_sd.rdata")
+load("results/rdata/gene_specific/gene_specific_validation_true_sd.rdata")
 
 val_spec <- val_specific %>%
   separate(network_name, into = settings, sep = "_") %>%
@@ -372,7 +372,7 @@ pr_curves <- data_val %>%
 Summarized in one figure, including the synthetic permutations :
 
 
-```{r, fig.width=12, fig.height=10}
+```{r, eval = FALSE, fig.width=12, fig.height=10}
 
 plot_MSE_gene_specific <- function(model_){
   lmses %>%
@@ -463,13 +463,18 @@ plot_final <- plot/ pr_curves+theme(legend.position = "none",
                       strip.text = element_text(size = 18))+
   plot_layout(heights = c(1,1.5))
 
-ggexport(plot_final, filename = "results/specific_grns_mean_true_shuff_sd.pdf", width = 11, height = 10)
+ggexport(plot_final, filename = "results/specific_grns_true_sd.pdf", width = 11, height = 10)
 
 ```
 Final figure without permutations, clearer for the article :
 
 
 ```{r, fig.width=12, fig.height=10}
+settings <- c("model", "dataset", "rep", "density")
+
+load("results/rdata/gene_specific/gene_specific_mse_true_sd.rdata")
+load("results/rdata/gene_specific/gene_specific_validation_true_sd.rdata")
+
 
 plot_MSE_gene_specific <- function(model_){
   lmses %>%
@@ -585,7 +590,7 @@ plot_final <- plot/ pr_curves+theme(legend.position = "bottom",
 
 plot_final
 
-ggexport(plot_final, filename = "results/specific_grns_no_permutations_mean_sds.pdf", 
+ggexport(plot_final, filename = "results/specific_grns_no_permutations_true_sd.pdf", 
          width = 11, height = 10)
 
 ```

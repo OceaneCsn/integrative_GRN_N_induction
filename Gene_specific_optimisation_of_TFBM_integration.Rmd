@@ -324,8 +324,8 @@ The following code chunks learns GRNs with the optimal values of alpha determine
 
 ```{r, eval = F}
 # imports the optimal values of alpha of the proposed approach
-load("results/rdata/gene_specific/alpha_per_gene_weightedLASSO_mean_true_shuff_sd.rdata")
-load("results/rdata/gene_specific/alpha_per_gene_weightedRF_mean_true_shuff_sd.rdata")
+load("results/rdata/gene_specific/alpha_per_gene_weightedLASSO_true_sd.rdata")
+load("results/rdata/gene_specific/alpha_per_gene_weightedRF_true_sd.rdata")
 
 nCores = 34
 mats <- list()
