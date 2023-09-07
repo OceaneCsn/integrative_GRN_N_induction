@@ -1,0 +1,57 @@
+Gene;AGI;Role
+NRT2.1;AT1G08090;nitrate uptake transport and metabolism
+NAR2.1;AT5G50200;nitrate uptake transport and metabolism
+NRT2.2;AT1G08100;nitrate uptake transport and metabolism
+NRT2.4;AT5G60770;nitrate uptake transport and metabolism
+NRT2.5;AT1G12940;nitrate uptake transport and metabolism
+NRT1.1;AT1G12110;nitrate uptake transport and metabolism
+NIA1;AT1G77760;nitrate uptake transport and metabolism
+NIA2;AT1G37130;nitrate uptake transport and metabolism
+NIR;AT2G15620;nitrate uptake transport and metabolism
+GLN2;AT5G35630;nitrate uptake transport and metabolism
+GLN1.1;AT5G37600;nitrate uptake transport and metabolism
+GLN1.2;AT1G66200;nitrate uptake transport and metabolism
+GLN1.3;AT3G17820;nitrate uptake transport and metabolism
+GLN1.4;AT5G16570;nitrate uptake transport and metabolism
+GLN1.5;AT1G48470;nitrate uptake transport and metabolism
+NLP7;AT4G24020;positive regulator
+NLP6;AT1G64530;positive regulator
+NLP2;AT4G35270;positive regulator
+NLP3;AT4G38340;positive regulator
+LBD37;AT5G67420;negative regulator
+LBD38;AT3G49940;negative regulator
+LBD39;AT4G37540;negative regulator
+LBD40;AT1G67100;negative regulator
+LBD41;AT3G02550;negative regulator
+LBD42;AT1G68510;negative regulator
+BT1;AT5G63160;negative regulator
+BT2;AT3G48360;negative regulator
+HRS1;AT1G13300 ;negative regulator
+HHO1;AT3G25790;negative regulator
+HHO2;AT1G68670;negative regulator
+HHO3;AT1G25550;negative regulator
+G6PD3;AT1G24280;nitrate uptake transport and metabolism
+G6PD2;AT5G13110;nitrate uptake transport and metabolism
+HY5;AT5G11260;regulator
+BZIP1;AT5G49450;regulator
+TGA1;AT5G65210;negative regulator
+TGA3;AT1G22070;negative regulator
+TGA4;AT5G10030;negative regulator
+CEP1;AT1G47485;signalling
+CEP9;AT3G50610;positive regulator
+CEP3;AT2G23440;signalling
+CEPR1;AT5G49660;signalling
+CEPR2;AT1G72180;signalling
+CEPD1/GRXS11/ROXY6;AT1G06830;signalling
+CEPD2/GRXC13/ROXY9;AT2G47880;signalling
+GRXS13/ROXY18;AT1G03850;signalling
+GRXS10/ROXY3;AT3G21460;signalling
+GRXC6/ROXY21;AT4G33040;signalling
+GRXC10/ROXY20;AT5G11930;signalling
+NUDT;AT2G04440;signalling
+NUDT4;AT1G18300 ;signalling
+NUDT21;AT1G73540 ;signalling
+NUDT19;AT5G20070;signalling
+CIPK23;AT1G30270;positive regulator
+CBL9;AT5G47100;regulator
+CIPK8;AT4G24400;regulator

@@ -2,6 +2,7 @@ load('rdata/connectf_N_responsive_genes.rdata')
 library(tidyverse)
 library(ggh4x)
 library(igraph)
+library(igraph)
 
 #' Evaluates an inferred network against validated regulatory interactions
 #'
@@ -288,6 +289,37 @@ evaluate_fully_connected <- function(mat, N, validation = c("TARGET", "CHIPSeq",
   return(result.validation)
 }
 
+
+
+
+
+# computes the degree of input networks (in a list)
+get_networks_degrees <- function(nets, nCores = 30){
+  
+  n_genes <- read.csv("../data/Ngenes.csv", header = T, sep = ';')%>%
+    rename(genes = AGI)
+  
+  
+  registerDoParallel(cores = nCores)
+  message(paste("\nParallel network validation using", foreach::getDoParWorkers(), "cores."))
+  "%dopar%" <- foreach::"%dopar%"
+  tic()
+  suppressPackageStartupMessages(
+    result.validation <-
+      doRNG::"%dorng%"(foreach::foreach(network_name = names(nets), .combine = rbind),
+                       {
+                         graph <- graph_from_data_frame(d = nets[[network_name]], directed = T)
+                         data.frame(degree = igraph::degree(graph, mode = "total"), 
+                                    genes = names(igraph::degree(graph, mode = "total"))) %>%
+                           
+                           mutate(network_name = c(network_name))
+                         
+                       })
+  )
+  toc()
+  attr(result.validation, "rng") <- NULL # It contains the whole sequence of RNG seeds
+  return(result.validation)
+}
 
 
 draw_validation <- function(validation, densities = c(0.005,0.01,0.05), 

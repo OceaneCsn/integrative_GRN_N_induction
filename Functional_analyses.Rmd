@@ -317,8 +317,44 @@ rf_nets_1 <- edges[rf_nets_1[str_detect(rf_nets_1,"0.005") ]]
 
 ```
 
+Are the nitrate-related genes more connected in the input GRNs?
 
-Rankings in global alpha networks compared to alpha specific in weightedRF:
+```{r}
+# getting degrees of the different GRNs:
+specific_deg <- get_networks_degrees( c(rf_nets, lasso_nets)) %>%
+  separate(network_name, into = c("model", "dataset", "rep", "density")) %>%
+  mutate(alpha = "specific")
+
+global_deg <- get_networks_degrees( c(rf_nets_0, rf_nets_1, lasso_nets_0, lasso_nets_1))%>%
+  separate(network_name, into = c("model", "alpha", "dataset", "rep", "density"))
+
+deg <- rbind.data.frame(specific_deg, global_deg) %>%
+  group_by(model, alpha, genes) %>%
+  summarise(mean_degree = mean(degree, na.rm=T)) %>%
+  mutate(model = str_replace(model, "bRF", "weightedRF"),
+         model = str_replace(model, "^RF", "weightedRF"),
+         model = str_replace(model, "LASSO", "weightedLASSO")) %>%
+  left_join(n_genes, by = "genes") %>%
+  mutate(Role = ifelse(is.na(Role), "other", "nitrate_pathways" ))
+
+# plotting the difference in degree distributions in nitrate genes
+# versus the others
+degree_plot <- deg %>%
+  rename(Gene_role = Role) %>%
+  ggplot(aes(y=log(mean_degree), x = Gene_role, fill = Gene_role)) + geom_violin() + 
+  geom_boxplot(width = 0.1, fill = "white")+stat_compare_means()+
+  facet_nested_wrap(vars(model, alpha), nest_line = T)+
+  scale_fill_brewer(palette = "Accent")+
+  theme_bw()+ theme(strip.background = element_blank()); degree_plot
+
+
+ggexport(degree_plot, filename = "results/supp_figures/nitrate_genes_degree.pdf", 
+         width = 10, height = 8)
+
+```
+
+
+The following commands display the top 25 top connected TFs in the different GRNs : 
 
 ```{r}
 
@@ -344,7 +380,6 @@ setdiff(get_hubs(rf_nets)$top25 , union(get_hubs(rf_nets_0)$top25,
 
 ```
 
-Rankings in global alpha networks compared for alpha specific in weightedLASSO:
 
 ```{r}
 ranks_lasso <- get_hubs(lasso_nets_0)$ranking+ ggtitle("weightedLASSO alpha = 0") +
