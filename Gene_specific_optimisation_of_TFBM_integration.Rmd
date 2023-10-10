@@ -264,14 +264,15 @@ p <- draw_gene_effective_integration(gene_benefit, mats = mats, prior = 1) +
 figure <- (draw_gene_effective_integration(gene_benefit, mats = mats, prior = 1) +
   draw_gene_mse(gene_benefit, lmses = lmses)+ylim(c(0.045, 0.1))+
   get_opt_alpha_per_gene(gene_benefit, mats = mats, lmses = lmses))+
-  plot_layout(tag_level = 'new')+
+  plot_layout(tag_level = 'new') +
   get_opt_alpha_per_gene(gene_benefit_optimum, mats = mats, lmses = lmses)+
   xlim(c(90,160))+ylim(c(0.245, 0.360))+
   get_opt_alpha_per_gene(gene_saved, mats = mats, lmses = lmses)+
   get_opt_alpha_per_gene(gene_no_benefit, mats = mats, lmses = lmses)+ 
-  plot_annotation(tag_levels = c('a', '1')) + plot_layout(heights = c(0.8,1))
+  plot_annotation(tag_levels = c('a', '1')) + 
+  plot_layout(heights = c(0.8,0.8))
 
-ggexport(figure, filename = "results/gene_examples_weightedRF.pdf", width = 10, height = 8)
+ggexport(figure, filename = "results/gene_examples_weightedRF.pdf", width = 10, height = 6)
 
 ```
 
@@ -281,7 +282,7 @@ ggexport(figure, filename = "results/gene_examples_weightedRF.pdf", width = 10, 
 genes_removed <- get_opt_alpha_per_gene("AT4G22570", mats = mats, lmses = lmses, dev = "true")+ggtitle("AT4G22570")+
   get_opt_alpha_per_gene("AT3G04530", mats = mats, lmses = lmses, dev = "true")+ggtitle("AT3G04530")
 
-ggexport(genes_removed, filename = "results/supp_figures/wRF_example_gene_lost.pdf", width = 10, height = 5)
+ggexport(genes_removed, filename = "results/supp_figures/wRF_example_gene_lost.pdf", width = 6, height = 3)
 
 ```
 

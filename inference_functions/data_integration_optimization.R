@@ -207,8 +207,10 @@ get_opt_alpha_per_gene <- function(gene, mats, lmses, type = "rank", dev = "true
     # if asked, returns the optimal value of alpha for this gene
     if(return_alpha) return(alpha_opt)
     
+    annotation = c(expression(alpha[t][",opt"]))
+    
     # else, draws the figure :
-    padding = ifelse(type=="rank", ifelse(alpha_opt<0.2, 17, -17), 0)
+    padding = ifelse(type=="rank", ifelse(alpha_opt<0.2, 12, -12), 0)
     curves%>%
       ggplot(aes(y=mean_mse, x = mean_imp, color = dataset, fill = dataset))+
       # geom_ribbon(aes(ymin =mean_mse-sd_mse , 
@@ -225,8 +227,9 @@ get_opt_alpha_per_gene <- function(gene, mats, lmses, type = "rank", dev = "true
       scale_fill_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
       geom_vline(xintercept = eff_opt, size = 2, col="#4670CD") +
       annotate("text", x=eff_opt+padding, y=max(shuff$mean_mse), 
-               label=paste("Optimal\nintegration:\nalpha =", alpha_opt), 
+               label=annotation, parse = T, 
                angle=0, col = "#4670CD", size =3.5 )
   }
   else ggplot()
 }
+

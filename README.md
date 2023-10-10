@@ -1,4 +1,4 @@
-# Gene-specific integrative Gene Regulatory Network Inference for regression-based methods
+# DIOgene : Data Integration Optimization for regression-based gene regulatory retwork inference
 ---
 
 This repository contains code and data for the manuscript "Gene-specific optimization of data integration improves regression-based Gene Regulatory Network inference in _Arabidopsis thaliana_".
