@@ -173,14 +173,14 @@ hists <- data.frame(weightedLASSO = alphas_lasso,
   gather(key = "model", value = "alpha") %>%
 ggplot(aes(x = alpha, fill = model)) +
   geom_histogram()+
-  facet_wrap(~model, ncol = 1)+
+  facet_wrap(~model, ncol = 2)+
   theme(axis.title.y = element_blank(), legend.position = "none")+
   scale_fill_manual( values = c("#C55A11","#E67F87"))+theme_bw()+
   theme(strip.background = element_blank(),
         legend.position = "none", strip.text = element_text(size = 12),
         axis.title = element_text(size = 12))+
   xlab(expression(alpha))+ ylab("Number of genes")
-ggexport(hists, filename  = "results/alpha_histograms.pdf", height = 7, width = 5)
+ggexport(hists, filename  = "results/alpha_histograms.pdf", height = 2.5, width = 5.5)
 ```
 
 
