@@ -434,7 +434,7 @@ for(density in c(0.005,0.01,0.05)){# exploring importance threshold stringency
 
 
 optimized_grns <- list("importances" = importances, "grns" = grns)
-save(optimized_grns, file = "inferredGRN/optimized_GRN.rdata")
+save(optimized_grns, file = "inferred_GRN/optimized_GRN.rdata")
 ```
 
 
