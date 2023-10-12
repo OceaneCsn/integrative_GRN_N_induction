@@ -402,3 +402,39 @@ val_specific[, settings] <-
   str_split_fixed(val_specific$network_name, '_', length(settings))
 save(val_specific, file = "results/rdata/gene_specific/gene_specific_validation_mean_true_shuff_sd.rdata")
 ```
+
+
+Saving averaged importances matrices and one final optimized GRN for weightedLASSO and weightedRF (for three densities):
+
+```{r}
+# taking only GRNs from true data (and not the simulated null dataset)
+importances_true_lasso <- mats[str_detect(names(mats), "LASSO_true")] 
+importances_true_rf <- mats[str_detect(names(mats), "RF_true")]
+
+# averaging importance values between replicates
+mean_importances_lasso <- apply(simplify2array(importances_true_lasso), 1:2, mean)
+mean_importances_rf <- apply(simplify2array(importances_true_rf), 1:2, mean)
+
+importances <- list("weightedLASSO" = mean_importances_lasso, 
+                    "weightedRF" = mean_importances_rf)
+
+grns <- list()
+for(density in c(0.005,0.01,0.05)){# exploring importance threshold stringency
+        
+    grns[[paste0("weightedLASSO_", density)]] <-
+      weightedLASSO_network(mean_importances_lasso, 
+                            density = density, pwm_occurrence, 
+                            genes, tfs, decreasing = TRUE)
+    
+    grns[[paste0("weightedRF_", density)]] <-
+      weightedRF_network(mean_importances_rf, 
+                         density = density, 
+                         pwm_occurrence,  genes, tfs)
+}
+
+
+optimized_grns <- list("importances" = importances, "grns" = grns)
+save(optimized_grns, file = "inferredGRN/optimized_GRN.rdata")
+```
+
+
