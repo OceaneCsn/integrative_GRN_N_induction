@@ -25,7 +25,7 @@ GRNs are inferred from expression profiles of the root response to nitrate induc
 + `Functional_analyses.Rmd` further studies the list of genes for which TFBM are consensually integrated or not, and the modelling of nitrate signalling pathways in inferred GRNs. It can be used to reproduce the supp figures and supp tables of the article.
 
 
-+ In the `optimized_GRN` folder, we make available to the community the end product of DIOgene on the nitrate induction case study, for anyone interested in mining the inferred GRN.
++ In the `inferred_GRN` folder, we make available to the community the end product of DIOgene on the nitrate induction case study, for anyone interested in mining the inferred GRN.
 
 
 # Requirements
