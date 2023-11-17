@@ -112,7 +112,7 @@ weightedRF_inference <- function(counts, genes, tfs, alpha=0.25,
                                                           setNames(mean((rf_weighted$predicted - y)^2)/(sd(y)^2), "mse"))
                                                       } else {
                                                         c(setNames(rep(0, length(tfs)), tfs), 
-                                                          setNames(mean((rf_weighted$predicted - y)^2)/(sd(y)^2), "mse"))
+                                                          setNames(1, "mse"))
                                                       }
                                                       
                                                     }))
