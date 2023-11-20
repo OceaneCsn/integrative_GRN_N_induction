@@ -31,6 +31,11 @@ library(circlize)
 
 # Non linear case: comparison to iRafNet
 
+Differences between iRafNet and weightedRF:
+
++ Importance metric (Node Purity vs permutation approach)
++ iRafNet has to scale the features to get appropriate feature importance
+
 
 ```{r}
 # orifinal iRafNet, simply with the MSE having been added as an output
@@ -70,31 +75,60 @@ dim(pwm_occurrence)
 # 
 # priors <- get_weights(alpha_gene = 0.5)
 
-importances_rf <- weightedRF_inference(counts, genes, tfs, alpha = 1, nTrees = 2000,
+alphas <- c(0, 0.5, 1)
+results <- NULL
+for(alpha in alphas){
+  # computing models for iRafNet and weightedRF
+  importances_iRafNet <- weightedRF_inference(counts, genes, tfs, alpha = alpha, nTrees = 2000,
                                        importance = "IncNodePurity", pwm_occurrence = pwm_occurrence, 
                                        nCores = 10)
 
-importances_rf_me <- weightedRF_inference(counts, genes, tfs, alpha = 1, nTrees = 2000,
-                                       pwm_occurrence = pwm_occurrence, 
-                                       nCores = 10)
+  importances_wRF <- weightedRF_inference(counts, genes, tfs, alpha = alpha, nTrees = 2000,
+                                         pwm_occurrence = pwm_occurrence, 
+                                         nCores = 10)
+  
+  # building sparse GRNs and evaluating them against DAP-Seq
+  pr_curve_iRafNet <- evaluate_fully_connected(importances_iRafNet[tfs,], 
+                                               pwm_occurrence = pwm_occurrence,
+                            input_genes = genes, input_tfs = tfs, 
+                                           validation = c("DAPSeq"),
+                                           nCores =10) %>%
+    mutate(alpha = alpha, method = "iRafNet", 
+           mse = median(importances_iRafNet["mse",], na.rm = T))
+  
+  pr_curve_wRF <- evaluate_fully_connected(importances_wRF[tfs,], 
+                                           pwm_occurrence = pwm_occurrence,
+                            input_genes = genes, input_tfs = tfs, 
+                                           validation = c("DAPSeq"),
+                                           nCores =10) %>%
+    mutate(alpha = alpha, method = "weightedRF",
+           mse = median(importances_wRF["mse",], na.rm = T))
+  
+  if(is.null(results)) results <- rbind.data.frame(pr_curve_iRafNet, pr_curve_wRF)
+  else results <- rbind(results, rbind.data.frame(pr_curve_iRafNet, pr_curve_wRF))
+}
 
-mse <- median(importances_rf["mse",])
-mse_me <- median(importances_rf_me["mse",])
+(results %>%
+  ggplot(aes(y=precision, x = recall, color = method)) +
+  geom_point() + geom_line()+
+  ggh4x::facet_nested_wrap(vars(paste(alpha)))+
+  theme_bw() )/(
+results %>%
+  group_by(alpha, method) %>%
+  distinct(mse, .keep_all = T) %>%
+  ggplot(aes(y=mse, x =method, fill = method)) +
+  geom_bar(stat = "identity") + 
+  ggh4x::facet_nested_wrap(vars(paste(alpha)))+
+  theme_bw())
+
+results %>%
+  ggplot(aes(y=pwm_supprt, x =alpha, color = method)) +
+  geom_point() + geom_line()+
+  ggh4x::facet_nested_wrap(vars(paste(network_name)), ncol = 7)+
+  theme_bw()
 
 
-grn_RF <- weightedRF_network(importances_rf, density = 0.005, pwm_occurrence, genes, tfs)
-grn_RF_me <- weightedRF_network(importances_rf_me, density = 0.005, pwm_occurrence, genes, tfs)
-
-
-evaluate_networks(list("weightedRF" = grn_RF_me, "iRafNet" = grn_RF), 
-                                         input_genes = genes, input_tfs = tfs, 
-                                         validation = c("DAPSeq"),
-                                         nCores =2)
-
-
-mean(grn_RF$pwm)
-mean(grn_RF_me$pwm)
-
+save(results, file = "results/irafnet_weightedRF_comparison.rdata")
 ```
 
 # Linear case : comparison to stars-lasso in the Inferlator?

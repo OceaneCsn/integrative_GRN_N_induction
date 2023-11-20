@@ -43,7 +43,7 @@ library(igraph)
 #'
 #' @return The weighted list of regulatory interactions between genes and TFs
 weightedRF_inference <- function(counts, genes, tfs, alpha=0.25, 
-                          tf_expression_permutation = FALSE,
+                          tf_expression_permutation = FALSE, scale = FALSE,
                           pwm_occurrence, nTrees=500, importance="%IncMSE",
                           nCores = ifelse(is.na(detectCores()),1,
                                           max(detectCores() - 1, 1))){
@@ -51,6 +51,12 @@ weightedRF_inference <- function(counts, genes, tfs, alpha=0.25,
   # counts must be normalized so that genes to have comparable node purities
   if(importance=="IncNodePurity") scale = TRUE
   
+  # z-score if scaling is required
+  if(scale){
+    counts <- (counts - rowMeans(counts))/genefilter::rowSds(counts)
+  }
+  
+  # variables to use in regressions
   x <- t(counts[tfs,])
   
   # attributing 0.5 for prior value for PWM with unknown PWM

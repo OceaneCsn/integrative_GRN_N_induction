@@ -240,15 +240,22 @@ evaluate_networks <- function(edges_list, validation = c("TARGET", "CHIPSeq", "D
 }
 
 
-# return a precision/recall curve for a range of N different importance threshold
+# return a precision/recall curve for a range of different importance threshold (densities)
 # this is useful to draw precision and recall curves
-evaluate_fully_connected <- function(mat, N, validation = c("TARGET", "CHIPSeq", "DAPSeq"), nCores = 32,
+evaluate_fully_connected <- function(mat, pwm_occurrence = NULL, validation = c("TARGET", "CHIPSeq", "DAPSeq"), nCores = 32,
                               input_genes = NULL, input_tfs = NULL, tf_validation_subset = NULL){
   
   # reads the input matrix
   imp <-  reshape2::melt(mat) %>%
     rename(from = Var1, to = Var2, importance = value) %>%
     mutate(importance = ifelse(importance<0, 0, importance))
+  
+  if(!is.null(pwm_occurrence)){
+    pwm_imputed <- pwm_occurrence
+    pwm_imputed[is.na(pwm_imputed)] <- 0.5
+    imp$pwm <- pwm_imputed[cbind(imp$to, imp$from)]
+  }
+  
   
   # probs <- seq(0, 1, length.out = N)
   # densities <- quantile(imp$importance, probs)
@@ -278,9 +285,17 @@ evaluate_fully_connected <- function(mat, N, validation = c("TARGET", "CHIPSeq",
                                                  input_tfs = input_tfs, 
                                                  tf_validation_subset = tf_validation_subset)
                          
-                         data.frame("network_name" = c(network_name), 
-                                    "precision" = c(val$tpr), 
-                                    "recall" = c(val$recall))
+                         # returns all the info
+                         if(!is.null(pwm_occurrence)){
+                           data.frame("network_name" = c(network_name), 
+                                      "precision" = c(val$tpr), 
+                                      "recall" = c(val$recall),
+                                      "pwm_supprt" = mean(edges_list[[network_name]]$pwm))
+                         }
+                         else
+                           data.frame("network_name" = c(network_name), 
+                                      "precision" = c(val$tpr), 
+                                      "recall" = c(val$recall))
                          
                        })
   )
@@ -288,8 +303,6 @@ evaluate_fully_connected <- function(mat, N, validation = c("TARGET", "CHIPSeq",
   attr(result.validation, "rng") <- NULL # It contains the whole sequence of RNG seeds
   return(result.validation)
 }
-
-
 
 
 
