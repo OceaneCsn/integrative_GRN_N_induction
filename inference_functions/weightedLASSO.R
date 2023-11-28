@@ -25,9 +25,9 @@ library(tictoc)
 #' @param mda_type value between "shuffle" or "zero" (weather to randomize a TF or put it to zero in 
 #' feature importance estimation)
 #' @param tf_expression_permutation weather or not to shuffle the expression of TFs between each other.
-#' @param robustness Rate of selection for a TF to be considered for feature importance estimation
 #' @param nCores Number of cores for multithreading
-#'
+#' @param nfolds.cv Number of folds for cross validation
+#' @param family Type of distribution for the glm ("gaussian" or "poisson" (default))
 #' @return a matrix of feature importances for each TF-target pairs
 #' @export
 #'
@@ -35,15 +35,25 @@ library(tictoc)
 weightedLASSO_inference <- function(counts, genes, tfs, alpha=0.25, 
                                 pwm_occurrence, int_pwm_noise = 0,
                                 N = 100, mda_type="shuffle",
+                                family = "poisson",
                                 tf_expression_permutation = FALSE,
                                 nfolds.cv=5,
                                 nCores = ifelse(is.na(detectCores()),1,
                                                 max(detectCores() - 1, 1))){
   
   
-  counts <- round(counts, 0)
+  
+  
+  # for a gaussian lasso, data is log transformed
+  if(family == "gaussian")
+    counts <- log(counts+0.5)
+  else # for poisson glm, data needs to be integers
+    counts <- round(counts, 0)
+  
+  # expression of regulators
   x <- t(counts[tfs,])
   
+  # weather or not this is a gene-specific alpha model or not
   gene_specific = length(alpha) > 1
   
   # pwm scores to bias variable selection toward pairs supported by a TFBS
@@ -66,6 +76,7 @@ weightedLASSO_inference <- function(counts, genes, tfs, alpha=0.25,
                                                       x_target <- x[, target_tfs]
                                                       if(tf_expression_permutation){
                                                         # randomises the expression rows of TFs but not their ID
+                                                        # this is an in-silico null hypothesis 
                                                         x_target <- x_target[,sample(target_tfs, replace = F, 
                                                                                      size = length(target_tfs))]
                                                         colnames(x_target) <- target_tfs
@@ -179,7 +190,6 @@ weightedLASSO_inference <- function(counts, genes, tfs, alpha=0.25,
                                                           )
                                                         }
                                                       }
-                                                      
                                                       c(importances[tfs]/N, setNames(median(mse_gene)/(sd(y)^2), "mse"))
                                                     }))
   attr(result.reg, "rng") <- NULL # It contains the whole sequence of RNG seeds

@@ -28,19 +28,9 @@ library(clusterProfiler)
 library(circlize)
 ```
 
-
-# Non linear case: comparison to iRafNet
-
-Differences between iRafNet and weightedRF:
-
-+ Importance metric (Node Purity vs permutation approach)
-+ iRafNet has to scale the features to get appropriate feature importance
-
+Data loading : 
 
 ```{r}
-# orifinal iRafNet, simply with the MSE having been added as an output
-# library(iRafNet)
-
 # building expression
 load('rdata/inference_input_N_response_varala.rdata')
 genes <- input_data$grouped_genes; length(genes)
@@ -51,31 +41,23 @@ counts <- input_data$counts; dim(counts)
 # building prior (for three values of alpha: 0, 0.5, 1)
 load("rdata/pwm_occurrences_N_response_varala.rdata")
 dim(pwm_occurrence)
-# adding the priors for gene-gene interactions only
-# targets_prior <- matrix(0,length(genes),length(genes)-length(tfs))
-# colnames(targets_prior) <- setdiff(genes, tfs)
-# rownames(targets_prior) <- genes
-
-# pwm_imputed <- pwm_occurrence
-# pwm_imputed[is.na(pwm_imputed)] <- 0.5
-# 
-# # link function between priors and subsampling weights
-# get_weight <- function(pi, alpha_gene){
-#   return(ifelse(pi == 1, sqrt(1-(alpha_gene-1)^2)+1,
-#          ifelse(pi == 0.5, 1-alpha_gene,
-#                 -sqrt(1-(alpha_gene-1)^2)+1)))
-# }
-# 
-# get_weights <- function(alpha_gene){
-#   W_tfs <- apply(pwm_imputed, 1:2, 
-#                  FUN=get_weight, alpha_gene=alpha_gene)
-#   W <- cbind(targets_prior, W_tfs)[genes,genes]
-#   return(W)
-# }
-# 
-# priors <- get_weights(alpha_gene = 0.5)
 
 alphas <- c(0, 0.5, 1)
+```
+
+# Non linear case: comparison to iRafNet
+
+Differences between iRafNet and weightedRF:
+
++ Importance metric (Node Purity vs permutation approach)
++ iRafNet has to scale the features to get appropriate feature importance
+
+
+```{r, eval = F}
+# orifinal iRafNet, simply with the MSE having been added as an output
+# library(iRafNet)
+
+
 results <- NULL
 for(alpha in alphas){
   # computing models for iRafNet and weightedRF
@@ -108,6 +90,17 @@ for(alpha in alphas){
   else results <- rbind(results, rbind.data.frame(pr_curve_iRafNet, pr_curve_wRF))
 }
 
+save(results, file = "results/irafnet_weightedRF_comparison.rdata")
+
+
+```
+
+Showing the results:
+
+```{r}
+
+load("results/irafnet_weightedRF_comparison.rdata")
+
 (results %>%
   ggplot(aes(y=precision, x = recall, color = method)) +
   geom_point() + geom_line()+
@@ -127,75 +120,133 @@ results %>%
   ggh4x::facet_nested_wrap(vars(paste(network_name)), ncol = 7)+
   theme_bw()
 
-
-save(results, file = "results/irafnet_weightedRF_comparison.rdata")
 ```
 
-# Linear case : comparison to stars-lasso in the Inferlator?
 
-Generating input tsv files to feed the Inferelator worker:
+# Linear case : closest implementation to mLASSO-stars
 
 ```{r}
-# expression file : 
-load('rdata/inference_input_N_response_varala.rdata')
-genes <- input_data$grouped_genes; length(genes)
-tfs <- input_data$grouped_regressors; length(tfs)
-counts <- input_data$counts; dim(counts)
+results <- NULL
+for(alpha in alphas){
+  # computing models for mLASSO_stars and weightedLASSO
+  importances_mLASSO_stars <- mLASSO_stars_inference(counts, genes, tfs, alpha = alpha, N = 5,
+                                 pwm_occurrence = pwm_occurrence, nCores = 10)
 
-# expression should be log transformed as the model is 
-expression <- log10(counts + 0.75) %>%
-  as.data.frame() 
-options(OutDec=".")
-# %>%
-#   rownames_to_column("gene")
+  importances_wLASSO <- weightedLASSO_inference(counts, genes, tfs, alpha = alpha, N = 50,
+                                 pwm_occurrence = pwm_occurrence, nCores = 10)
+  
+  # building sparse GRNs and evaluating them against DAP-Seq
+  pr_curve_mLASSO_stars <- evaluate_fully_connected(importances_mLASSO_stars[tfs,], 
+                                               pwm_occurrence = pwm_occurrence,
+                            input_genes = genes, input_tfs = tfs, 
+                                           validation = c("DAPSeq"),
+                                           nCores =10) %>%
+    mutate(alpha = alpha, method = "mLASSO_stars", 
+           mse = median(importances_mLASSO_stars["mse",], na.rm = T))
+  
+  pr_curve_wLASSO <- evaluate_fully_connected(importances_wLASSO[tfs,], 
+                                           pwm_occurrence = pwm_occurrence,
+                            input_genes = genes, input_tfs = tfs, 
+                                           validation = c("DAPSeq"),
+                                           nCores =10) %>%
+    mutate(alpha = alpha, method = "weightedLASSO",
+           mse = median(importances_wLASSO["mse",], na.rm = T))
+  
+  if(is.null(results)) results <- rbind.data.frame(pr_curve_wLASSO, pr_curve_mLASSO_stars)
+  else results <- rbind(results, rbind.data.frame(pr_curve_wLASSO, pr_curve_mLASSO_stars))
+}
 
-write.table(expression, file = "data/inferelator_inputs/expression.tsv", 
-            sep = '\t', row.names = T, quote = F)
+(results %>%
+  ggplot(aes(y=precision, x = recall, color = method)) +
+  geom_point() + geom_line()+
+  ggh4x::facet_nested_wrap(vars(paste(alpha)))+
+  theme_bw() )/(
+results %>%
+  group_by(alpha, method) %>%
+  distinct(mse, .keep_all = T) %>%
+  ggplot(aes(y=mse, x =method, fill = method)) +
+  geom_bar(stat = "identity") + 
+  ggh4x::facet_nested_wrap(vars(paste(alpha)))+
+  theme_bw())
 
-# names of the TFs
-write.table(tfs, file = "data/inferelator_inputs/tf_names.tsv", sep = '\t', 
-            row.names = F, quote = F, col.names = F)
+results %>%
+  ggplot(aes(y=pwm_supprt, x =alpha, color = method)) +
+  geom_point() + geom_line()+
+  ggh4x::facet_nested_wrap(vars(paste(network_name)), ncol = 7)+
+  theme_bw()
 
-# prior matrix: pwm scores to bias variable selection toward pairs supported by a TFBS
-load("rdata/pwm_occurrences_N_response_varala.rdata")
-dim(pwm_occurrence)
-
-pwm_imputed <- pwm_occurrence
-pwm_imputed[is.na(pwm_imputed)] <- 0.5
-priors <- data.frame(pwm_imputed)
-
-write.table(priors, file = "data/inferelator_inputs/priors.tsv", sep = '\t', 
-            row.names = T, quote = F)
+save(results, file = "results/mLASSO_stars_weightedLASSO_comparison.rdata")
 ```
 
-Manually added the tab before colnames to get the exact same format as inferelator examples.
 
 
-Launching the Infereltaor with stars-lasso without TFA, to get the most comparable outputs:
 
-```{python}
 
-from inferelator import inferelator_workflow, MPControl
+<!-- comparison to stars-lasso in the Inferlator? -->
 
-n_cores_local = 10
-local_engine = True
+<!-- Generating input tsv files to feed the Inferelator worker: -->
 
-# Multiprocessing needs to be protected with the if __name__ == 'main' pragma
-if __name__ == '__main__' and local_engine:
-    MPControl.set_multiprocess_engine("multiprocessing")
-    MPControl.client.set_processes(n_cores_local)
-    MPControl.connect()
-      
-worker = inferelator_workflow(regression="elasticnet", workflow="tfa")
+<!-- ```{r} -->
+<!-- # expression file :  -->
+<!-- load('rdata/inference_input_N_response_varala.rdata') -->
+<!-- genes <- input_data$grouped_genes; length(genes) -->
+<!-- tfs <- input_data$grouped_regressors; length(tfs) -->
+<!-- counts <- input_data$counts; dim(counts) -->
 
-worker.set_file_paths(input_dir="data/inferelator_inputs/",
-                      output_dir="data/inferelator_outputs",
-                      expression_matrix_file="expression.tsv",
-                      tf_names_file="tf_names.tsv",
-                      priors_file="priors.tsv")
-                      
-worker.set_run_parameters(num_bootstraps=2, random_seed=42)
-worker.set_network_data_flags(use_no_gold_standard=True)
-network_result = worker.run()
-```
+<!-- # expression should be log transformed as the model is  -->
+<!-- expression <- log10(counts + 0.75) %>% -->
+<!--   as.data.frame()  -->
+<!-- options(OutDec=".") -->
+<!-- # %>% -->
+<!-- #   rownames_to_column("gene") -->
+
+<!-- write.table(expression, file = "data/inferelator_inputs/expression.tsv",  -->
+<!--             sep = '\t', row.names = T, quote = F) -->
+
+<!-- # names of the TFs -->
+<!-- write.table(tfs, file = "data/inferelator_inputs/tf_names.tsv", sep = '\t',  -->
+<!--             row.names = F, quote = F, col.names = F) -->
+
+<!-- # prior matrix: pwm scores to bias variable selection toward pairs supported by a TFBS -->
+<!-- load("rdata/pwm_occurrences_N_response_varala.rdata") -->
+<!-- dim(pwm_occurrence) -->
+
+<!-- pwm_imputed <- pwm_occurrence -->
+<!-- pwm_imputed[is.na(pwm_imputed)] <- 0.5 -->
+<!-- priors <- data.frame(pwm_imputed) -->
+
+<!-- write.table(priors, file = "data/inferelator_inputs/priors.tsv", sep = '\t',  -->
+<!--             row.names = T, quote = F) -->
+<!-- ``` -->
+
+<!-- Manually added the tab before colnames to get the exact same format as inferelator examples. -->
+
+
+<!-- Launching the Infereltaor with stars-lasso without TFA, to get the most comparable outputs: -->
+
+<!-- ```{python} -->
+
+<!-- from inferelator import inferelator_workflow, MPControl -->
+
+<!-- n_cores_local = 10 -->
+<!-- local_engine = True -->
+
+<!-- # Multiprocessing needs to be protected with the if __name__ == 'main' pragma -->
+<!-- if __name__ == '__main__' and local_engine: -->
+<!--     MPControl.set_multiprocess_engine("multiprocessing") -->
+<!--     MPControl.client.set_processes(n_cores_local) -->
+<!--     MPControl.connect() -->
+
+<!-- worker = inferelator_workflow(regression="elasticnet", workflow="tfa") -->
+
+<!-- worker.set_file_paths(input_dir="data/inferelator_inputs/", -->
+<!--                       output_dir="data/inferelator_outputs", -->
+<!--                       expression_matrix_file="expression.tsv", -->
+<!--                       tf_names_file="tf_names.tsv", -->
+<!--                       priors_file="priors.tsv") -->
+
+<!-- worker.set_run_parameters(num_bootstraps=2, random_seed=42) -->
+<!-- worker.set_network_data_flags(use_no_gold_standard=True) -->
+<!-- network_result = worker.run() -->
+<!-- ``` -->
 
