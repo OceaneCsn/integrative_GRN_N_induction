@@ -15,6 +15,7 @@ knitr::opts_chunk$set(echo = TRUE, warning = F, message = F, fig.width = 10)
 
 source('inference_functions/weightedRF.R')
 source('inference_functions/weightedLASSO.R')
+source("inference_functions/mLASSO_StARS.R")
 source('inference_functions/evaluateNetwork.R')
 source('inference_functions/data_integration_optimization.R')
 
@@ -43,6 +44,8 @@ load("rdata/pwm_occurrences_N_response_varala.rdata")
 dim(pwm_occurrence)
 
 alphas <- c(0, 0.5, 1)
+
+nCores <- 45
 ```
 
 # Non linear case: comparison to iRafNet
@@ -63,18 +66,18 @@ for(alpha in alphas){
   # computing models for iRafNet and weightedRF
   importances_iRafNet <- weightedRF_inference(counts, genes, tfs, alpha = alpha, nTrees = 2000,
                                        importance = "IncNodePurity", pwm_occurrence = pwm_occurrence, 
-                                       nCores = 10)
+                                       nCores = nCores)
 
   importances_wRF <- weightedRF_inference(counts, genes, tfs, alpha = alpha, nTrees = 2000,
                                          pwm_occurrence = pwm_occurrence, 
-                                         nCores = 10)
+                                         nCores = nCores)
   
   # building sparse GRNs and evaluating them against DAP-Seq
   pr_curve_iRafNet <- evaluate_fully_connected(importances_iRafNet[tfs,], 
                                                pwm_occurrence = pwm_occurrence,
                             input_genes = genes, input_tfs = tfs, 
                                            validation = c("DAPSeq"),
-                                           nCores =10) %>%
+                                           nCores =nCores) %>%
     mutate(alpha = alpha, method = "iRafNet", 
            mse = median(importances_iRafNet["mse",], na.rm = T))
   
@@ -82,7 +85,7 @@ for(alpha in alphas){
                                            pwm_occurrence = pwm_occurrence,
                             input_genes = genes, input_tfs = tfs, 
                                            validation = c("DAPSeq"),
-                                           nCores =10) %>%
+                                           nCores =nCores) %>%
     mutate(alpha = alpha, method = "weightedRF",
            mse = median(importances_wRF["mse",], na.rm = T))
   
@@ -101,7 +104,7 @@ Showing the results:
 
 load("results/irafnet_weightedRF_comparison.rdata")
 
-(results %>%
+plot_rf <- (results %>%
   ggplot(aes(y=precision, x = recall, color = method)) +
   geom_point() + geom_line()+
   ggh4x::facet_nested_wrap(vars(paste(alpha)))+
@@ -110,30 +113,52 @@ results %>%
   group_by(alpha, method) %>%
   distinct(mse, .keep_all = T) %>%
   ggplot(aes(y=mse, x =method, fill = method)) +
-  geom_bar(stat = "identity") + 
+  geom_bar(stat = "identity", width = 0.25) + 
   ggh4x::facet_nested_wrap(vars(paste(alpha)))+
-  theme_bw())
-
+  theme_bw())+
 results %>%
+  filter(network_name < 0.075)%>%
   ggplot(aes(y=pwm_supprt, x =alpha, color = method)) +
-  geom_point() + geom_line()+
-  ggh4x::facet_nested_wrap(vars(paste(network_name)), ncol = 7)+
+  geom_point() + 
+  geom_line(aes(group = interaction(network_name, method), 
+                alpha = (1-as.numeric(network_name))*0.5+0.5), show.legend = F)+
+  # ggh4x::facet_nested_wrap(vars(paste(network_name)), ncol = 5)+
   theme_bw()
+
+# results %>%
+#   filter(network_name < 0.1)%>%
+#   ggplot(aes(y=pwm_supprt, x =alpha, color = method)) +
+#   geom_point() + geom_line()+
+#   ggh4x::facet_nested_wrap(vars(paste(network_name)), ncol = 5)+
+#   theme_bw()
+
+ggexport(plot_rf, filename = "results/comparisons_to_existing_methods/non_linear_comparison.pdf", 
+         width = 8, height = 8)
+
 
 ```
 
 
 # Linear case : closest implementation to mLASSO-stars
 
+Differences between weightedLASSO and mLASSO-StARS:
+
++ Glm family is Poisson for weightedLASSO, and Gaussian (following log transform) for mLASSO-StARS 
++ Sparsity selection is done by cv.glmnet in weightedLASSO, and by lasso.stars in mLASSO-StARS
++ The importance metric is MSE increase on OOB for weightedLASSO, and selection frequency + partial correlation for mLASSO-StARS.
+
 ```{r}
 results <- NULL
 for(alpha in alphas){
   # computing models for mLASSO_stars and weightedLASSO
-  importances_mLASSO_stars <- mLASSO_stars_inference(counts, genes, tfs, alpha = alpha, N = 5,
-                                 pwm_occurrence = pwm_occurrence, nCores = 10)
+  importances_mLASSO_stars <- mLASSO_stars_inference(counts, genes, tfs, alpha = alpha, 
+                                                     N_boot = 5, N_stars_ss = 5,
+                                                     pwm_occurrence = pwm_occurrence, 
+                                                     nCores = nCores)
 
-  importances_wLASSO <- weightedLASSO_inference(counts, genes, tfs, alpha = alpha, N = 50,
-                                 pwm_occurrence = pwm_occurrence, nCores = 10)
+  importances_wLASSO <- weightedLASSO_inference(counts, genes, tfs, alpha = alpha, 
+                                                N = 25, pwm_occurrence = pwm_occurrence, 
+                                                nCores = nCores)
   
   # building sparse GRNs and evaluating them against DAP-Seq
   pr_curve_mLASSO_stars <- evaluate_fully_connected(importances_mLASSO_stars[tfs,], 
@@ -156,7 +181,18 @@ for(alpha in alphas){
   else results <- rbind(results, rbind.data.frame(pr_curve_wLASSO, pr_curve_mLASSO_stars))
 }
 
-(results %>%
+save(results, file = "results/mLASSO_stars_weightedLASSO_comparison.rdata")
+
+
+```
+
+Results:
+
+```{r}
+load(file = "results/mLASSO_stars_weightedLASSO_comparison.rdata")
+
+
+plot_lasso <- (results %>%
   ggplot(aes(y=precision, x = recall, color = method)) +
   geom_point() + geom_line()+
   ggh4x::facet_nested_wrap(vars(paste(alpha)))+
@@ -165,18 +201,21 @@ results %>%
   group_by(alpha, method) %>%
   distinct(mse, .keep_all = T) %>%
   ggplot(aes(y=mse, x =method, fill = method)) +
-  geom_bar(stat = "identity") + 
+  geom_bar(stat = "identity", width = 0.25) + 
   ggh4x::facet_nested_wrap(vars(paste(alpha)))+
-  theme_bw())
-
+  theme_bw())+
 results %>%
+  filter(network_name < 0.075)%>%
   ggplot(aes(y=pwm_supprt, x =alpha, color = method)) +
-  geom_point() + geom_line()+
-  ggh4x::facet_nested_wrap(vars(paste(network_name)), ncol = 7)+
+  geom_point() + 
+  geom_line(aes(group = interaction(network_name, method), 
+                alpha = (1-as.numeric(network_name))*0.5+0.5 ), show.legend = F)+
+  # ggh4x::facet_nested_wrap(vars(paste(network_name)), ncol = 5)+
   theme_bw()
 
-save(results, file = "results/mLASSO_stars_weightedLASSO_comparison.rdata")
+ggexport(plot_lasso, filename = "results/comparisons_to_existing_methods/linear_comparison.pdf", width = 8, height = 8)
 ```
+
 
 
 

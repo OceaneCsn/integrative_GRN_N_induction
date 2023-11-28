@@ -53,7 +53,7 @@ weightedRF_inference <- function(counts, genes, tfs, alpha=0.25,
   
   # z-score if scaling is required
   if(scale){
-    counts <- (counts - rowMeans(counts))/genefilter::rowSds(counts)
+    counts <- (counts - rowMeans(counts))/apply(counts, 1, sd, na.rm=TRUE)
   }
   
   # variables to use in regressions

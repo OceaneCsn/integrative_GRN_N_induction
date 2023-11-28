@@ -269,6 +269,7 @@ evaluate_fully_connected <- function(mat, pwm_occurrence = NULL, validation = c(
   for(t in top_edges){
     edges_list[[as.character(t)]] <- imp %>%
       top_frac(t, wt = importance)
+      # filter(importance > 0)
   }
   
   registerDoParallel(cores = nCores)

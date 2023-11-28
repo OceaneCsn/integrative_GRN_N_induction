@@ -128,14 +128,14 @@ for(alpha in c(1)){ # exploring PWM integration strength
     mat_lasso <- weightedLASSO_inference(counts = counts, genes = genes, tfs = tfs,
                                      alpha = alpha, N = 50, 
                                      tf_expression_permutation = FALSE,
-                                     int_pwm_noise = 0, mda_type = "shuffle",
+                                     mda_type = "shuffle",
                                      pwm_occurrence = pwm_occurrence,
                                      nCores = nCores)
     
     mat_lasso_perm <- weightedLASSO_inference(counts, genes, tfs,
                                      alpha = alpha, N = 50, 
                                      tf_expression_permutation = TRUE,
-                                     int_pwm_noise = 0, mda_type = "shuffle",
+                                     mda_type = "shuffle",
                                      pwm_occurrence = pwm_occurrence,
                                      nCores = nCores)
     

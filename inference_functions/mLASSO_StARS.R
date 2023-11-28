@@ -5,11 +5,13 @@ library(foreach)
 library(doRNG)
 library(glmnet)
 library(tictoc)
-
-source("inference_functions/lasso.stars.R")
+library(ppcor)
 
 # most faithful implementation of the method in this paper: https://genome.cshlp.org/content/early/2019/02/19/gr.238253.118.full.pdf+html
 # lasso.stars had to be modified in order to allow for differential shrinkage
+# include the modified stars stability selection function:
+source("inference_functions/lasso.stars.R")
+
 
 #' mLASSO-STARS GRN inference (closest R implementation possible!)
 #'
@@ -21,12 +23,9 @@ source("inference_functions/lasso.stars.R")
 #' Numeric value (e.g 0, 1) or a named vector giving the value of alpha for each target gene
 #' @param pwm_occurrence Prior matrix Pi, giving PWM presence scores for TFs in rows
 #' and genes in columns. Can contain NAs for TFs that do not have a PWM available.
-#' @param N Number of iterations of Stability selection
-#' @param mda_type value between "shuffle" or "zero" (weather to randomize a TF or put it to zero in 
-#' feature importance estimation)
+#' @param N Number of iterations of Stability selection in Stars
 #' @param tf_expression_permutation weather or not to shuffle the expression of TFs between each other.
 #' @param nCores Number of cores for multithreading
-#' @param nfolds.cv Number of folds for cross validation
 #' @param family Type of distribution for the glm ("gaussian" or "poisson" (default))
 #' @return a matrix of feature importances for each TF-target pairs
 #' @export
@@ -34,10 +33,8 @@ source("inference_functions/lasso.stars.R")
 #' @examples
 mLASSO_stars_inference <- function(counts, genes, tfs, alpha=0.25, 
                                     pwm_occurrence,
-                                    N = 10, mda_type = "shuffle",
+                                    N_boot = 5, N_stars_ss = 10, 
                                     family = "gaussian",
-                                    tf_expression_permutation = FALSE,
-                                    nfolds.cv=5,
                                     nCores = ifelse(is.na(detectCores()),1,
                                                     max(detectCores() - 1, 1))){
   
@@ -76,13 +73,7 @@ mLASSO_stars_inference <- function(counts, genes, tfs, alpha=0.25,
                                                       # if needed
                                                       target_tfs <- setdiff(tfs, target)
                                                       x_target <- x[, target_tfs]
-                                                      if(tf_expression_permutation){
-                                                        # randomises the expression rows of TFs but not their ID
-                                                        # this is an in-silico null hypothesis 
-                                                        x_target <- x_target[,sample(target_tfs, replace = F, 
-                                                                                     size = length(target_tfs))]
-                                                        colnames(x_target) <- target_tfs
-                                                      }
+                                                      
                                                       y <- t(counts[target, ])
                                                       
                                                       if(gene_specific)
@@ -107,12 +98,13 @@ mLASSO_stars_inference <- function(counts, genes, tfs, alpha=0.25,
                                                       ######### Stability Selection
                                                       n_actual = 0
                                                       mse_gene = c()
-                                                      for(n in 1:N) {
+                                                      for(n in 1:N_boot) {
                                                         # bootstrapping observations
                                                         # sampled <- sample(1:nrow(x), replace = T, size = nrow(x))
                                                         
                                                         # bootstrapping observations and controlling that
                                                         # duplicated observations are in the same fold
+                                                        nfolds.cv = 5
                                                         idx <- sample(1:length(y), replace = F)
                                                         folds_bg <- split(idx, ceiling(seq_along(idx)/(length(y)/nfolds.cv)))
                                                         breaks <- c(0,cumsum(lengths(folds_bg)))
@@ -139,7 +131,7 @@ mLASSO_stars_inference <- function(counts, genes, tfs, alpha=0.25,
                                                               x = scale(x_target[sampled,]),
                                                               y = scale(y[sampled]),
                                                               maxit=maxit,
-                                                              rep.num = 5,
+                                                              rep.num = N_stars_ss,
                                                               penalty.factor = penalty_factor)
                                                             
                                                             # feature selection for optimal lambda
