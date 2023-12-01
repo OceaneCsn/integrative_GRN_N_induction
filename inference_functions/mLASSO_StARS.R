@@ -32,7 +32,7 @@ source("inference_functions/lasso.stars.R")
 #'
 #' @examples
 mLASSO_stars_inference <- function(counts, genes, tfs, alpha=0.25, 
-                                    pwm_occurrence,
+                                    pwm_occurrence, stars.thresh = 0.05,
                                     N_boot = 5, N_stars_ss = 10, 
                                     family = "gaussian",
                                     nCores = ifelse(is.na(detectCores()),1,
@@ -130,7 +130,7 @@ mLASSO_stars_inference <- function(counts, genes, tfs, alpha=0.25,
                                                               mymodels_pen = lasso.stars(
                                                               x = scale(x_target[sampled,]),
                                                               y = scale(y[sampled]),
-                                                              maxit=maxit,
+                                                              maxit=maxit,stars.thresh = stars.thresh,
                                                               rep.num = N_stars_ss,
                                                               penalty.factor = penalty_factor)
                                                             

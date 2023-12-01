@@ -27,6 +27,7 @@ library(ggVennDiagram)
 library(ComplexHeatmap)
 library(clusterProfiler)
 library(circlize)
+library(MESS)
 ```
 
 Data loading : 
@@ -46,13 +47,14 @@ dim(pwm_occurrence)
 alphas <- c(0, 0.5, 1)
 
 nCores <- 45
+N_rep = 3
 ```
 
 # Non linear case: comparison to iRafNet
 
 Differences between iRafNet and weightedRF:
 
-+ Importance metric (Node Purity vs permutation approach)
++ Importance metric is Node Purity in iRafNet, vs MSE increase after permutations on OOB for weightedRF
 + iRafNet has to scale the features to get appropriate feature importance
 
 
@@ -63,67 +65,80 @@ Differences between iRafNet and weightedRF:
 
 results <- NULL
 for(alpha in alphas){
-  # computing models for iRafNet and weightedRF
-  importances_iRafNet <- weightedRF_inference(counts, genes, tfs, alpha = alpha, nTrees = 2000,
-                                       importance = "IncNodePurity", pwm_occurrence = pwm_occurrence, 
-                                       nCores = nCores)
-
-  importances_wRF <- weightedRF_inference(counts, genes, tfs, alpha = alpha, nTrees = 2000,
-                                         pwm_occurrence = pwm_occurrence, 
+  for(rep in 1:N_rep){
+    # computing models for iRafNet and weightedRF
+    importances_iRafNet <- weightedRF_inference(counts, genes, tfs, alpha = alpha, nTrees = 2000,
+                                         importance = "IncNodePurity", pwm_occurrence = pwm_occurrence, 
                                          nCores = nCores)
   
-  # building sparse GRNs and evaluating them against DAP-Seq
-  pr_curve_iRafNet <- evaluate_fully_connected(importances_iRafNet[tfs,], 
-                                               pwm_occurrence = pwm_occurrence,
-                            input_genes = genes, input_tfs = tfs, 
-                                           validation = c("DAPSeq"),
-                                           nCores =nCores) %>%
-    mutate(alpha = alpha, method = "iRafNet", 
-           mse = median(importances_iRafNet["mse",], na.rm = T))
-  
-  pr_curve_wRF <- evaluate_fully_connected(importances_wRF[tfs,], 
-                                           pwm_occurrence = pwm_occurrence,
-                            input_genes = genes, input_tfs = tfs, 
-                                           validation = c("DAPSeq"),
-                                           nCores =nCores) %>%
-    mutate(alpha = alpha, method = "weightedRF",
-           mse = median(importances_wRF["mse",], na.rm = T))
-  
-  if(is.null(results)) results <- rbind.data.frame(pr_curve_iRafNet, pr_curve_wRF)
-  else results <- rbind(results, rbind.data.frame(pr_curve_iRafNet, pr_curve_wRF))
+    importances_wRF <- weightedRF_inference(counts, genes, tfs, alpha = alpha, nTrees = 2000,
+                                           pwm_occurrence = pwm_occurrence, 
+                                           nCores = nCores)
+    
+    # building sparse GRNs and evaluating them against DAP-Seq
+    pr_curve_iRafNet <- evaluate_fully_connected(importances_iRafNet[tfs,], 
+                                                 pwm_occurrence = pwm_occurrence,
+                              input_genes = genes, input_tfs = tfs, 
+                                             validation = c("DAPSeq"),
+                                             nCores =nCores) %>%
+      mutate(alpha = alpha, method = "iRafNet", rep = rep,
+             mse = median(importances_iRafNet["mse",], na.rm = T),
+             aupr = MESS::auc(recall, precision, type = 'spline'))
+    
+    pr_curve_wRF <- evaluate_fully_connected(importances_wRF[tfs,], 
+                                             pwm_occurrence = pwm_occurrence,
+                              input_genes = genes, input_tfs = tfs, 
+                                             validation = c("DAPSeq"),
+                                             nCores =nCores) %>%
+      mutate(alpha = alpha, method = "weightedRF", rep = rep,
+             mse = median(importances_wRF["mse",], na.rm = T),
+             aupr = MESS::auc(recall, precision, type = 'spline'))
+    
+    if(is.null(results)) results <- rbind.data.frame(pr_curve_iRafNet, pr_curve_wRF)
+    else results <- rbind(results, rbind.data.frame(pr_curve_iRafNet, pr_curve_wRF))
+  }
 }
 
-save(results, file = "results/irafnet_weightedRF_comparison.rdata")
+save(results, file = "results/irafnet_weightedRF_comparison_reps.rdata")
 
 
 ```
 
 Showing the results:
 
-```{r}
+```{r, fig.width=20}
 
-load("results/irafnet_weightedRF_comparison.rdata")
+load("results/irafnet_weightedRF_comparison_reps.rdata")
 
 plot_rf <- (results %>%
+              group_by(method, alpha) %>%
+              mutate(aupr = mean(aupr, na.rm = T)) %>%
+              mutate(aupr_pos = ifelse(method == "weightedRF", 0.75, 0.25)) %>%
   ggplot(aes(y=precision, x = recall, color = method)) +
-  geom_point() + geom_line()+
-  ggh4x::facet_nested_wrap(vars(paste(alpha)))+
-  theme_bw() )/(
+  geom_point(size = 0.5) + geom_smooth(method = "gam", aes(fill = method), alpha = 0.2)+
+  ggh4x::facet_nested_wrap(vars(paste("alpha =", alpha)), nest_line = T)+
+    geom_text(aes(y=0.5, x=aupr_pos, label = paste("AUPR =",round(aupr, 2))), show.legend = F) )/(
 results %>%
   group_by(alpha, method) %>%
-  distinct(mse, .keep_all = T) %>%
-  ggplot(aes(y=mse, x =method, fill = method)) +
-  geom_bar(stat = "identity", width = 0.25) + 
-  ggh4x::facet_nested_wrap(vars(paste(alpha)))+
-  theme_bw())+
-results %>%
-  filter(network_name < 0.075)%>%
-  ggplot(aes(y=pwm_supprt, x =alpha, color = method)) +
-  geom_point() + 
-  geom_line(aes(group = interaction(network_name, method), 
-                alpha = (1-as.numeric(network_name))*0.5+0.5), show.legend = F)+
-  # ggh4x::facet_nested_wrap(vars(paste(network_name)), ncol = 5)+
-  theme_bw()
+  mutate(mean_mse = mean(mse, na.rm = T)) %>%
+  ggplot(aes(y=mean_mse, x =method, fill = method)) +
+  geom_segment(aes(xend = method, y = 0, yend = mean_mse, color = method),size = 2.5) + 
+  geom_point(aes(y=mse), size = 0.85, color = "black")+
+  ggh4x::facet_nested_wrap(vars(paste("alpha =", alpha)), nest_line = T));plot_rf
+
+
+plot_rf <- plot_rf & scale_color_manual(values = c("#668877", "#70AD47"))& 
+  scale_fill_manual(values = c("#668877", "#70AD47"))&
+  theme_bw() & theme(strip.background = element_blank())
+
+# results %>%
+#   filter(network_name < 0.075)%>%
+#   ggplot(aes(y=pwm_supprt, x =alpha, color = method)) +
+#   geom_point() + 
+#   geom_line(aes(group = interaction(network_name, method), 
+#                 alpha = (1-as.numeric(network_name))*0.5+0.5), show.legend = F)+
+#   # ggh4x::facet_nested_wrap(vars(paste(network_name)), ncol = 5)+
+#   theme_bw()
 
 # results %>%
 #   filter(network_name < 0.1)%>%
@@ -133,7 +148,7 @@ results %>%
 #   theme_bw()
 
 ggexport(plot_rf, filename = "results/comparisons_to_existing_methods/non_linear_comparison.pdf", 
-         width = 8, height = 8)
+         width = 10, height = 6)
 
 
 ```
@@ -144,44 +159,51 @@ ggexport(plot_rf, filename = "results/comparisons_to_existing_methods/non_linear
 Differences between weightedLASSO and mLASSO-StARS:
 
 + Glm family is Poisson for weightedLASSO, and Gaussian (following log transform) for mLASSO-StARS 
-+ Sparsity selection is done by cv.glmnet in weightedLASSO, and by lasso.stars in mLASSO-StARS
-+ The importance metric is MSE increase on OOB for weightedLASSO, and selection frequency + partial correlation for mLASSO-StARS.
++ Sparsity selection is done by cv.glmnet in weightedLASSO (lambda 1se), and by the lasso.stars R package in mLASSO-StARS
++ The importance metric is the MSE increase after permutations on OOB for weightedLASSO, and selection frequency + partial correlation for mLASSO-StARS.
 
 ```{r}
 results <- NULL
 for(alpha in alphas){
-  # computing models for mLASSO_stars and weightedLASSO
-  importances_mLASSO_stars <- mLASSO_stars_inference(counts, genes, tfs, alpha = alpha, 
-                                                     N_boot = 5, N_stars_ss = 5,
-                                                     pwm_occurrence = pwm_occurrence, 
-                                                     nCores = nCores)
-
-  importances_wLASSO <- weightedLASSO_inference(counts, genes, tfs, alpha = alpha, 
-                                                N = 25, pwm_occurrence = pwm_occurrence, 
-                                                nCores = nCores)
   
-  # building sparse GRNs and evaluating them against DAP-Seq
-  pr_curve_mLASSO_stars <- evaluate_fully_connected(importances_mLASSO_stars[tfs,], 
-                                               pwm_occurrence = pwm_occurrence,
-                            input_genes = genes, input_tfs = tfs, 
-                                           validation = c("DAPSeq"),
-                                           nCores =10) %>%
-    mutate(alpha = alpha, method = "mLASSO_stars", 
-           mse = median(importances_mLASSO_stars["mse",], na.rm = T))
+  for(rep in 1:N_rep){
+    # computing models for mLASSO_stars and weightedLASSO
+    importances_mLASSO_stars <- mLASSO_stars_inference(counts, genes, tfs, alpha = alpha, 
+                                                       N_boot = 5, N_stars_ss = 5,
+                                                       stars.thresh = 0.05,
+                                                       pwm_occurrence = pwm_occurrence, 
+                                                       nCores = nCores)
   
-  pr_curve_wLASSO <- evaluate_fully_connected(importances_wLASSO[tfs,], 
-                                           pwm_occurrence = pwm_occurrence,
-                            input_genes = genes, input_tfs = tfs, 
-                                           validation = c("DAPSeq"),
-                                           nCores =10) %>%
-    mutate(alpha = alpha, method = "weightedLASSO",
-           mse = median(importances_wLASSO["mse",], na.rm = T))
-  
-  if(is.null(results)) results <- rbind.data.frame(pr_curve_wLASSO, pr_curve_mLASSO_stars)
-  else results <- rbind(results, rbind.data.frame(pr_curve_wLASSO, pr_curve_mLASSO_stars))
+    importances_wLASSO <- weightedLASSO_inference(counts, genes, tfs, alpha = alpha, 
+                                                  N = 25, pwm_occurrence = pwm_occurrence, 
+                                                  nCores = nCores)
+    
+    # building sparse GRNs and evaluating them against DAP-Seq
+    pr_curve_mLASSO_stars <- evaluate_fully_connected(importances_mLASSO_stars[tfs,], 
+                                                 pwm_occurrence = pwm_occurrence,
+                              input_genes = genes, input_tfs = tfs, 
+                                             validation = c("DAPSeq"),
+                                             nCores =10) %>%
+      mutate(alpha = alpha, method = "mLASSO_stars", rep = rep,
+             mse = median(importances_mLASSO_stars["mse",], na.rm = T),
+             aupr = MESS::auc(recall, precision, type = 'spline'))
+    
+    pr_curve_wLASSO <- evaluate_fully_connected(importances_wLASSO[tfs,], 
+                                             pwm_occurrence = pwm_occurrence,
+                              input_genes = genes, input_tfs = tfs, 
+                                             validation = c("DAPSeq"),
+                                             nCores =10) %>%
+      mutate(alpha = alpha, method = "weightedLASSO", rep = rep,
+             mse = median(importances_wLASSO["mse",], na.rm = T),
+             aupr = MESS::auc(recall, precision, type = 'spline')) 
+    
+    
+    if(is.null(results)) results <- rbind.data.frame(pr_curve_wLASSO, pr_curve_mLASSO_stars)
+    else results <- rbind(results, rbind.data.frame(pr_curve_wLASSO, pr_curve_mLASSO_stars))
+  }
 }
 
-save(results, file = "results/mLASSO_stars_weightedLASSO_comparison.rdata")
+save(results, file = "results/mLASSO_stars_weightedLASSO_comparison_reps.rdata")
 
 
 ```
@@ -189,35 +211,133 @@ save(results, file = "results/mLASSO_stars_weightedLASSO_comparison.rdata")
 Results:
 
 ```{r}
-load(file = "results/mLASSO_stars_weightedLASSO_comparison.rdata")
+load(file = "results/mLASSO_stars_weightedLASSO_comparison_reps.rdata")
 
 
 plot_lasso <- (results %>%
+              group_by(method, alpha) %>%
+              mutate(aupr = mean(aupr, na.rm = T)) %>%
+              mutate(aupr_pos = ifelse(method == "weightedLASSO", 0.75, 0.25)) %>%
   ggplot(aes(y=precision, x = recall, color = method)) +
-  geom_point() + geom_line()+
-  ggh4x::facet_nested_wrap(vars(paste(alpha)))+
-  theme_bw() )/(
+  geom_point(size = 0.5) + geom_smooth(method = "gam", aes(fill = method), alpha = 0.2)+
+  ggh4x::facet_nested_wrap(vars(paste("alpha =", alpha)), nest_line = T)+
+    geom_text(aes(y=0.5, x=aupr_pos, label = paste("AUPR =",round(aupr, 2))), show.legend = F) )/(
 results %>%
   group_by(alpha, method) %>%
-  distinct(mse, .keep_all = T) %>%
-  ggplot(aes(y=mse, x =method, fill = method)) +
-  geom_bar(stat = "identity", width = 0.25) + 
-  ggh4x::facet_nested_wrap(vars(paste(alpha)))+
-  theme_bw())+
-results %>%
-  filter(network_name < 0.075)%>%
-  ggplot(aes(y=pwm_supprt, x =alpha, color = method)) +
-  geom_point() + 
-  geom_line(aes(group = interaction(network_name, method), 
-                alpha = (1-as.numeric(network_name))*0.5+0.5 ), show.legend = F)+
-  # ggh4x::facet_nested_wrap(vars(paste(network_name)), ncol = 5)+
-  theme_bw()
+  mutate(mean_mse = mean(mse, na.rm = T)) %>%
+  ggplot(aes(y=mean_mse, x =method, fill = method)) +
+  geom_segment(aes(xend = method, y = 0, yend = mean_mse, color = method),size = 2.5) + 
+  geom_point(aes(y=mse), size = 0.85, color = "black")+
+  ggh4x::facet_nested_wrap(vars(paste("alpha =", alpha)), nest_line = T));plot_lasso
 
-ggexport(plot_lasso, filename = "results/comparisons_to_existing_methods/linear_comparison.pdf", width = 8, height = 8)
+
+plot_lasso <- plot_lasso & scale_color_manual(values = c("#668877", "#70AD47"))& 
+  scale_fill_manual(values = c("#668877", "#70AD47"))&
+  theme_bw() & theme(strip.background = element_blank());plot_lasso
+
+
+ggexport(plot_lasso, filename = "results/comparisons_to_existing_methods/linear_comparison.pdf", width = 10, height = 6)
 ```
 
+Overlaying the results of DIOgene over these results:
 
 
+```{r, fig.width = 10}
+# loading global alpha results
+load(file = "results/mLASSO_stars_weightedLASSO_comparison_reps.rdata")
+all_results <- results
+
+load(file = "results/irafnet_weightedRF_comparison_reps.rdata")
+all_results <- rbind.data.frame(all_results, results)
+
+# loading DIOgene importance matrices
+load("results/rdata/gene_specific/gene_specific_grns_true_sd.rdata")
+mats <- mats[str_detect(names(mats),"true")]
+names(mats)
+
+# computing DIOgene PR curves
+mat_diogene_linear <- apply(simplify2array(mats[str_detect(names(mats), "LASSO")]), 1:2, mean) 
+mat_diogene_non_linear <- apply(simplify2array(mats[str_detect(names(mats), "RF")]), 1:2, mean) 
+
+
+linear_eval <- evaluate_fully_connected(mat_diogene_linear[tfs,],
+                                        pwm_occurrence = pwm_occurrence,
+                              input_genes = genes, input_tfs = tfs, 
+                                             validation = c("DAPSeq"),
+                                             nCores =10) %>%
+  mutate(aupr = MESS::auc(recall, precision, type = 'spline'),
+         mse = median(mat_diogene_linear["mse",]), 
+         method = "weightedLASSO", alpha = "DIOgene")
+
+non_linear_eval <- evaluate_fully_connected(mat_diogene_non_linear[tfs,],
+                                            pwm_occurrence = pwm_occurrence,
+                              input_genes = genes, input_tfs = tfs, 
+                                             validation = c("DAPSeq"),
+                                             nCores =10)%>%
+  mutate(aupr = MESS::auc(recall, precision, type = 'spline'),
+         mse = median(mat_diogene_non_linear["mse",]), 
+         method = "weightedRF", alpha = "DIOgene")
+
+all_diogene_results <- rbind.data.frame(non_linear_eval, linear_eval) %>%
+  mutate(rep = 1, pwm_supprt = NA)
+
+
+plot(y=linear_eval$precision, linear_eval$recall)
+
+# combine all mse and aupr data:
+all_results <- rbind.data.frame(all_results, all_diogene_results[,colnames(all_results)])
+
+
+# massive plot:
+method_comparison <- (all_results %>%
+    mutate(color = ifelse(method == "iRafNet" | method == "mLASSO_stars" , "ref",
+                          ifelse((method == "weightedLASSO" | method == "weightedRF") & alpha == "DIOgene", 
+                                 "diogene", "weighted")),
+           regression = ifelse(str_detect(method, "LASSO"), "Linear case", "Non linear case")) %>%
+              group_by(method, alpha) %>%
+              mutate(aupr = mean(aupr, na.rm = T))  %>%
+      group_by(method, alpha, network_name) %>%
+      mutate(mean_precision =mean(precision),
+             mean_recall = mean(recall)) %>%
+              mutate(aupr_pos = ifelse(str_detect(method, "weighted"), 0.75, 0.25)) %>%
+  ggplot(aes(y=precision, x = recall, color = interaction(color, regression))) +
+  geom_point(size = 0.35, show.legend = F) + 
+    geom_line(aes(y=mean_precision, x = mean_recall,
+                  group = interaction(color, regression)), show.legend = T)+
+  ggh4x::facet_nested_wrap(vars(regression, paste("alpha =", alpha)), nest_line = T, ncol = 4)+
+    theme(legend.position = "none") +
+    geom_text(aes(y=0.5, x=aupr_pos, label = paste("AUPR =",round(aupr, 2))), show.legend = F))/ 
+(all_results %>%
+    mutate(color = ifelse(method == "iRafNet" | method == "mLASSO_stars" , "ref",
+                          ifelse((method == "weightedLASSO" | method == "weightedRF") & alpha == "DIOgene", 
+                                 "diogene", "weighted")),
+           regression = ifelse(str_detect(method, "LASSO"), "Linear case", "Non linear case")) %>%
+              group_by(alpha, method) %>%
+  mutate(mean_mse = mean(mse, na.rm = T)) %>%
+  ggplot(aes(y=mean_mse, x =method, fill = method)) +
+   ylab("Median MSE") + xlab("")+
+  geom_segment(aes(xend = method, y = 0, yend = mean_mse, 
+                   color = interaction(color, regression)),size = 2.5) + 
+  geom_point(aes(y=mse), size = 0.85, color = "black", show.legend = F)+
+  ggh4x::facet_nested_wrap(vars(regression, paste("alpha =", alpha)), 
+                           nest_line = T, ncol = 4, scales = "free_x"))  & 
+  scale_color_manual(name = "Method",
+                     values = c("royalblue", "#668877", "#70AD47", "royalblue", "#668877", "#70AD47"), 
+                     labels = c("DIOgene (linear)", "mLASSO-StARS", "weightedLASSO", 
+                                "DIOgene (non linear)", "iRafNet", "weightedRF"))& 
+  scale_fill_manual(name = "Method",
+                     values = c("royalblue", "#668877", "#70AD47", "royalblue", "#668877", "#70AD47"), 
+                     labels = c("DIOgene (linear)", "mLASSO-StARS", "weightedLASSO", 
+                                "DIOgene (non linear)", "iRafNet", "weightedRF"))& 
+  theme_bw() & theme(strip.background = element_blank(), 
+                     legend.position = "right")& 
+  plot_annotation(tag_levels = "a" );method_comparison
+
+ggexport(method_comparison, filename = "results/comparisons_to_existing_methods/comparison.pdf", 
+         width = 11, height = 8)
+
+
+```
 
 
 
