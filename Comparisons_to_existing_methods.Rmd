@@ -242,7 +242,7 @@ ggexport(plot_lasso, filename = "results/comparisons_to_existing_methods/linear_
 Overlaying the results of DIOgene over these results:
 
 
-```{r, fig.width = 10}
+```{r, fig.width = 15}
 # loading global alpha results
 load(file = "results/mLASSO_stars_weightedLASSO_comparison_reps.rdata")
 all_results <- results
@@ -282,20 +282,32 @@ all_diogene_results <- rbind.data.frame(non_linear_eval, linear_eval) %>%
   mutate(rep = 1, pwm_supprt = NA)
 
 
+all_results <- all_results %>%
+  group_by(method, alpha, rep) %>%
+  mutate(aupr_splines = MESS::auc(recall, precision, type = 'spline'),
+         aupr_linear = MESS::auc(recall, precision, type = 'linear'),
+         Bolstad2 = Bolstad2::sintegral(recall, precision)$int)
+
 plot(y=linear_eval$precision, linear_eval$recall)
 
 # combine all mse and aupr data:
 all_results <- rbind.data.frame(all_results, all_diogene_results[,colnames(all_results)])
 
 
+# computing alternative AUPRs:
+
+
+mse_max <- 0.3
+mse_min <- 0.1
+
 # massive plot:
 method_comparison <- (all_results %>%
     mutate(color = ifelse(method == "iRafNet" | method == "mLASSO_stars" , "ref",
-                          ifelse((method == "weightedLASSO" | method == "weightedRF") & alpha == "DIOgene", 
-                                 "diogene", "weighted")),
+                          ifelse((method == "weightedLASSO" | method == "weightedRF") & 
+                                   alpha == "DIOgene", "diogene", "weighted")),
            regression = ifelse(str_detect(method, "LASSO"), "Linear case", "Non linear case")) %>%
               group_by(method, alpha) %>%
-              mutate(aupr = mean(aupr, na.rm = T))  %>%
+              mutate(aupr = mean(aupr_linear, na.rm = T))  %>%
       group_by(method, alpha, network_name) %>%
       mutate(mean_precision =mean(precision),
              mean_recall = mean(recall)) %>%
@@ -313,12 +325,17 @@ method_comparison <- (all_results %>%
                                  "diogene", "weighted")),
            regression = ifelse(str_detect(method, "LASSO"), "Linear case", "Non linear case")) %>%
               group_by(alpha, method) %>%
-  mutate(mean_mse = mean(mse, na.rm = T)) %>%
+  mutate(mean_mse = mean(mse, na.rm = T),
+         mean_mse_to_plot = ifelse(mean_mse > mse_max, mse_max, mean_mse),
+         mse_label_y = mean_mse_to_plot,
+         label_nudge = ifelse(mean_mse > mse_max, -0.05, 0.05)) %>%
   ggplot(aes(y=mean_mse, x =method, fill = method)) +
-   ylab("Median MSE") + xlab("")+
-  geom_segment(aes(xend = method, y = 0, yend = mean_mse, 
+   ylab("Median MSE") + xlab("")+ ylim(c(mse_min,mse_max))+
+  geom_segment(aes(xend = method, y = mse_min, yend = mean_mse_to_plot, 
                    color = interaction(color, regression)),size = 2.5) + 
   geom_point(aes(y=mse), size = 0.85, color = "black", show.legend = F)+
+   geom_text(aes(label = round(mean_mse, 3), y=0.12, color = interaction(color, regression)), 
+             nudge_x = 0.275, fill = "white", show.legend = F)+
   ggh4x::facet_nested_wrap(vars(regression, paste("alpha =", alpha)), 
                            nest_line = T, ncol = 4, scales = "free_x"))  & 
   scale_color_manual(name = "Method",
@@ -338,74 +355,4 @@ ggexport(method_comparison, filename = "results/comparisons_to_existing_methods/
 
 
 ```
-
-
-
-<!-- comparison to stars-lasso in the Inferlator? -->
-
-<!-- Generating input tsv files to feed the Inferelator worker: -->
-
-<!-- ```{r} -->
-<!-- # expression file :  -->
-<!-- load('rdata/inference_input_N_response_varala.rdata') -->
-<!-- genes <- input_data$grouped_genes; length(genes) -->
-<!-- tfs <- input_data$grouped_regressors; length(tfs) -->
-<!-- counts <- input_data$counts; dim(counts) -->
-
-<!-- # expression should be log transformed as the model is  -->
-<!-- expression <- log10(counts + 0.75) %>% -->
-<!--   as.data.frame()  -->
-<!-- options(OutDec=".") -->
-<!-- # %>% -->
-<!-- #   rownames_to_column("gene") -->
-
-<!-- write.table(expression, file = "data/inferelator_inputs/expression.tsv",  -->
-<!--             sep = '\t', row.names = T, quote = F) -->
-
-<!-- # names of the TFs -->
-<!-- write.table(tfs, file = "data/inferelator_inputs/tf_names.tsv", sep = '\t',  -->
-<!--             row.names = F, quote = F, col.names = F) -->
-
-<!-- # prior matrix: pwm scores to bias variable selection toward pairs supported by a TFBS -->
-<!-- load("rdata/pwm_occurrences_N_response_varala.rdata") -->
-<!-- dim(pwm_occurrence) -->
-
-<!-- pwm_imputed <- pwm_occurrence -->
-<!-- pwm_imputed[is.na(pwm_imputed)] <- 0.5 -->
-<!-- priors <- data.frame(pwm_imputed) -->
-
-<!-- write.table(priors, file = "data/inferelator_inputs/priors.tsv", sep = '\t',  -->
-<!--             row.names = T, quote = F) -->
-<!-- ``` -->
-
-<!-- Manually added the tab before colnames to get the exact same format as inferelator examples. -->
-
-
-<!-- Launching the Infereltaor with stars-lasso without TFA, to get the most comparable outputs: -->
-
-<!-- ```{python} -->
-
-<!-- from inferelator import inferelator_workflow, MPControl -->
-
-<!-- n_cores_local = 10 -->
-<!-- local_engine = True -->
-
-<!-- # Multiprocessing needs to be protected with the if __name__ == 'main' pragma -->
-<!-- if __name__ == '__main__' and local_engine: -->
-<!--     MPControl.set_multiprocess_engine("multiprocessing") -->
-<!--     MPControl.client.set_processes(n_cores_local) -->
-<!--     MPControl.connect() -->
-
-<!-- worker = inferelator_workflow(regression="elasticnet", workflow="tfa") -->
-
-<!-- worker.set_file_paths(input_dir="data/inferelator_inputs/", -->
-<!--                       output_dir="data/inferelator_outputs", -->
-<!--                       expression_matrix_file="expression.tsv", -->
-<!--                       tf_names_file="tf_names.tsv", -->
-<!--                       priors_file="priors.tsv") -->
-
-<!-- worker.set_run_parameters(num_bootstraps=2, random_seed=42) -->
-<!-- worker.set_network_data_flags(use_no_gold_standard=True) -->
-<!-- network_result = worker.run() -->
-<!-- ``` -->
 

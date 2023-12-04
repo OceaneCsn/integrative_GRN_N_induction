@@ -101,13 +101,11 @@ weightedLASSO_inference <- function(counts, genes, tfs, alpha=0.25,
                                                       
                                                       importances <- setNames(rep(0, length(tfs)), tfs)
                                                       
-                                                      ######### Stability Selection
+                                                      ######### Stability Selection / bootstraps
                                                       n_actual = 0
                                                       mse_gene = c()
                                                       for(n in 1:N) {
-                                                        # bootstrapping observations
-                                                        # sampled <- sample(1:nrow(x), replace = T, size = nrow(x))
-                                                        
+
                                                         # bootstrapping observations and controlling that
                                                         # duplicated observations are in the same fold
                                                         idx <- sample(1:length(y), replace = F)
@@ -141,7 +139,7 @@ weightedLASSO_inference <- function(counts, genes, tfs, alpha=0.25,
                                                               x_target[sampled,],
                                                               y[sampled],
                                                               maxit=maxit,
-                                                              family = "poisson",
+                                                              family = family,
                                                               nfolds = nfolds.cv,
                                                               foldid = foldid,
                                                               penalty.factor = penalty_factor)
@@ -152,17 +150,22 @@ weightedLASSO_inference <- function(counts, genes, tfs, alpha=0.25,
                                                             # feature selection for optimal lambda
                                                             selected_tfs <- names(which(mymodels_pen$glmnet.fit$beta[, ilambda.1se] != 0))
                                                             
-                                                            # selection frequency
-                                                            # importances[selected_tfs] <- importances[selected_tfs]+1
-                                                            
                                                             # model predictions on OOB observations
-                                                            y_hat <- exp(predict(mymodels_pen, newx = x_target[oob,],
-                                                                                 type = "link", s= ilambda.1se))
+                                                            if(family == "poisson"){
+                                                              y_hat <- exp(predict(mymodels_pen, newx = x_target[oob,],
+                                                                                   type = "link", s= ilambda.1se))
+                                                            }
+                                                            else{
+                                                              y_hat <- predict(mymodels_pen, newx = x_target[oob,],type = "response",
+                                                                                  s= "lambda.1se")
+                                                            }
+                                                            
                                                             # prediction of MSE on OOB data
                                                             mse_oob <- mean((y_hat - y[oob])^2)
                                                             mse_gene <- c(mse_gene, mse_oob)
                                                             n_actual = n_actual+1
-                                                            # computing MDA on OOB data
+                                                            
+                                                            # computing importance on OOB conditions
                                                             for(sel_tf in selected_tfs){
                                                               x_target_rand <- x_target[oob,]
 
@@ -175,21 +178,31 @@ weightedLASSO_inference <- function(counts, genes, tfs, alpha=0.25,
                                                               # alternative mda : removes the variable from predictors
                                                               if(mda_type == "zero")
                                                                 x_target_rand[,sel_tf] <- 0
-
-                                                              y_hat_rand <- exp(predict(mymodels_pen, newx = x_target_rand,
-                                                                                               type = "link", s = ilambda.1se))
-
+                                                              
+                                                              
+                                                              # makes predictions on the permuted data
+                                                              if(family == "poisson"){
+                                                                y_hat_rand <- exp(predict(mymodels_pen, newx = x_target_rand,
+                                                                                          type = "link", s = ilambda.1se))
+                                                              }
+                                                              else{
+                                                                y_hat <- predict(mymodels_pen, newx = x_target_rand,
+                                                                                 s= "lambda.1se")
+                                                              }
+                                                              
+                                                              # mse on this shuffled dataset
                                                               mse_rand <- mean((y_hat_rand - y[oob])^2)
                                                               
+                                                              # importance is the normalized MSE increase induced by the shuffling of
+                                                              # a given variable
                                                               importances[sel_tf] <- importances[sel_tf] +
                                                                 max(0,(mse_rand - mse_oob)/mse_rand)
                                                             }
-                                                            
-                                                            
                                                             }
                                                           )
                                                         }
                                                       }
+                                                      # returns importance values and median mse in the different bootstraps
                                                       c(importances[tfs]/N, setNames(median(mse_gene)/(sd(y)^2), "mse"))
                                                     }))
   attr(result.reg, "rng") <- NULL # It contains the whole sequence of RNG seeds
