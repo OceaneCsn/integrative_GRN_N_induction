@@ -356,3 +356,34 @@ ggexport(method_comparison, filename = "results/comparisons_to_existing_methods/
 
 ```
 
+
+
+```{r}
+importances_wLASSO <- weightedLASSO_inference(counts, genes, tfs, alpha = 1, 
+                                                  N = 25, pwm_occurrence = pwm_occurrence, 
+                                                  nCores = nCores, EN_param = 1, lambda = "min")
+median(importances_wLASSO["mse",])
+```
+
+
+Zoomer sur les courbes précision rappel pour les densités <) 0.1
+
+lambda min alpha = 0.5 : [1] 0.2581444
+
+lambda 1se alpha = 0.5 : [1] 0.2240055
+
+lambda min alpha = 0.5 EN 0.5 : [1] 0.202
+
+lambda 1se alpha = 0.5 EN 0.5 : [1] 0.187
+
+lambda min alpha = 0 : [1] 0.245
+
+lambda 1se alpha = 0 : [1] 0.208
+
+lambda min alpha = 1 : [1] 0.245
+
+lambda 1se alpha = 1 : [1] 0.248
+
+
+
+Nb reg pour weightedLASSO (EN, LASSO, lambda min et lambda 1se) et 

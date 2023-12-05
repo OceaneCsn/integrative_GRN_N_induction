@@ -28,6 +28,8 @@ library(tictoc)
 #' @param nCores Number of cores for multithreading
 #' @param nfolds.cv Number of folds for cross validation
 #' @param family Type of distribution for the glm ("gaussian" or "poisson" (default))
+#' @param EN_param ElasticNet parameter. 1 (default) is LASSO, 0 is Rigde.
+#' @param lambda "min" ou "1se" (default)
 #' @return a matrix of feature importances for each TF-target pairs
 #' @export
 #'
@@ -35,9 +37,9 @@ library(tictoc)
 weightedLASSO_inference <- function(counts, genes, tfs, alpha=0.25, 
                                 pwm_occurrence, int_pwm_noise = 0,
                                 N = 100, mda_type="shuffle",
-                                family = "poisson",
+                                family = "poisson", EN_param = 1,
                                 tf_expression_permutation = FALSE,
-                                nfolds.cv=5,
+                                nfolds.cv=5, lambda = "1se",
                                 nCores = ifelse(is.na(detectCores()),1,
                                                 max(detectCores() - 1, 1))){
   
@@ -139,25 +141,28 @@ weightedLASSO_inference <- function(counts, genes, tfs, alpha=0.25,
                                                               x_target[sampled,],
                                                               y[sampled],
                                                               maxit=maxit,
+                                                              alpha = EN_param,
                                                               family = family,
                                                               nfolds = nfolds.cv,
                                                               foldid = foldid,
                                                               penalty.factor = penalty_factor)
                                                             
-                                                            # value of lambda 1se
-                                                            ilambda.1se <- which(mymodels_pen$lambda == mymodels_pen$lambda.1se)
+                                                            # value of lambda
+                                                            if(lambda == "1se")
+                                                              ilambda <- which(mymodels_pen$lambda == mymodels_pen$lambda.1se)
+                                                            else ilambda <- which(mymodels_pen$lambda == mymodels_pen$lambda.min)
                                                             
                                                             # feature selection for optimal lambda
-                                                            selected_tfs <- names(which(mymodels_pen$glmnet.fit$beta[, ilambda.1se] != 0))
+                                                            selected_tfs <- names(which(mymodels_pen$glmnet.fit$beta[, ilambda] != 0))
                                                             
                                                             # model predictions on OOB observations
                                                             if(family == "poisson"){
                                                               y_hat <- exp(predict(mymodels_pen, newx = x_target[oob,],
-                                                                                   type = "link", s= ilambda.1se))
+                                                                                   type = "link", s= ilambda))
                                                             }
                                                             else{
                                                               y_hat <- predict(mymodels_pen, newx = x_target[oob,],type = "response",
-                                                                                  s= "lambda.1se")
+                                                                                  s= paste0("lambda.", lambda))
                                                             }
                                                             
                                                             # prediction of MSE on OOB data
@@ -183,11 +188,11 @@ weightedLASSO_inference <- function(counts, genes, tfs, alpha=0.25,
                                                               # makes predictions on the permuted data
                                                               if(family == "poisson"){
                                                                 y_hat_rand <- exp(predict(mymodels_pen, newx = x_target_rand,
-                                                                                          type = "link", s = ilambda.1se))
+                                                                                          type = "link", s = ilambda))
                                                               }
                                                               else{
                                                                 y_hat <- predict(mymodels_pen, newx = x_target_rand,
-                                                                                 s= "lambda.1se")
+                                                                                 s= paste0("lambda.", lambda))
                                                               }
                                                               
                                                               # mse on this shuffled dataset

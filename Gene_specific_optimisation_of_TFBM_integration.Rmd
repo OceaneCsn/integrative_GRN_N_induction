@@ -57,7 +57,7 @@ For $alpha$ from 0 to 1 with a step of 0.1, we infer 100 or 50 integrative model
 + a shuffled baseline, corresponding to a simulated null hypothesis.
 
 The following code chunks are very long to run (even in multitasking), and save their results in `reslults/rdata`, a folder which should be created beforehand.
-Results are a matrix of TF-target importances, edges, MSE values, and validation against DAP-Seq. 
+Results are a matrix of TF-target importances, GRN edges, MSE values, and validation against DAP-Seq. 
 
 ## For weightedRF
 
