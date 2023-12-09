@@ -24,7 +24,7 @@ library(ggpubr)
 library(patchwork)
 library(ggVennDiagram)
 library(ComplexHeatmap)
-library(clusterProfiler)
+# library(clusterProfiler)
 library(circlize)
 
 theme_set(theme_bw())
@@ -94,7 +94,8 @@ dev.off()
 
 ```{r, fig.height=20}
 # loads the mats object (importance of TF-target interactions)
-load("results/rdata/weightedLASSO_importances_50rep.rdata")
+# load("results/rdata/weightedLASSO_importances_50rep.rdata")
+load("results/rdata/weightedEN_importances_50rep.rdata")
 
 # getting mean EDI values for all genes as a function of alpha
 edi_lasso <- mcsapply(genes, draw_gene_effective_integration, mats = mats,
@@ -109,7 +110,7 @@ lasso <- Heatmap(edi,
       height = nrow(edi)*unit(0.2, "mm"),
       name = "EDI",
         cluster_columns = F, show_row_names = F)
-png("results/supp_figures/EDI_all_genes_weightedLASSO.png", 
+png("results/supp_figures/EDI_all_genes_weightedEN.png", 
     res = 300, height = 1700+2200, width = 2000)
 lasso
 dev.off()
@@ -120,7 +121,7 @@ dev.off()
 
 ```{r}
 # loads lasso edges
-load(file = "results/rdata/weightedLASSO_edges_50rep.rdata")
+load(file = "results/rdata/weightedEN_edges_50rep.rdata")
 edges_num <- lapply(edges, function(df) df[sapply(df, is.numeric)])
 d <- data.frame(settings = names(unlist(lapply(edges_num, FUN = nrow))),
                 pwm = unlist(lapply(edges_num, FUN = colMeans)))
@@ -153,7 +154,7 @@ pwm_support <- d %>%
   xlab(expression(alpha)) + ylab("Mean of TFBM scores") + 
   scale_color_manual(values = setNames(c("grey", "#70AD47"), c("shuffled", "trueData")))+
   ggtitle("Mean of TFBM scores in inferred GRN edges") ; pwm_support
-ggsave(pwm_support, file = "results/supp_figures/TFBM_support.pdf", width = 11, height = 8)
+ggsave(pwm_support, file = "results/supp_figures/TFBM_support_en.pdf", width = 11, height = 8)
 ```
 
 Wo do reach a TFBM support of 1 for $\alpha = 1$, which is the desired behavior.
@@ -165,7 +166,7 @@ How is distributed the optimal value of TFBM integration across all nitrate resp
 
 ```{r}
 # optimal values of alpha :
-load("results/rdata/gene_specific/alpha_per_gene_weightedLASSO_true_sd.rdata")
+load("results/rdata/gene_specific/alpha_per_gene_weightedEN_true_sd.rdata")
 load("results/rdata/gene_specific/alpha_per_gene_weightedRF_true_sd.rdata")
 
 hists <- data.frame(weightedLASSO = alphas_lasso, 
@@ -180,7 +181,7 @@ ggplot(aes(x = alpha, fill = model)) +
         legend.position = "none", strip.text = element_text(size = 12),
         axis.title = element_text(size = 12))+
   xlab(expression(alpha))+ ylab("Number of genes")
-ggexport(hists, filename  = "results/alpha_histograms.pdf", height = 2.5, width = 5.5)
+ggexport(hists, filename  = "results/alpha_histograms_en.pdf", height = 2.5, width = 5.5)
 ```
 
 
@@ -237,15 +238,17 @@ dev.off()
 
 ```{r, fig.height=10}
 
-load("results/rdata/weightedLASSO_mse_50rep.rdata")
-load("results/rdata/gene_specific/alpha_per_gene_weightedLASSO_mean_true_shuff_sd.rdata")
+# load("results/rdata/weightedLASSO_mse_50rep.rdata")
+# load("results/rdata/gene_specific/alpha_per_gene_weightedLASSO_mean_true_shuff_sd.rdata")
 
+load("results/rdata/weightedEN_mse_50rep.rdata")
+load("results/rdata/gene_specific/alpha_per_gene_weightedEN_true_sd.rdata")
 
 pos_class <- names(alphas_lasso[alphas_lasso!=0])
 
 mse <- lmses[str_detect(colnames(lmses), "trueData")]
 for(alpha in seq(0,1, by = 0.1)){
-  mse[,paste("alpha",alpha)] <- rowMeans(mse[,str_detect(colnames(mse), paste0("LASSO_",as.character(alpha), "_"))])
+  mse[,paste("alpha",alpha)] <- rowMeans(mse[,str_detect(colnames(mse), paste0("EN_",as.character(alpha), "_"))])
 }
 mse <- as.matrix(mse[str_detect(colnames(mse), "alpha")])
 mse_interest <- mse[pos_class,]
@@ -258,7 +261,7 @@ ha = HeatmapAnnotation(
     alpha = anno_simple(as.numeric(str_remove(colnames(mse), "alpha "))),
     annotation_name_side = "left")
 
-png("results/lasso_mse_interest.png", res = 300, height = 2000, width = 2000)
+png("results/lasso_mse_interest_en.png", res = 300, height = 2000, width = 2000)
 Heatmap((mse_interest-rowMeans(mse_interest))/matrixStats::rowSds(mse_interest), 
         col = col_fun, show_column_names = F,
          width = ncol(mse_interest)*unit(10, "mm"), 
@@ -269,7 +272,7 @@ Heatmap((mse_interest-rowMeans(mse_interest))/matrixStats::rowSds(mse_interest),
                 col = list(class = setNames(c("#70AD47", "grey"), 
                                             nm = c("TFBM integration", "no TFBM integration"))))
 dev.off()
-png("results/lasso_mse_others.png", res = 300, height = 2000, width = 2000)
+png("results/lasso_mse_others_en.png", res = 300, height = 2000, width = 2000)
 Heatmap((mse_other-rowMeans(mse_other))/matrixStats::rowSds(mse_other),
         col = col_fun,show_column_names = F,
         width = ncol(mse_other)*unit(10, "mm"), 
@@ -295,14 +298,14 @@ The following code validates globally inferred GRNs, with a given density, again
 
 load(file = "results/rdata/weightedRF_validation_100rep.rdata")
 val_rf <- val_dap
-load(file = "results/rdata/weightedLASSO_validation_50rep.rdata")
+load(file = "results/rdata/weightedEN_validation_50rep.rdata")
 val_lasso <- val_dap
 
 precision_lasso <- draw_validation(validation = val_lasso)+
-  plot_annotation(title = "weightedLASSO") & 
+  plot_annotation(title = "weightedEN") & 
   theme(plot.title = element_text(size = 20, hjust = 0.5) )
 
-ggexport(precision_lasso, filename = "results/supp_figures/precision_recall_weightedLASSO.pdf", 
+ggexport(precision_lasso, filename = "results/supp_figures/precision_recall_weightedEN.pdf", 
          width = 10, height = 10)
 
 precision_rf <- draw_validation(validation = val_rf)+
@@ -321,15 +324,15 @@ ggexport(precision_rf, filename = "results/supp_figures/precision_recall_weighte
 ```{r, warning=TRUE}
 settings <- c("model", "dataset", "rep", "density")
 
-load("results/rdata/gene_specific/gene_specific_mse_true_sd.rdata")
-load("results/rdata/gene_specific/gene_specific_validation_true_sd.rdata")
+load("results/rdata/gene_specific/gene_specific_mse_true_sd_en.rdata")
+load("results/rdata/gene_specific/gene_specific_validation_true_sd_en.rdata")
 
 val_spec <- val_specific %>%
   separate(network_name, into = settings, sep = "_") %>%
     filter(density == 0.005) %>%
   mutate(density = paste("D =", density),
            model = str_replace(model, "RF", "weightedRF"),
-           model = str_replace(model, "LASSO", "weightedLASSO"), 
+           model = str_replace(model, "LASSO", "weightedEN"), 
          alpha_type = "gene-specific")
 
 data_val <- rbind.data.frame(val_rf, val_lasso) %>%
@@ -341,7 +344,7 @@ data_val <- rbind.data.frame(val_rf, val_lasso) %>%
            sd_recall = sd(recall, na.rm = T),
            density = paste("D =", density),
            model = str_replace(model, "bRF", "weightedRF"),
-           model = str_replace(model, "LASSO", "weightedLASSO")) %>%
+           model = str_replace(model, "EN", "weightedEN")) %>%
   dplyr::select(-network_name) %>%
   mutate(alpha = as.numeric(alpha), alpha_type = "global")
 
@@ -443,12 +446,12 @@ theme(
 )+ ylab("MSE")
 }
 
-load("results/rdata/weightedLASSO_mse_50rep.rdata")
+load("results/rdata/weightedEN_mse_50rep.rdata")
 mse_lasso <- draw_mse("LASSO")
 
 load("results/rdata/weightedRF_mse_100rep.rdata")
 mse_rf <- draw_mse("RF")
-x_min <- 0.19
+x_min <- 0.14
 
 plot <- (mse_lasso + ylim(c(x_min,0.265)) +labs(subtitle = "Global\ndata integration")+ 
   mse_lasso_spec+ ylim(c(x_min,0.265)) +labs(subtitle = "Gene-specific\ndata integration")+ylab("") +
@@ -463,7 +466,7 @@ plot_final <- plot/ pr_curves+theme(legend.position = "none",
                       strip.text = element_text(size = 18))+
   plot_layout(heights = c(1,1.5))
 
-ggexport(plot_final, filename = "results/specific_grns_true_sd.pdf", width = 11, height = 10)
+ggexport(plot_final, filename = "results/specific_grns_true_sd_en.pdf", width = 11, height = 10)
 
 ```
 Final figure without permutations, clearer for the article :
@@ -472,8 +475,8 @@ Final figure without permutations, clearer for the article :
 ```{r, fig.width=12, fig.height=10}
 settings <- c("model", "dataset", "rep", "density")
 
-load("results/rdata/gene_specific/gene_specific_mse_true_sd.rdata")
-load("results/rdata/gene_specific/gene_specific_validation_true_sd.rdata")
+load("results/rdata/gene_specific/gene_specific_mse_true_sd_en.rdata")
+load("results/rdata/gene_specific/gene_specific_validation_true_sd_en.rdata")
 
 
 plot_MSE_gene_specific <- function(model_){
@@ -539,15 +542,15 @@ theme(
 )+ ylab("MSE")
 }
 
-load("results/rdata/weightedLASSO_mse_50rep.rdata")
+load("results/rdata/weightedEN_mse_50rep.rdata")
 mse_lasso <- draw_mse("LASSO")
 
 load("results/rdata/weightedRF_mse_100rep.rdata")
 mse_rf <- draw_mse("RF")
-x_min <- 0.19
+x_min <- 0.14
 
 
-plot <- (mse_lasso + ylim(c(x_min,0.26)) +labs(title = "weightedLASSO")+ 
+plot <- (mse_lasso + ylim(c(x_min,0.26)) +labs(title = "weightedEN")+ 
            theme(plot.title = element_text(hjust = 1))+
   mse_lasso_spec+ ylim(c(x_min,0.26)) +ylab("") +
   mse_rf +  ylim(c(x_min,0.26)) +labs(title = "weightedRF")+
@@ -590,7 +593,7 @@ plot_final <- plot/ pr_curves+theme(legend.position = "bottom",
 
 plot_final
 
-ggexport(plot_final, filename = "results/specific_grns_no_permutations_true_sd.pdf", 
+ggexport(plot_final, filename = "results/specific_grns_no_permutations_true_sd_en.pdf", 
          width = 11, height = 10)
 
 ```
@@ -605,7 +608,7 @@ What is the difference between our approach (maximal divergence in MSE as compar
 Intersection between genes benefiting from data integration with the minimal MSE criterion.
 
 ```{r}
-load("results/rdata/gene_specific/alpha_per_gene_weightedLASSO_min.rdata")
+load("results/rdata/gene_specific/alpha_per_gene_weightedEN_min.rdata")
 load("results/rdata/gene_specific/alpha_per_gene_weightedRF_min.rdata")
 
 venn <- ggVennDiagram(list("weightedRF" = names(alphas_rf[alphas_rf!=0]),
@@ -614,12 +617,13 @@ venn <- ggVennDiagram(list("weightedRF" = names(alphas_rf[alphas_rf!=0]),
   scale_fill_gradient(high="#e6f2ff", low="#e6f2ff")+
   theme(legend.position = "none");venn
 
+hist(alphas_lasso)
 # hypergeometric test to assess the significance of the intersect
 p_enrich <- phyper(q=582, m = length(names(alphas_rf[alphas_rf!=0])), 
                    n = length(genes) - length(names(alphas_rf[alphas_rf!=0])), 
                    k = length( names(alphas_lasso[alphas_lasso!=0])), lower.tail = F)
 p_enrich
-ggexport(venn, filename = "results/classes_intersection_min.pdf", width = 4, height = 4)
+ggexport(venn, filename = "results/classes_intersection_min_en.pdf", width = 4, height = 4)
 ```
 
 Differences between the two criteria for the same model : 
@@ -677,10 +681,10 @@ We show only a small MSE increase of our approach, but precision and recall are 
 
 
 ```{r, fig.width=10}
-load("results/rdata/gene_specific/gene_specific_validation_min.rdata")
+load("results/rdata/gene_specific/gene_specific_validation_min_en.rdata")
 val_specific_min <- val_specific %>%
   mutate(criterion = "Minimal MSE")
-load("results/rdata/gene_specific/gene_specific_validation_true_sd.rdata")
+load("results/rdata/gene_specific/gene_specific_validation_true_sd_en.rdata")
 
 val_specific_dev <- val_specific%>%
   mutate(criterion = "Proposed approach")
@@ -699,12 +703,12 @@ precision_recall_min_dev <- rbind.data.frame(val_specific_dev, val_specific_min)
 
 
 ```{r, fig.width = 10, fig.height=5}
-load("results/rdata/gene_specific/gene_specific_mse_min.rdata")
+load("results/rdata/gene_specific/gene_specific_mse_min_en.rdata")
 mse_min <- lmses
 colnames(mse_min) <- paste0(colnames(mse_min), '_min')
 mse_min$genes <- rownames(mse_min)
 
-load("results/rdata/gene_specific/gene_specific_mse_true_sd.rdata")
+load("results/rdata/gene_specific/gene_specific_mse_true_sd_en.rdata")
 
 mse_dev <- lmses
 colnames(mse_dev) <- paste0(colnames(mse_dev), '_dev')
@@ -745,12 +749,12 @@ load("rdata/connectf_N_responsive_genes.rdata")
 validated_edges <- validated_edges %>%
   filter(type == "DAPSeq")
 
-load("results/rdata/gene_specific/gene_specific_grns_true_sd.rdata")
+load("results/rdata/gene_specific/gene_specific_grns_true_sd_en.rdata")
 # load("results/rdata/gene_specific/gene_specific_grns_mean_true_shuff_sd.rdata")
 
 mats_dev <- mats[!str_detect(names(mats), "shuffled")]
 
-load("results/rdata/gene_specific/gene_specific_grns_min.rdata")
+load("results/rdata/gene_specific/gene_specific_grns_min_en.rdata")
 mats_min <- mats[!str_detect(names(mats), "shuffled")]
 
 mean_mats_min_lasso <- apply(simplify2array(mats_min[str_detect(names(mats_min), "LASSO")]), 1:2, mean)[tfs,genes]
@@ -798,13 +802,13 @@ lost_curve_min <- evaluate_fully_connected(mean_mats_min_rf[,lost_rf], N = 20,
 ```
 
 ```{r}
-saved_curve_dev <- evaluate_fully_connected(mean_mats_dev_lasso[,saved_lasso], N = 20, 
+saved_curve_dev <- evaluate_fully_connected(mean_mats_dev_lasso[,saved_lasso], 
                                             validation = "DAPSeq", nCores = 20, 
                                             input_tfs = tfs,
                                             input_genes = c(saved_lasso))%>%
   mutate(targets = "Proposed approach\nSpecific TFBM\nintegration")
 
-lost_curve_min <- evaluate_fully_connected(mean_mats_min_lasso[,lost_lasso], N = 20, 
+lost_curve_min <- evaluate_fully_connected(mean_mats_min_lasso[,lost_lasso], 
                                             validation = "DAPSeq", nCores = 20, 
                                            input_tfs = tfs,
                                             input_genes = c(lost_lasso)) %>%
@@ -814,7 +818,7 @@ lost_curve_min <- evaluate_fully_connected(mean_mats_min_lasso[,lost_lasso], N =
 lost_saved_lasso <- rbind.data.frame(saved_curve_dev, lost_curve_min) %>%
   ggplot(aes(x=recall, y = precision, color = targets)) + 
   geom_line() + geom_point()+
-  ggtitle("weightedLASSO")
+  ggtitle("weightedEN")
 
 
 pr_curves <- mse_plot + theme(legend.position = "none")+ 

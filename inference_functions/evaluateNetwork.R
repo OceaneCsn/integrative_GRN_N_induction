@@ -1,7 +1,6 @@
 load('rdata/connectf_N_responsive_genes.rdata')
 library(tidyverse)
-library(ggh4x)
-library(igraph)
+# library(ggh4x)
 library(igraph)
 
 #' Evaluates an inferred network against validated regulatory interactions
@@ -310,7 +309,7 @@ evaluate_fully_connected <- function(mat, pwm_occurrence = NULL, validation = c(
 # computes the degree of input networks (in a list)
 get_networks_degrees <- function(nets, nCores = 30){
   
-  n_genes <- read.csv("../data/Ngenes.csv", header = T, sep = ';')%>%
+  n_genes <- read.csv("data/Ngenes.csv", header = T, sep = ';')%>%
     rename(genes = AGI)
   
   

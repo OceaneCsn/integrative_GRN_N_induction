@@ -359,10 +359,42 @@ ggexport(method_comparison, filename = "results/comparisons_to_existing_methods/
 
 
 ```{r}
-importances_wLASSO <- weightedLASSO_inference(counts, genes, tfs, alpha = 1, 
+importances_wLASSO <- weightedLASSO_inference(counts, genes, tfs, alpha = 0, 
+                                                  N = 50, pwm_occurrence = pwm_occurrence, 
+                                                  nCores = nCores, EN_param = 0.1)
+
+importances_wLASSO_cheap <- weightedLASSO_inference(counts, genes, tfs, alpha = 0, 
                                                   N = 25, pwm_occurrence = pwm_occurrence, 
-                                                  nCores = nCores, EN_param = 1, lambda = "min")
-median(importances_wLASSO["mse",])
+                                                  nCores = 45, EN_param = 0.1)
+cor(importances_wLASSO["mse",], importances_wLASSO_cheap["mse",])
+
+
+d <- data.frame(normal = c(importances_wLASSO[!str_detect(rownames(importances_wLASSO), "mse"),]), 
+     cheap = c(importances_wLASSO_cheap[!str_detect(rownames(importances_wLASSO_cheap), "mse"),]))
+
+d %>%
+  ggplot(aes(x=normal, y=cheap))+
+    geom_point(alpha = 0.5)+stat_cor()
+
+
+eval <- evaluate_fully_connected(importances_wLASSO[tfs,], 
+                                             pwm_occurrence = pwm_occurrence,
+                              input_genes = genes, input_tfs = tfs, 
+                                             validation = c("DAPSeq"),
+                                             nCores =10) %>%
+      mutate(alpha = 0, method = "weightedLASSO",
+             mse = median(importances_wLASSO["mse",], na.rm = T),
+             aupr = MESS::auc(recall, precision, type = 'linear')) 
+
+eval_cheap <- evaluate_fully_connected(importances_wLASSO_cheap[tfs,], 
+                                             pwm_occurrence = pwm_occurrence,
+                              input_genes = genes, input_tfs = tfs, 
+                                             validation = c("DAPSeq"),
+                                             nCores =10) %>%
+      mutate(alpha = 0, method = "weightedLASSO",
+             mse = median(importances_wLASSO_cheap["mse",], na.rm = T),
+             aupr = MESS::auc(recall, precision, type = 'linear')) 
+
 ```
 
 
