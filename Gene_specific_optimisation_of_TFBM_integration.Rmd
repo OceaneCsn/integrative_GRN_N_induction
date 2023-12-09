@@ -322,7 +322,7 @@ p <- draw_gene_effective_integration(gene_benefit, mats = mats, prior = 1) +
 
 n/o/p
 figure <- n/o/p
-ggexport(figure, filename = "results/supp_figures/gene_examples_weightedLASSO.pdf", width = 10, height = 9)
+ggexport(figure, filename = "results/supp_figures/gene_examples_weightedEN.pdf", width = 10, height = 9)
 ```
 
 
