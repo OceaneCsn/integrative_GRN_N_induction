@@ -404,9 +404,6 @@ ranks_lasso <- get_hubs(lasso_nets_0)$ranking+ ggtitle("weightedEN alpha = 0") +
 
 ggexport(ranks_lasso, filename = "results/supp_figures/weightedEN_ranks_grns.pdf", width = 20, hight = 7)
 
-
-
-
 ```
 
 Regulators that are in all top connected TFs :
