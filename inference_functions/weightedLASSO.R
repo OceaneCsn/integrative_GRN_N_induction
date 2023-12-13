@@ -19,8 +19,6 @@ library(tictoc)
 #' Numeric value (e.g 0, 1) or a named vector giving the value of alpha for each target gene
 #' @param pwm_occurrence Prior matrix Pi, giving PWM presence scores for TFs in rows
 #' and genes in columns. Can contain NAs for TFs that do not have a PWM available.
-#' @param int_pwm_noise Random perturbation applied to PWM priors in pwm_occurrence.
-#' Defalut is none, experimental.
 #' @param N Number of iterations of Stability selection
 #' @param mda_type value between "shuffle" or "zero" (weather to randomize a TF or put it to zero in 
 #' feature importance estimation)
@@ -35,7 +33,7 @@ library(tictoc)
 #'
 #' @examples
 weightedLASSO_inference <- function(counts, genes, tfs, alpha=0.25, 
-                                pwm_occurrence, int_pwm_noise = 0,
+                                pwm_occurrence, 
                                 N = 100, mda_type="shuffle",
                                 family = "poisson", EN_param = 1,
                                 tf_expression_permutation = FALSE,
@@ -90,12 +88,9 @@ weightedLASSO_inference <- function(counts, genes, tfs, alpha=0.25,
                                                       else
                                                         alpha_gene = alpha
                                                       
-                                                      # to avoid convergence issues : "inner loop 3; cannot correct step size"
-                                                      maxit = 1e+05
                                                       
                                                       if(alpha_gene==1){
                                                         alpha_gene=1-1e-4
-                                                        # maxit = 1e+07
                                                       }
                                                       
                                                       # weights for differential shrinkage
@@ -140,7 +135,7 @@ weightedLASSO_inference <- function(counts, genes, tfs, alpha=0.25,
                                                             {mymodels_pen = cv.glmnet(
                                                               x_target[sampled,],
                                                               y[sampled],
-                                                              maxit=maxit,
+                                                              maxit = 1e+05,
                                                               alpha = EN_param,
                                                               family = family,
                                                               nfolds = nfolds.cv,
@@ -230,7 +225,7 @@ weightedLASSO_inference <- function(counts, genes, tfs, alpha=0.25,
 #' @param tfs list of TFs used as predictors for GRN inference
 #'
 #' @return dataframe of oriented edges, and their prior value in pwm_occurrence
-weightedLASSO_network <- function(mat, density, pwm_occurrence, genes, tfs, decreasing=FALSE){
+weightedLASSO_network <- function(mat, density, pwm_occurrence, genes, tfs, decreasing=T){
   # getting the number of genes for a desired density
   nEdges = round(density * (length(genes) - 1) * length(tfs), 0)
   
@@ -279,6 +274,188 @@ getLinkListLasso <- function (weightMatrix, reportMax = NULL, threshold = 0, dec
 
 
 
+#' weightedLASSO restricted MSE
+#'
+#' @param counts Expression matrix (genes in rownames, conditions in columns)
+#' @param genes Vector of genes (in the rownames of counts) to be used in GRN inference as target genes
+#' @param tfs vector of genes (in the rownames of counts) that are transcriptional regulators
+#' to be used a predictors in the regressions for GRN inference
+#' @param alpha The strength of data integration.
+#' Numeric value (e.g 0, 1) or a named vector giving the value of alpha for each target gene
+#' @param pwm_occurrence Prior matrix Pi, giving PWM presence scores for TFs in rows
+#' and genes in columns. Can contain NAs for TFs that do not have a PWM available.
+#' @param N Number of iterations of Stability selection
+#' @param mda_type value between "shuffle" or "zero" (weather to randomize a TF or put it to zero in 
+#' feature importance estimation)
+#' @param tf_expression_permutation weather or not to shuffle the expression of TFs between each other.
+#' @param nCores Number of cores for multithreading
+#' @param nfolds.cv Number of folds for cross validation
+#' @param family Type of distribution for the glm ("gaussian" or "poisson" (default))
+#' @param EN_param ElasticNet parameter. 1 (default) is LASSO, 0 is Rigde.
+#' @param lambda "min" ou "1se" (default)
+#' @return a matrix of feature importances for each TF-target pairs
+#' @export
+#'
+#' @examples
+weightedLASSO_predictions <- function(counts, genes, tfs, edges, alpha=0.25, 
+                                    pwm_occurrence, 
+                                    N = 100, mda_type="shuffle",
+                                    family = "poisson", EN_param = 1,
+                                    tf_expression_permutation = FALSE,
+                                    nfolds.cv=5, lambda = "1se",
+                                    nCores = ifelse(is.na(detectCores()),1,
+                                                    max(detectCores() - 1, 1))){
+  
+  
+  
+  
+  # for a gaussian lasso, data is log transformed
+  if(family == "gaussian")
+    counts <- log(counts+0.5)
+  else # for poisson glm, data needs to be integers
+    counts <- round(counts, 0)
+  
+  # expression of regulators
+  x <- t(counts[tfs,])
+  
+  # weather or not this is a gene-specific alpha model or not
+  gene_specific = length(alpha) > 1
+  
+  # pwm scores to bias variable selection toward pairs supported by a TFBS
+  pwm_imputed <- pwm_occurrence
+  pwm_imputed[is.na(pwm_imputed)] <- 0.5
+  
+  # parallel computing of the lasso
+  registerDoParallel(cores = nCores)
+  message(paste("\n weightedLASSO is running using", foreach::getDoParWorkers(), "cores."))
+  "%dopar%" <- foreach::"%dopar%"
+  tic()
+  suppressPackageStartupMessages(result.reg <-
+                                   doRNG::"%dorng%"(foreach::foreach(target = genes, .combine = cbind, 
+                                                                     .final = function(x) {colnames(x) <- genes; x}, 
+                                                                     .inorder = TRUE),
+                                                    {
+                                                      # getting rid of the TF variable on which the regression is made
+                                                      # if needed
+                                                      target_tfs <- setdiff(tfs, target)
+                                                      
+                                                      # restricting tfs to incoming edges only
+                                                      target_tfs <- edges[edges$to == target,]$from
+                                                      
+                                                      y <- t(counts[target, ])
+                                                      
+                                                      # avoid the edge case of only one variable, forbidden by glmnet
+                                                      # by duplicating it (https://stackoverflow.com/questions/29231123/why-cant-pass-only-1-coulmn-to-glmnet-when-it-is-possible-in-glm-function-in-r)
+                                                      if(length(target_tfs) == 1)
+                                                        target_tfs <- c(target_tfs, target_tfs)
+                                                        
+                                                      if(length(target_tfs)>0){
+                                                        x_target <- x[,c(target_tfs)]
+                                                        
+                                                        if(tf_expression_permutation){
+                                                          # randomises the expression rows of TFs but not their ID
+                                                          # this is an in-silico null hypothesis 
+                                                          x_target <- x_target[,sample(target_tfs, replace = F, 
+                                                                                       size = length(target_tfs))]
+                                                          colnames(x_target) <- target_tfs
+                                                        }
+                                                        
+                                                        
+                                                        if(gene_specific)
+                                                          alpha_gene = alpha[target]
+                                                        else
+                                                          alpha_gene = alpha
+                                                        
+                                                        if(alpha_gene==1){
+                                                          alpha_gene=1-1e-4
+                                                        }
+                                                        
+                                                        # weights for differential shrinkage
+                                                        penalty_factor <- 1 - pwm_imputed[target, target_tfs] * alpha_gene
+                                                        
+                                                        importances <- setNames(rep(0, length(tfs)), tfs)
+                                                        
+                                                        ######### Stability Selection / bootstraps
+                                                        n_actual = 0
+                                                        mse_gene = c()
+                                                        for(n in 1:N) {
+                                                          
+                                                          # bootstrapping observations and controlling that
+                                                          # duplicated observations are in the same fold
+                                                          idx <- sample(1:length(y), replace = F)
+                                                          folds_bg <- split(idx, ceiling(seq_along(idx)/(length(y)/nfolds.cv)))
+                                                          breaks <- c(0,cumsum(lengths(folds_bg)))
+                                                          
+                                                          sampled <- rep(0, length(y))
+                                                          foldid <- rep(0, length(y))
+                                                          for(fold in 1:length(folds_bg)){
+                                                            sampled[(breaks[fold]+1):(breaks[fold+1])] <- 
+                                                              sample(folds_bg[[fold]], replace = T, size = lengths(folds_bg)[fold])
+                                                            foldid[(breaks[fold]+1):(breaks[fold+1])] <- fold
+                                                          }
+                                                          oob <- setdiff(1:nrow(x), sampled)
+                                                          
+                                                          if(length(oob)>1){ #ensures a test set of sufficient size
+                                                            
+                                                            # perturbating differential shrinkage
+                                                            # noisy_penalty_factor <- pmax(pmin(penalty_factor + 
+                                                            #                                     runif(n=length(penalty_factor),
+                                                            #                                           min = -int_pwm_noise*alpha, 
+                                                            #                                           max = int_pwm_noise*alpha), 1),0)
+                                                            
+                                                            # models are try-catched because in rare cases glmnet
+                                                            # crashes for convergence issues
+                                                            tryCatch(
+                                                              error = function(cnd) "cv.glmnet internal error due to convergence issues",
+                                                              
+                                                              # model training on sampled observations
+                                                              {mymodels_pen = cv.glmnet(
+                                                                x_target[sampled,],
+                                                                y[sampled],
+                                                                maxit = 1e+05,
+                                                                alpha = EN_param,
+                                                                family = family,
+                                                                nfolds = nfolds.cv,
+                                                                foldid = foldid,
+                                                                penalty.factor = penalty_factor)
+                                                              
+                                                              # value of lambda
+                                                              if(lambda == "1se")
+                                                                ilambda <- which(mymodels_pen$lambda == mymodels_pen$lambda.1se)
+                                                              else ilambda <- which(mymodels_pen$lambda == mymodels_pen$lambda.min)
+                                                              
+                                                              # feature selection for optimal lambda
+                                                              selected_tfs <- names(which(mymodels_pen$glmnet.fit$beta[, ilambda] != 0))
+                                                              
+                                                              # model predictions on OOB observations
+                                                              if(family == "poisson"){
+                                                                y_hat <- exp(predict(mymodels_pen, newx = x_target[oob,],
+                                                                                     type = "link", s= ilambda))
+                                                              }
+                                                              else{
+                                                                y_hat <- predict(mymodels_pen, newx = x_target[oob,],type = "response",
+                                                                                 s= paste0("lambda.", lambda))
+                                                              }
+                                                              
+                                                              # prediction of MSE on OOB data
+                                                              mse_oob <- mean((y_hat - y[oob])^2)
+                                                              mse_gene <- c(mse_gene, mse_oob)
+                                                              }
+                                                            )
+                                                          }
+                                                        }
+                                                      }
+                                                      else mse_gene <- sd(y)^2
+                                                      
+                                                      
+                                                      # returns importance values and median mse in the different bootstraps
+                                                      c(setNames(median(mse_gene)/(sd(y)^2), "mse"))
+                                                    }))
+  attr(result.reg, "rng") <- NULL # It contains the whole sequence of RNG seeds
+  mses <- result.reg
+  toc()
+  return(mses)
+}
 
 # older versions
 

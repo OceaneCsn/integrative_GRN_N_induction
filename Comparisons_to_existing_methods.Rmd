@@ -443,7 +443,7 @@ ggexport(comps_en_z, filename = "results/comparisons_to_existing_methods/compari
 
 What is the complexity/sparsity of the different linear models?
 
-```{r}
+```{r, fig.width=15}
 load("results/rdata/weightedEN_importances_50rep.rdata")
 mats_en <- mats
 
@@ -463,6 +463,7 @@ for(alpha in ALPHAS){
   selection <- mat_mean_en != 0
   
   to_add <- data.frame(model = "EN", alpha = alpha, 
+                       nb_tf = c(colSums(selection)),
                        mean_nb_tf = mean(colSums(selection)), 
                        sd_nb_tf = sd(colSums(selection)))
   
@@ -477,6 +478,7 @@ for(alpha in ALPHAS){
   selection <- mat_mean_lasso != 0
   
   to_add <- data.frame(model = "LASSO", alpha = alpha, 
+                       nb_tf = c(colSums(selection)),
                        mean_nb_tf = mean(colSums(selection)), 
                        sd_nb_tf = sd(colSums(selection)))
   results <- rbind.data.frame(results, to_add)
@@ -493,6 +495,7 @@ mats <- mats[str_detect(names(mats),"LASSO")]
 mat_mean_lasso_diogene <- apply(simplify2array(mats), 1:2, mean)
 selection <- mat_mean_lasso_diogene != 0
 to_add <- data.frame(model = "LASSO", alpha = "DIOgene", 
+                     nb_tf = c(colSums(selection)),
                      mean_nb_tf = mean(colSums(selection)), 
                      sd_nb_tf = sd(colSums(selection)), strategy = "DIOgene")
 results <- rbind.data.frame(results, to_add)
@@ -505,22 +508,155 @@ mats <- mats[str_detect(names(mats),"LASSO")]
 mat_mean_en_diogene <- apply(simplify2array(mats), 1:2, mean)
 selection <- mat_mean_en_diogene != 0
 to_add <- data.frame(model = "EN", alpha = "DIOgene", 
+                     nb_tf = c(colSums(selection)),
                      mean_nb_tf = mean(colSums(selection)), 
                      sd_nb_tf = sd(colSums(selection)), strategy = "DIOgene")
 results <- rbind.data.frame(results, to_add)
   
 
-results %>%
+
+model_complexity_hist <- results %>%
+  ggplot(aes(x= nb_tf, color = model))+
+  facet_wrap(model~alpha, ncol = 12)+
+  geom_histogram();model_complexity_hist
+
+model_complexity <- results %>%
   ggplot(aes(x=alpha, y = mean_nb_tf, color = model))+
   geom_point()+ylim(c(0,120)) + 
   geom_segment(aes(y = mean_nb_tf - sd_nb_tf, 
                    yend = mean_nb_tf + sd_nb_tf, xend = alpha))+
   geom_line()
 
+compl <- model_complexity / model_complexity_hist
+
+ggexport(compl, filename = "results/comparisons_to_existing_methods/linear_model_complexity.pdf", width = 15)
+```
+
+MSE of restricted models:
+
+```{r, fig.width=15}
+# load("results/rdata/weightedEN_importances_50rep.rdata")
+# mats_en <- mats
+# 
+# load("results/rdata/weightedLASSO_importances_50rep.rdata")
+# mats_lasso <- mats
+
+results <- NULL
+
+for(alpha in ALPHAS){
+  
+  mats_10_en <- mats_en[paste0("EN_",alpha,"_trueData_",1:10)]
+  mat_mean_en <- apply(simplify2array(mats_10_en), 1:2, mean)
+  
+  grn_en <- weightedLASSO_network(mat_mean_en, density = 0.005, 
+                                  pwm_occurrence = pwm_occurrence, 
+                                  genes = genes, tfs = tfs)
+
+  mses <- weightedLASSO_predictions(counts, genes, tfs, edges = grn_en, 
+                                    pwm_occurrence = pwm_occurrence, EN_param = 0.1,
+                                    N = 25, nCores = 40, alpha = alpha)
+  
+  to_add <- data.frame(model = "EN", alpha = alpha, 
+                       mse = c(mses), 
+                       strategy = "global")
+  
+  if(is.null(results))
+    results <- to_add
+  else
+    results <- rbind.data.frame(results, to_add)
+  
+  mats_10_lasso <- mats_lasso[paste0("LASSO_",alpha,"_trueData_",1:10)]
+  mat_mean_lasso <- apply(simplify2array(mats_10_lasso), 1:2, mean)
+  
+  grn_lasso <- weightedLASSO_network(mat_mean_lasso, density = 0.005, 
+                                  pwm_occurrence = pwm_occurrence, 
+                                  genes = genes, tfs = tfs)
+
+  mses <- weightedLASSO_predictions(counts, genes, tfs, edges = grn_lasso, 
+                                    pwm_occurrence = pwm_occurrence, EN_param = 1,
+                                    N = 25, nCores = 40, alpha = alpha)
+  
+  to_add <- data.frame(model = "LASSO", alpha = alpha, 
+                       mse = c(mses),
+                       strategy = "global")
+  
+  results <- rbind.data.frame(results, to_add)
+}
+
+# loading DIOgene importance matrices
+load("results/rdata/gene_specific/gene_specific_grns_true_sd.rdata")
+mats <- mats[str_detect(names(mats),"true")]
+mats <- mats[str_detect(names(mats),"LASSO")]
+mat_mean_lasso_diogene <- apply(simplify2array(mats), 1:2, mean)
+diogene_grn_lasso <- weightedLASSO_network(mat_mean_lasso_diogene, density = 0.005, 
+                                           pwm_occurrence = pwm_occurrence, genes = genes, tfs = tfs)
+
+load("results/rdata/gene_specific/alpha_per_gene_weightedLASSO_true_sd.rdata")
+mses <- weightedLASSO_predictions(counts, genes, tfs, edges = diogene_grn_lasso, 
+                                  pwm_occurrence = pwm_occurrence, 
+                                  N = 25, nCores = 34, alpha = alphas_lasso)
+
+to_add <- data.frame(model = "LASSO", alpha = "DIOgene", 
+                       mse = c(mses), 
+                       strategy = "DIOgene")
+
+results <- rbind.data.frame(results, to_add)
+
+# loading DIOgene importance matrices EN
+load("results/rdata/gene_specific/gene_specific_grns_true_sd_en.rdata")
+mats <- mats[str_detect(names(mats),"true")]
+mats <- mats[str_detect(names(mats),"LASSO")]
+mat_mean_en_diogene <- apply(simplify2array(mats), 1:2, mean)
+diogene_grn_en <- weightedLASSO_network(mat_mean_en_diogene, density = 0.005, 
+                                           pwm_occurrence = pwm_occurrence, genes = genes, tfs = tfs)
+
+load("results/rdata/gene_specific/alpha_per_gene_weightedEN_true_sd.rdata")
+mses <- weightedLASSO_predictions(counts, genes, tfs, edges = diogene_grn_en, 
+                                  pwm_occurrence = pwm_occurrence, EN_param = 0.1,
+                                  N = 25, nCores = 34, alpha = alphas_lasso)
+
+to_add <- data.frame(model = "EN", alpha = "DIOgene", 
+                       mse = c(mses), 
+                       strategy = "DIOgene")
+
+# hist(mses, breaks = 100)
+results <- rbind.data.frame(results, to_add)
+
+restricted_mse <- results %>%
+  ggplot(aes(x=alpha, y = mse, color = model))+
+  geom_boxplot()+ ylab("Median MSE")+ylim(c(0,1.1));restricted_mse
+
+
+diversity <- results %>%
+  group_by(alpha, model, strategy) %>%
+  summarize(n_genes_in_grn = sum(mse != 1)) %>%
+  ggplot(aes(x=alpha, y = n_genes_in_grn, color = model))+
+  geom_point()+ ylab("Number of targets in the GRN");diversity
+
+diversity + restricted_mse
+
+hist(mses, breaks = 50)
+results_div <- results
+
+results_div$genes <- rep(genes, 24)
+# ggexport(restricted_mse, filename = "results/comparisons_to_existing_methods/linear_model_restricted_MSE.pdf")
 
 ```
 
+Mesures d'importance moins equitablement distribuées entre les gènes?
 
+
+```{r, fig.width=15}
+all_results <-results %>%
+  rownames_to_column("genes") %>%
+  mutate(genes = substr(genes, 1, nchar(genes[1]))) %>%
+  full_join(results_div, by = c("genes", "model", "alpha", "strategy")) %>%
+  mutate(is_included = mse!=1)
+
+all_results%>%
+  ggplot(aes(x=is_included, y = nb_tf, color = model))+
+  geom_boxplot()+facet_wrap(model~alpha, ncol = 12)
+```
 
 Tests for weightedEN
 
