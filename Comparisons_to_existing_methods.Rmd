@@ -633,13 +633,15 @@ diversity <- results %>%
   ggplot(aes(x=alpha, y = n_genes_in_grn, color = model))+
   geom_point()+ ylab("Number of targets in the GRN");diversity
 
-diversity + restricted_mse
+mse_plot <- diversity + restricted_mse
 
 hist(mses, breaks = 50)
 results_div <- results
 
 results_div$genes <- rep(genes, 24)
-# ggexport(restricted_mse, filename = "results/comparisons_to_existing_methods/linear_model_restricted_MSE.pdf")
+
+
+ggexport(mse_plot, filename = "results/comparisons_to_existing_methods/linear_model_restricted_MSE.pdf", width = 15)
 
 ```
 
@@ -656,6 +658,9 @@ all_results <-results %>%
 all_results%>%
   ggplot(aes(x=is_included, y = nb_tf, color = model))+
   geom_boxplot()+facet_wrap(model~alpha, ncol = 12)
+
+
+save(all_results, file = "results/comparisons_to_existing_methods/linear_mse_complexity_results.rdata")
 ```
 
 Tests for weightedEN
