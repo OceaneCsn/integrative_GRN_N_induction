@@ -97,7 +97,7 @@ evaluate_network <-
                 FUN = paste0,
                 collapse = '+')
     
-    # restricting validation edges to TFs and genes present in predicted network
+    # restricting validation edges to TFs and genes present in the input data
     # (useful to compute false negatives, missed edges)
     validated_edges_specific_unique <- validated_edges_specific_unique[
       validated_edges_specific_unique$from %in% input_tfs & 
@@ -152,7 +152,7 @@ evaluate_network <-
     # true positives
     tp <- nrow(val_unique)
     
-    # true positive rate
+    # true positive rate (misnommer) : PRECISION
     if (nrow(val) == 0) {
       tpr = 0
     }
@@ -164,12 +164,23 @@ evaluate_network <-
     fp <- n_studied_interactions - tp
     
     # false positive rate
-    fpr <- fp / n_studied_interactions
+    # negs = n_possible_val_interactions - val_interactions
+    
+    # number of TFs present in validation
+    n_val_tfs <- length(unique(validated_edges_specific_unique$from))
+    
+    # number of genes present in validation
+    n_val_genes <- length(unique(c(validated_edges_specific_unique$from, validated_edges_specific_unique$to)))
+    
+    # number of negative interactions
+    negs <- n_val_tfs * (n_val_genes -1) - nrow(validated_edges_specific_unique)
+    
+    fpr <- fp / negs
     
     # false negatives
     fn <- nrow(validated_edges_specific_unique) - tp
     
-    # recall
+    # recall (real TPR)
     recall <- tp / (tp+fn)
     
     
@@ -197,6 +208,7 @@ evaluate_network <-
       tp = tp,
       fp = fp,
       tpr = tpr,
+      precision = tpr,
       fpr = fpr,
       fn = fn,
       recall = recall,

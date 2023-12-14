@@ -601,6 +601,135 @@ ggexport(plot_final, filename = "results/specific_grns_no_permutations_true_sd_e
 In summary, gene-specific optimization of alpha allows to minimize the MSE, while still achieving near-optimal precision and a good recall in both models.
 
 
+
+# Computing precision and recall on full models
+
+
+```{r}
+load("results/rdata/weightedEN_importances_50rep.rdata")
+mats_en <- mats
+
+load("results/rdata/weightedLASSO_importances_50rep.rdata")
+mats_lasso <- mats
+
+load("results/rdata/weightedRF_importances_100rep.rdata")
+mats_rf <- mats
+
+
+
+mat <- mats_en$EN_1_trueData_1
+
+
+colnames(mat)
+
+validation = "DAPSeq"
+
+
+
+library(pROC)
+
+evaluate_grn <- function(mat, plot = F){
+  
+  # validation edges restricted to genes of interest
+  val <- validated_edges %>%
+  filter(type == validation) %>%
+  filter(from %in% rownames(mat),
+        to %in% colnames(mat))
+  
+  # predicted complete grn is joined with validation edges
+  val_data <-mat %>%
+  reshape2::melt() %>%
+  rename(from = Var1, to = Var2, importance = value) %>%
+  filter(from != "mse") %>%
+  filter(from %in% val$from) %>%
+  full_join(val, by = c("from", "to")) %>%
+  mutate(gold = ifelse(is.na(type), 0, 1))
+  
+  # evaluation metrics are computed:
+  partial_auc <- val_data %>%
+  roc(gold, importance, plot = F) %>%
+    auc(partial.auc = c(0, 0.1), partial.auc.correct=T, 
+        partial.auc.focus = "sensitivity") %>%
+    as.numeric()
+  
+  auc =  val_data %>%
+  roc(gold, importance, plot = F) %>%
+    auc(partial.auc = c(0, 1), partial.auc.correct=T, 
+        partial.auc.focus = "sensitivity") %>%
+    as.numeric()
+  
+  curve <- val_data %>%
+  roc(gold, importance, plot = F) %>%
+  coords(transpose =F, ret = "all") 
+  
+  return(list(auc = auc, partial_auc = partial_auc))
+  
+}
+
+evaluate_grn(mats_en$EN_1_trueData_1)
+
+val_data %>%
+  roc(gold, importance, plot = T) %>%
+  coords(transpose =F, ret = "all") %>%
+  top_frac(0.01,threshold)  %>%
+  ggplot(aes(x=recall, y = precision))+
+  geom_point()
+
+
+val_data %>%
+  roc(gold, importance, plot = F) %>%
+  coords(transpose =F, ret = "all") %>%
+  top_frac(1,threshold)  %>%
+  ggplot(aes(y=sensitivity, x = 1-specificity))+
+  geom_point()+geom_line()+
+  geom_abline(slope = 1, intercept = 0)
+
+
+results <- NULL
+
+for(alpha in ALPHAS){
+  
+  mats_10_en <- mats_en[paste0("EN_",alpha,"_trueData_",1:10)]
+  mat_mean_en <- apply(simplify2array(mats_10_en), 1:2, mean)
+  
+  grn_en <- weightedLASSO_network(mat_mean_en, density = 0.005, 
+                                  pwm_occurrence = pwm_occurrence, 
+                                  genes = genes, tfs = tfs)
+
+  mses <- weightedLASSO_predictions(counts, genes, tfs, edges = grn_en, 
+                                    pwm_occurrence = pwm_occurrence, EN_param = 0.1,
+                                    N = 25, nCores = 40, alpha = alpha)
+  
+  to_add <- data.frame(model = "EN", alpha = alpha, 
+                       mse = c(mses), 
+                       strategy = "global")
+  
+  if(is.null(results))
+    results <- to_add
+  else
+    results <- rbind.data.frame(results, to_add)
+  
+  mats_10_lasso <- mats_lasso[paste0("LASSO_",alpha,"_trueData_",1:10)]
+  mat_mean_lasso <- apply(simplify2array(mats_10_lasso), 1:2, mean)
+  
+  grn_lasso <- weightedLASSO_network(mat_mean_lasso, density = 0.005, 
+                                  pwm_occurrence = pwm_occurrence, 
+                                  genes = genes, tfs = tfs)
+
+  mses <- weightedLASSO_predictions(counts, genes, tfs, edges = grn_lasso, 
+                                    pwm_occurrence = pwm_occurrence, EN_param = 1,
+                                    N = 25, nCores = 40, alpha = alpha)
+  
+  to_add <- data.frame(model = "LASSO", alpha = alpha, 
+                       mse = c(mses),
+                       strategy = "global")
+  
+  results <- rbind.data.frame(results, to_add)
+}
+
+```
+
+
 # Comparison of our approach with the simplest minimal MSE criterion
 
 What is the difference between our approach (maximal divergence in MSE as compared to a synthetic baseline) and directly minimizing the MSE?

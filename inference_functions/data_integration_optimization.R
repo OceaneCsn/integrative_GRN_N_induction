@@ -18,7 +18,6 @@ mcsapply <- function (X, FUN, ..., simplify = TRUE, USE.NAMES = TRUE) {
 }
 
 
-
 #' Draw gene effective data integration (EDI)
 #' 
 #' Plots the rank of the importance of TFs that have a specific prior value, here one, (supported by a TFBM)
