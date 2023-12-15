@@ -604,6 +604,7 @@ In summary, gene-specific optimization of alpha allows to minimize the MSE, whil
 
 # Computing precision and recall on full models
 
+Required matrices are loaded:
 
 ```{r}
 load("results/rdata/weightedEN_importances_50rep.rdata")
@@ -615,118 +616,187 @@ mats_lasso <- mats
 load("results/rdata/weightedRF_importances_100rep.rdata")
 mats_rf <- mats
 
+```
 
+Evaluating all GRNs for the different settings:
 
-mat <- mats_en$EN_1_trueData_1
-
-
-colnames(mat)
-
-validation = "DAPSeq"
-
-
-
-library(pROC)
-
-evaluate_grn <- function(mat, plot = F){
-  
-  # validation edges restricted to genes of interest
-  val <- validated_edges %>%
-  filter(type == validation) %>%
-  filter(from %in% rownames(mat),
-        to %in% colnames(mat))
-  
-  # predicted complete grn is joined with validation edges
-  val_data <-mat %>%
-  reshape2::melt() %>%
-  rename(from = Var1, to = Var2, importance = value) %>%
-  filter(from != "mse") %>%
-  filter(from %in% val$from) %>%
-  full_join(val, by = c("from", "to")) %>%
-  mutate(gold = ifelse(is.na(type), 0, 1))
-  
-  # evaluation metrics are computed:
-  partial_auc <- val_data %>%
-  roc(gold, importance, plot = F) %>%
-    auc(partial.auc = c(0, 0.1), partial.auc.correct=T, 
-        partial.auc.focus = "sensitivity") %>%
-    as.numeric()
-  
-  auc =  val_data %>%
-  roc(gold, importance, plot = F) %>%
-    auc(partial.auc = c(0, 1), partial.auc.correct=T, 
-        partial.auc.focus = "sensitivity") %>%
-    as.numeric()
-  
-  curve <- val_data %>%
-  roc(gold, importance, plot = F) %>%
-  coords(transpose =F, ret = "all") 
-  
-  return(list(auc = auc, partial_auc = partial_auc))
-  
-}
-
-evaluate_grn(mats_en$EN_1_trueData_1)
-
-val_data %>%
-  roc(gold, importance, plot = T) %>%
-  coords(transpose =F, ret = "all") %>%
-  top_frac(0.01,threshold)  %>%
-  ggplot(aes(x=recall, y = precision))+
-  geom_point()
-
-
-val_data %>%
-  roc(gold, importance, plot = F) %>%
-  coords(transpose =F, ret = "all") %>%
-  top_frac(1,threshold)  %>%
-  ggplot(aes(y=sensitivity, x = 1-specificity))+
-  geom_point()+geom_line()+
-  geom_abline(slope = 1, intercept = 0)
-
-
+```{r}
 results <- NULL
 
 for(alpha in ALPHAS){
   
-  mats_10_en <- mats_en[paste0("EN_",alpha,"_trueData_",1:10)]
-  mat_mean_en <- apply(simplify2array(mats_10_en), 1:2, mean)
-  
-  grn_en <- weightedLASSO_network(mat_mean_en, density = 0.005, 
-                                  pwm_occurrence = pwm_occurrence, 
-                                  genes = genes, tfs = tfs)
-
-  mses <- weightedLASSO_predictions(counts, genes, tfs, edges = grn_en, 
-                                    pwm_occurrence = pwm_occurrence, EN_param = 0.1,
-                                    N = 25, nCores = 40, alpha = alpha)
-  
-  to_add <- data.frame(model = "EN", alpha = alpha, 
-                       mse = c(mses), 
-                       strategy = "global")
-  
-  if(is.null(results))
-    results <- to_add
-  else
-    results <- rbind.data.frame(results, to_add)
-  
-  mats_10_lasso <- mats_lasso[paste0("LASSO_",alpha,"_trueData_",1:10)]
-  mat_mean_lasso <- apply(simplify2array(mats_10_lasso), 1:2, mean)
-  
-  grn_lasso <- weightedLASSO_network(mat_mean_lasso, density = 0.005, 
-                                  pwm_occurrence = pwm_occurrence, 
-                                  genes = genes, tfs = tfs)
-
-  mses <- weightedLASSO_predictions(counts, genes, tfs, edges = grn_lasso, 
-                                    pwm_occurrence = pwm_occurrence, EN_param = 1,
-                                    N = 25, nCores = 40, alpha = alpha)
-  
-  to_add <- data.frame(model = "LASSO", alpha = alpha, 
-                       mse = c(mses),
-                       strategy = "global")
-  
-  results <- rbind.data.frame(results, to_add)
+  for(model in c("EN", "LASSO", "RF")){
+    if(model == "EN") mats = mats_en
+    if(model == "LASSO") mats = mats_lasso
+    if(model == "RF") mats = mats_rf
+    
+    if(model=="RF")
+      mats_10 <- mats[paste0("b", model,"_",alpha,"_trueData_",1:10)]
+    else
+      mats_10 <- mats[paste0(model,"_",alpha,"_trueData_",1:10)]
+    mat_mean <- apply(simplify2array(mats_10), 1:2, mean)
+    
+    # mse <- median(mat_mean["mse",], na.rm = T)
+    eval <- evaluate_grn(mat_mean)
+    genes_eval <- evaluate_genes(mat_mean, nCores = 40)
+    
+    to_add <- genes_eval %>%
+      mutate(alpha = alpha, model = paste0("weighted", model), 
+             grn_auc = eval$auc, grn_auc_lower = eval$auc.lower,
+             grn_auc_higher = eval$auc.higher, grn_aupr = eval$aupr,
+             grn_aupr_rand = eval$aupr_rand,
+             grn_partial_auc = eval$partial_auc) 
+    
+    if(is.null(results))
+      results <- to_add
+    else
+      results <- rbind.data.frame(results, to_add)
+  }
 }
 
+# loading DIOgene importance matrices
+load("results/rdata/gene_specific/gene_specific_grns_true_sd.rdata")
+mats <- mats[str_detect(names(mats),"true")]
+
+mats_lasso_diogene <- mats[str_detect(names(mats),"LASSO")]
+mats_rf_diogene <- mats[str_detect(names(mats),"RF")]
+
+load("results/rdata/gene_specific/gene_specific_grns_true_sd_en.rdata")
+mats <- mats[str_detect(names(mats),"true")]
+mats_en_diogene <- mats[str_detect(names(mats),"LASSO")]
+
+
+for(model in c("EN", "LASSO", "RF")){
+    if(model == "EN") mats = mats_en_diogene
+    if(model == "LASSO") mats = mats_lasso_diogene
+    if(model == "RF") mats = mats_rf_diogene
+    
+    if(model=="EN")
+      mats_10 <- mats[paste0("LASSO_trueData_",1:10)]
+    else
+      mats_10 <- mats[paste0(model,"_trueData_",1:10)]
+    mat_mean <- apply(simplify2array(mats_10), 1:2, mean)
+    
+    # mse <- median(mat_mean["mse",], na.rm = T)
+    eval <- evaluate_grn(mat_mean)
+    genes_eval <- evaluate_genes(mat_mean, nCores = 40)
+    
+    to_add <- genes_eval %>%
+      mutate(alpha = "DIOgene", model = paste0("weighted", model), 
+             grn_auc = eval$auc, grn_auc_lower = eval$auc.lower,
+             grn_auc_higher = eval$auc.higher, grn_aupr = eval$aupr,
+             grn_aupr_rand = eval$aupr_rand,
+             grn_partial_auc = eval$partial_auc)
+    
+    results <- rbind.data.frame(results, to_add)
+}
+
+save(results, file = "results/comparisons_to_existing_methods/auc_global_results_EN_LASSO_RF.rdata")
+```
+
+
+Results plot : 
+
+```{r, fig.width=15, fig.height = 8}
+auc_plot <- results %>%
+  group_by(model, alpha) %>%
+  distinct(grn_auc, grn_auc_lower,grn_auc_higher,grn_partial_auc) %>%
+  ungroup() %>%
+  mutate(Data_integration = ifelse(alpha=="DIOgene", "DIOgene", "Global")) %>%
+  ggplot(aes(x=alpha, color =Data_integration, y = grn_auc)) +
+  geom_point()+geom_hline(yintercept = 0.5, color = "grey", size = 2)+
+  geom_segment(aes(xend = alpha, y = grn_auc_lower, yend = grn_auc_higher))+
+  ggh4x::facet_nested_wrap(vars(model))+
+  scale_color_manual(values = c( "#4670CD", "#70AD47" ))+
+  ggtitle("AUC for all GRN interactions")+
+results %>%
+  group_by(model, alpha) %>%
+  distinct(grn_auc, grn_auc_lower,grn_auc_higher, grn_partial_auc) %>%
+  ungroup() %>%
+  mutate(Data_integration = ifelse(alpha=="DIOgene", "DIOgene", "Global")) %>%
+  ggplot(aes(x=alpha, color =Data_integration, y = grn_partial_auc)) +
+  geom_point()+geom_hline(yintercept = 0.5, color = "grey", size = 2)+
+  # geom_segment(aes(xend = alpha, y = grn_auc_lower, yend = grn_auc_higher))+
+  ggh4x::facet_nested_wrap(vars(model))+
+  scale_color_manual(values = c( "#4670CD", "#70AD47" ))+
+  ggtitle("pAUC for all GRN interactions (0.9-1 specificity)")+
+results %>%
+  mutate(Data_integration = ifelse(alpha=="DIOgene", "DIOgene", "Global")) %>%
+  ggplot(aes(x=alpha, fill =Data_integration, y = auc)) +
+  geom_hline(yintercept = 0.5, color = "grey", size = 2)+
+  geom_violin(draw_quantiles = c(0.5), width = 0.5)+
+  ggh4x::facet_nested_wrap(vars(model))+
+  scale_fill_manual(values = c( "#4670CD", "#70AD47" ))+
+  ggtitle("AUC per gene")+
+results %>%
+  mutate(Data_integration = ifelse(alpha=="DIOgene", "DIOgene", "Global")) %>%
+  ggplot(aes(x=alpha, fill =Data_integration, y = p_auc)) +
+  geom_violin(draw_quantiles = c(0.5), width = 0.5)+
+  ggh4x::facet_nested_wrap(vars(model))+
+  scale_fill_manual(values = c( "#4670CD", "#70AD47" ))+
+  ggtitle("pAUC per gene (0.9-1 specificity)")+
+  ylim(c(0,0.025))+
+  plot_layout(nrow = 4) & theme(strip.background = element_blank(),
+                                strip.text = element_text(size =15))
+
+ggexport(auc_plot, filename = "results/comparisons_to_existing_methods/auc_global_results_EN_LASSO_RF.pdf", width = 15, height = 13)
+
+```
+
+Precision and recall values : 
+
+```{r}
+aupr_plot <- results %>%
+  group_by(model, alpha) %>%
+  distinct(grn_auc, grn_auc_lower,grn_auc_higher,grn_partial_auc, grn_aupr, grn_aupr_rand) %>%
+  ungroup() %>%
+  mutate(Data_integration = ifelse(alpha=="DIOgene", "DIOgene", "Global")) %>%
+  ggplot(aes(x=alpha, color =Data_integration, y = grn_aupr)) +
+  geom_point()+geom_hline(yintercept = unique(results$grn_aupr_rand), 
+                          color = "grey", size = 2)+
+  ggh4x::facet_nested_wrap(vars(model))+
+  scale_color_manual(values = c( "#4670CD", "#70AD47" ))+
+  ggtitle("AUPR for all GRN interactions")+
+results %>%
+  mutate(Data_integration = ifelse(alpha=="DIOgene", "DIOgene", "Global")) %>%
+  ggplot(aes(x=alpha, fill =Data_integration, y = (aupr-aupr_rand)/aupr_rand)) +
+  geom_hline(yintercept = 0, color = "grey", size = 2)+
+  geom_violin(draw_quantiles = c(0.5), width = 0.5)+
+  ggh4x::facet_nested_wrap(vars(model))+
+  ylim(c(-0.5,1))+
+  scale_fill_manual(values = c( "#4670CD", "#70AD47" ))+
+  ggtitle("(AUPR-AUPR_random)/AUPR_random per gene")+
+  plot_layout(nrow = 2) & theme(strip.background = element_blank(),
+                                strip.text = element_text(size =15))
+
+ggexport(aupr_plot, filename = "results/comparisons_to_existing_methods/aupr_global_results_EN_LASSO_RF.pdf", 
+         width = 15, height = 8)
+```
+
+Are precision and recall higher for genes with alpha > 0 in DIOgene? It is probably the case.
+
+```{r}
+load("results/rdata/gene_specific/alpha_per_gene_weightedEN_true_sd.rdata")
+alphas_en <- alphas_lasso
+
+load("results/rdata/gene_specific/alpha_per_gene_weightedLASSO_true_sd.rdata")
+
+load("results/rdata/gene_specific/alpha_per_gene_weightedRF_true_sd.rdata")
+
+results %>%
+  filter(alpha == "DIOgene") %>%
+  mutate(alpha_opt = c(alphas_en, alphas_lasso, alphas_rf)) %>%
+  ggplot(aes(x=alpha_opt > 0, y=auc))+
+  geom_violin(draw_quantiles = c(0.5))+
+  facet_wrap(~model)
+
+
+results %>%
+  filter(alpha == "DIOgene") %>%
+  mutate(alpha_opt = c(alphas_en, alphas_lasso, alphas_rf)) %>%
+  ggplot(aes(x=alpha_opt > 0, y=aupr-aupr_rand))+
+  geom_violin(draw_quantiles = c(0.5))+
+  facet_wrap(~model)
 ```
 
 

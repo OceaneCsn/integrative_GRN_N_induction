@@ -2,6 +2,116 @@ load('rdata/connectf_N_responsive_genes.rdata')
 library(tidyverse)
 # library(ggh4x)
 library(igraph)
+library(pROC)
+library(PRROC)
+
+evaluate_grn <- function(mat, plot = F, pAUC_specificity=0.9, 
+                         validation = "DAPSeq"){
+  
+  # validation edges restricted to genes of interest
+  val <- validated_edges %>%
+    filter(type == validation) %>%
+    filter(from %in% rownames(mat),
+           to %in% colnames(mat))
+  
+  # predicted complete grn is joined with validation edges
+  val_data <-mat %>%
+    reshape2::melt() %>%
+    rename(from = Var1, to = Var2, importance = value) %>%
+    filter(from != "mse") %>%
+    filter(from %in% val$from) %>%
+    full_join(val, by = c("from", "to")) %>%
+    mutate(gold = ifelse(is.na(type), 0, 1))
+  
+  # evaluation metrics are computed:
+  ##### AUC
+  partial_auc <- val_data %>%
+    roc(gold, importance, plot = F, direction = "<") %>%
+    auc(partial.auc = c(1, pAUC_specificity), 
+        partial.auc.correct=T, 
+        partial.auc.focus = "specificity") %>%
+    as.numeric()
+  
+  auc =  val_data %>%
+    roc(gold, importance, plot = F, 
+        direction = "<", plot.roc = F) %>%
+    ci.auc() %>%
+    as.numeric()
+  
+  curve <- val_data %>%
+    roc(gold, importance, plot = F, direction = "<") %>%
+    coords(transpose =F, ret = "all")  %>%
+    top_frac(1,threshold)  %>%
+    ggplot(aes(y=sensitivity, x = 1-specificity))+
+    geom_point()+geom_line()+
+    geom_abline(slope = 1, intercept = 0)+
+    ggtitle(paste("AUC =", round(auc, 3), "- pAUC =", round(partial_auc, 3)))+
+    geom_vline(xintercept = 1-pAUC_specificity)
+  
+  ####### AUPR
+  pr <- pr.curve(scores.class0 = val_data$importance,
+                   weights.class0 = val_data$gold, rand.compute = T)
+  aupr <- pr$auc.integral
+  aupr_rand <- pr$rand$auc.integral
+  
+  if(plot)
+    print(curve)
+  
+  return(list(auc = auc[2], auc.lower = auc[1], auc.higher = auc[3],
+              aupr = aupr, aupr_rand = aupr_rand,
+              partial_auc = partial_auc, plot = curve))
+}
+
+
+evaluate_genes <- function(mat, plot = F, pAUC_specificity = 0.9, nCores = 34){
+  
+  # validation edges restricted to genes of interest
+  val <- validated_edges %>%
+    filter(type == validation) %>%
+    filter(from %in% rownames(mat),
+           to %in% colnames(mat))
+  
+  # predicted complete grn is joined with validation edges
+  get_auc_gene <- function(gene){
+    val_data <-mat %>%
+      reshape2::melt() %>%
+      rename(from = Var1, to = Var2, importance = value) %>%
+      filter(to == gene) %>%
+      filter(from %in% val$from) %>%
+      left_join(val, by = c("from", "to")) %>%
+      mutate(gold = ifelse(is.na(type), 0, 1))
+    
+    if(sum(val_data$gold)==0){
+      return(NA)
+    }
+    else{
+      auc =  val_data %>%
+        roc(gold, importance, plot = F, direction = "<", auc = F) %>%
+        auc() %>%
+        as.numeric()
+      
+      partial_auc = val_data %>%
+        roc(gold, importance, plot = F, direction = "<", auc = F) %>%
+        auc(partial.auc = c(1, pAUC_specificity), 
+            #partial.auc.correct=T, allow.invalid.partial.auc.correct=T,
+            partial.auc.focus = "specificity") %>%
+        as.numeric()
+      
+      pr <- pr.curve(scores.class0 = val_data$importance,
+                     weights.class0 = val_data$gold, rand.compute = T)
+      aupr <- pr$auc.integral
+      aupr_rand <- pr$rand$auc.integral
+      
+      
+      return(c(auc, partial_auc, aupr, aupr_rand))
+    }
+  }
+  aucs <- mcsapply(colnames(mat), FUN = get_auc_gene, mc.cores=nCores)
+  
+  return(t(data.frame(aucs)) %>%
+           data.frame() %>%
+           rename(auc = X1, p_auc = X2, aupr = X3, aupr_rand = X4))
+}
 
 #' Evaluates an inferred network against validated regulatory interactions
 #'
