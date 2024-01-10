@@ -140,24 +140,8 @@ plot_rf <- plot_rf & scale_color_manual(name = "Method", values = c("#668877", "
   scale_fill_manual(name = "Method", values = c("#668877", "#70AD47"))&
   theme_bw() & theme(strip.background = element_blank());plot_rf
 
-# results %>%
-#   filter(network_name < 0.075)%>%
-#   ggplot(aes(y=pwm_supprt, x =alpha, color = method)) +
-#   geom_point() + 
-#   geom_line(aes(group = interaction(network_name, method), 
-#                 alpha = (1-as.numeric(network_name))*0.5+0.5), show.legend = F)+
-#   # ggh4x::facet_nested_wrap(vars(paste(network_name)), ncol = 5)+
-#   theme_bw()
-
-# results %>%
-#   filter(network_name < 0.1)%>%
-#   ggplot(aes(y=pwm_supprt, x =alpha, color = method)) +
-#   geom_point() + geom_line()+
-#   ggh4x::facet_nested_wrap(vars(paste(network_name)), ncol = 5)+
-#   theme_bw()
-
-ggexport(plot_rf, filename = "results/comparisons_to_existing_methods/non_linear_comparison.pdf", 
-         width = 10, height = 6)
+# ggexport(plot_rf, filename = "results/comparisons_to_existing_methods/non_linear_comparison.pdf", 
+#          width = 10, height = 6)
 
 
 ```
@@ -222,7 +206,7 @@ save(results, file = "results/mLASSO_stars_weightedLASSO_comparison_reps.rdata")
 
 
 ```
-```{r}
+```{r, eval=FALSE}
 save(importances, file = "results/rdata/mLASSO_stars_importances_10reps.rdata")
 ```
 
@@ -262,6 +246,7 @@ all_results <- all_results %>% # maybe filter on small densities?
 
 
 mse_min <- 0
+mse_max <- 0.3
 comps_en <- (all_results %>%
     mutate(color = ifelse(method == "iRafNet" | method == "mLASSO_stars" , "ref",
                           ifelse((method == "weightedLASSO" |method == "weightedEN" | method == "weightedRF") & 
@@ -310,9 +295,9 @@ comps_en <- (all_results %>%
                      legend.position = "right"); comps_en
 
 
-
-ggexport(comps_en, filename = "results/comparisons_to_existing_methods/comparison_en.pdf", 
-         width = 11, height = 8)
+# 
+# ggexport(comps_en, filename = "results/comparisons_to_existing_methods/comparison_en.pdf", 
+#          width = 11, height = 8)
 
 ```
 
@@ -348,122 +333,6 @@ plot_lasso <- plot_lasso & scale_color_manual(values = c("#668877", "#70AD47"))&
 ggexport(plot_lasso, filename = "results/comparisons_to_existing_methods/linear_comparison.pdf", width = 10, height = 6)
 ```
 
-Overlaying the results of DIOgene over these results:
-
-
-```{r, fig.width = 15}
-# loading global alpha results
-load(file = "results/mLASSO_stars_weightedLASSO_comparison_reps.rdata")
-all_results <- results
-
-load(file = "results/irafnet_weightedRF_comparison_reps.rdata")
-all_results <- rbind.data.frame(all_results, results)
-
-# loading DIOgene importance matrices
-load("results/rdata/gene_specific/gene_specific_grns_true_sd.rdata")
-mats <- mats[str_detect(names(mats),"true")]
-names(mats)
-
-# computing DIOgene PR curves
-mat_diogene_linear <- apply(simplify2array(mats[str_detect(names(mats), "LASSO")]), 1:2, mean) 
-mat_diogene_non_linear <- apply(simplify2array(mats[str_detect(names(mats), "RF")]), 1:2, mean) 
-
-
-linear_eval <- evaluate_fully_connected(mat_diogene_linear[tfs,],
-                                        pwm_occurrence = pwm_occurrence,
-                              input_genes = genes, input_tfs = tfs, 
-                                             validation = c("DAPSeq"),
-                                             nCores =10) %>%
-  mutate(aupr = MESS::auc(recall, precision, type = 'spline'),
-         mse = median(mat_diogene_linear["mse",]), 
-         method = "weightedLASSO", alpha = "DIOgene")
-
-non_linear_eval <- evaluate_fully_connected(mat_diogene_non_linear[tfs,],
-                                            pwm_occurrence = pwm_occurrence,
-                              input_genes = genes, input_tfs = tfs, 
-                                             validation = c("DAPSeq"),
-                                             nCores =10)%>%
-  mutate(aupr = MESS::auc(recall, precision, type = 'spline'),
-         mse = median(mat_diogene_non_linear["mse",]), 
-         method = "weightedRF", alpha = "DIOgene")
-
-all_diogene_results <- rbind.data.frame(non_linear_eval, linear_eval) %>%
-  mutate(rep = 1, pwm_supprt = NA)
-
-
-all_results <- all_results %>%
-  group_by(method, alpha, rep) %>%
-  mutate(aupr_splines = MESS::auc(recall, precision, type = 'spline'),
-         aupr_linear = MESS::auc(recall, precision, type = 'linear'),
-         Bolstad2 = Bolstad2::sintegral(recall, precision)$int)
-
-plot(y=linear_eval$precision, linear_eval$recall)
-
-# combine all mse and aupr data:
-all_results <- rbind.data.frame(all_results, all_diogene_results[,colnames(all_results)])
-
-
-# computing alternative AUPRs:
-
-
-mse_max <- 0.3
-mse_min <- 0.1
-
-# massive plot:
-method_comparison <- (all_results %>%
-    mutate(color = ifelse(method == "iRafNet" | method == "mLASSO_stars" , "ref",
-                          ifelse((method == "weightedLASSO" | method == "weightedRF") & 
-                                   alpha == "DIOgene", "diogene", "weighted")),
-           regression = ifelse(str_detect(method, "LASSO"), "Linear case", "Non linear case")) %>%
-              group_by(method, alpha) %>%
-              mutate(aupr = mean(aupr_linear, na.rm = T))  %>%
-      group_by(method, alpha, network_name) %>%
-      mutate(mean_precision =mean(precision),
-             mean_recall = mean(recall)) %>%
-              mutate(aupr_pos = ifelse(str_detect(method, "weighted"), 0.75, 0.25)) %>%
-  ggplot(aes(y=precision, x = recall, color = interaction(color, regression))) +
-  geom_point(size = 0.35, show.legend = F) + 
-    geom_line(aes(y=mean_precision, x = mean_recall,
-                  group = interaction(color, regression)), show.legend = T)+
-  ggh4x::facet_nested_wrap(vars(regression, paste("alpha =", alpha)), nest_line = T, ncol = 4)+
-    theme(legend.position = "none") +
-    geom_text(aes(y=0.5, x=aupr_pos, label = paste("AUPR =",round(aupr, 2))), show.legend = F))/ 
-(all_results %>%
-    mutate(color = ifelse(method == "iRafNet" | method == "mLASSO_stars" , "ref",
-                          ifelse((method == "weightedLASSO" | method == "weightedRF") & alpha == "DIOgene", 
-                                 "diogene", "weighted")),
-           regression = ifelse(str_detect(method, "LASSO"), "Linear case", "Non linear case")) %>%
-              group_by(alpha, method) %>%
-  mutate(mean_mse = mean(mse, na.rm = T),
-         mean_mse_to_plot = ifelse(mean_mse > mse_max, mse_max, mean_mse),
-         mse_label_y = mean_mse_to_plot,
-         label_nudge = ifelse(mean_mse > mse_max, -0.05, 0.05)) %>%
-  ggplot(aes(y=mean_mse, x =method, fill = method)) +
-   ylab("Median MSE") + xlab("")+ ylim(c(mse_min,mse_max))+
-  geom_segment(aes(xend = method, y = mse_min, yend = mean_mse_to_plot, 
-                   color = interaction(color, regression)),size = 2.5) + 
-  geom_point(aes(y=mse), size = 0.85, color = "black", show.legend = F)+
-   geom_text(aes(label = round(mean_mse, 3), y=0.12, color = interaction(color, regression)), 
-             nudge_x = 0.275, fill = "white", show.legend = F)+
-  ggh4x::facet_nested_wrap(vars(regression, paste("alpha =", alpha)), 
-                           nest_line = T, ncol = 4, scales = "free_x"))  & 
-  scale_color_manual(name = "Method",
-                     values = c("royalblue", "#668877", "#70AD47", "royalblue", "#668877", "#70AD47"), 
-                     labels = c("DIOgene (linear)", "mLASSO-StARS", "weightedLASSO", 
-                                "DIOgene (non linear)", "iRafNet", "weightedRF"))& 
-  scale_fill_manual(name = "Method",
-                     values = c("royalblue", "#668877", "#70AD47", "royalblue", "#668877", "#70AD47"), 
-                     labels = c("DIOgene (linear)", "mLASSO-StARS", "weightedLASSO", 
-                                "DIOgene (non linear)", "iRafNet", "weightedRF"))& 
-  theme_bw() & theme(strip.background = element_blank(), 
-                     legend.position = "right")& 
-  plot_annotation(tag_levels = "a" );method_comparison
-
-ggexport(method_comparison, filename = "results/comparisons_to_existing_methods/comparison.pdf", 
-         width = 11, height = 8)
-
-
-```
 
 
 What is the complexity/sparsity of the different linear models?
@@ -475,13 +344,18 @@ mats_en <- mats
 load("results/rdata/weightedLASSO_importances_50rep.rdata")
 mats_lasso <- mats
 
+load("results/rdata/mLASSO_stars_importances_10reps.rdata")
+mats_stars <- importances
+
+
 # load("results/rdata/gene_specific/gene_specific_grns_true_sd.rdata")
 # mats_lasso <- mats
 
 results <- NULL
-
-for(alpha in ALPHAS){
+ALPHAS <- c(0,0.5,1)
   
+for(alpha in ALPHAS){
+  # weightedEN
   mats_10_en <- mats_en[paste0("EN_",alpha,"_trueData_",1:10)]
   mat_mean_en <- apply(simplify2array(mats_10_en), 1:2, mean)
   
@@ -497,6 +371,7 @@ for(alpha in ALPHAS){
   else
     results <- rbind.data.frame(results, to_add)
   
+  # weightedLASSO
   mats_10_lasso <- mats_lasso[paste0("LASSO_",alpha,"_trueData_",1:10)]
   mat_mean_lasso <- apply(simplify2array(mats_10_lasso), 1:2, mean)
   
@@ -507,54 +382,74 @@ for(alpha in ALPHAS){
                        mean_nb_tf = mean(colSums(selection)), 
                        sd_nb_tf = sd(colSums(selection)))
   results <- rbind.data.frame(results, to_add)
+  
+  # mLASSO-StARS
+  mats_10_stars<- mats_stars[paste0("mLASSO.StARS_",alpha,"_",1:3)]
+  mat_mean_stars <- apply(simplify2array(mats_10_stars), 1:2, mean)
+  
+  selection <- mat_mean_stars > 0.3
+  
+  to_add <- data.frame(model = "mLASSO-StARS", alpha = alpha, 
+                       nb_tf = c(colSums(selection)),
+                       mean_nb_tf = mean(colSums(selection)), 
+                       sd_nb_tf = sd(colSums(selection)))
+  results <- rbind.data.frame(results, to_add)
 }
 
-
-
-results$strategy <- "global"
-
+hist(mat_mean_stars)
 # loading DIOgene importance matrices
-load("results/rdata/gene_specific/gene_specific_grns_true_sd.rdata")
-mats <- mats[str_detect(names(mats),"true")]
-mats <- mats[str_detect(names(mats),"LASSO")]
-mat_mean_lasso_diogene <- apply(simplify2array(mats), 1:2, mean)
-selection <- mat_mean_lasso_diogene != 0
-to_add <- data.frame(model = "LASSO", alpha = "DIOgene", 
-                     nb_tf = c(colSums(selection)),
-                     mean_nb_tf = mean(colSums(selection)), 
-                     sd_nb_tf = sd(colSums(selection)), strategy = "DIOgene")
-results <- rbind.data.frame(results, to_add)
-  
+# load("results/rdata/gene_specific/gene_specific_grns_true_sd.rdata")
+# mats <- mats[str_detect(names(mats),"true")]
+# mats <- mats[str_detect(names(mats),"LASSO")]
+# mat_mean_lasso_diogene <- apply(simplify2array(mats), 1:2, mean)
+# selection <- mat_mean_lasso_diogene != 0
+# to_add <- data.frame(model = "LASSO", alpha = "DIOgene", 
+#                      nb_tf = c(colSums(selection)),
+#                      mean_nb_tf = mean(colSums(selection)), 
+#                      sd_nb_tf = sd(colSums(selection)), strategy = "DIOgene")
+# results <- rbind.data.frame(results, to_add)
+#   
 
 # loading DIOgene importance matrices EN
-load("results/rdata/gene_specific/gene_specific_grns_true_sd_en.rdata")
-mats <- mats[str_detect(names(mats),"true")]
-mats <- mats[str_detect(names(mats),"LASSO")]
-mat_mean_en_diogene <- apply(simplify2array(mats), 1:2, mean)
-selection <- mat_mean_en_diogene != 0
-to_add <- data.frame(model = "EN", alpha = "DIOgene", 
-                     nb_tf = c(colSums(selection)),
-                     mean_nb_tf = mean(colSums(selection)), 
-                     sd_nb_tf = sd(colSums(selection)), strategy = "DIOgene")
-results <- rbind.data.frame(results, to_add)
+# load("results/rdata/gene_specific/gene_specific_grns_true_sd_en.rdata")
+# mats <- mats[str_detect(names(mats),"true")]
+# mats <- mats[str_detect(names(mats),"LASSO")]
+# mat_mean_en_diogene <- apply(simplify2array(mats), 1:2, mean)
+# selection <- mat_mean_en_diogene != 0
+# to_add <- data.frame(model = "EN", alpha = "DIOgene", 
+#                      nb_tf = c(colSums(selection)),
+#                      mean_nb_tf = mean(colSums(selection)), 
+#                      sd_nb_tf = sd(colSums(selection)), strategy = "DIOgene")
+# results <- rbind.data.frame(results, to_add)
   
 
-
 model_complexity_hist <- results %>%
-  ggplot(aes(x= nb_tf, color = model))+
-  facet_wrap(model~alpha, ncol = 12)+
-  geom_histogram();model_complexity_hist
+  filter(alpha %in% c(0,0.5,1)) %>%
+  mutate(model = str_replace(model, "^LASSO", "weightedLASSO"),
+         model = str_replace(model, "^EN", "weightedEN"),
+         alpha = paste0("alpha = ", alpha)) %>%
+  ggplot(aes(x= nb_tf, col = model, fill = model))+
+  xlab("Number of regulators selected at least once") +
+  facet_nested_wrap(vars(as.factor(alpha)), ncol = 12)+
+  geom_density(alpha = 0.5, size = 1.25)+scale_fill_manual(name = "Method",
+                     values = c("#668877", "darkgreen", "#70AD47"), 
+                     labels = c("mLASSO-StARS", "weightedEN", "weightedLASSO"))+
+  scale_color_manual(name = "Method",
+                     values = c("#668877", "darkgreen", "#70AD47"), 
+                     labels = c("mLASSO-StARS", "weightedEN", "weightedLASSO"))+
+  theme_bw()+theme(strip.background = element_blank());model_complexity_hist
 
-model_complexity <- results %>%
-  ggplot(aes(x=alpha, y = mean_nb_tf, color = model))+
-  geom_point()+ylim(c(0,120)) + 
-  geom_segment(aes(y = mean_nb_tf - sd_nb_tf, 
-                   yend = mean_nb_tf + sd_nb_tf, xend = alpha))+
-  geom_line()
 
-compl <- model_complexity / model_complexity_hist
+# model_complexity <- results %>%
+#   ggplot(aes(x=alpha, y = mean_nb_tf, color = model))+
+#   geom_point()+ylim(c(0,120)) + 
+#   geom_segment(aes(y = mean_nb_tf - sd_nb_tf, 
+#                    yend = mean_nb_tf + sd_nb_tf, xend = alpha))+
+#   geom_line()
+# 
+# compl <- model_complexity / model_complexity_hist
 
-ggexport(compl, filename = "results/comparisons_to_existing_methods/linear_model_complexity.pdf", width = 15)
+# ggexport(compl, filename = "results/comparisons_to_existing_methods/linear_model_complexity.pdf", width = 15)
 ```
 
 MSE of restricted models:
@@ -632,6 +527,7 @@ for(alpha in alphas){
   results <- rbind.data.frame(results, to_add)
 }
 
+
 # loading DIOgene importance matrices
 # load("results/rdata/gene_specific/gene_specific_grns_true_sd.rdata")
 # mats <- mats[str_detect(names(mats),"true")]
@@ -693,113 +589,20 @@ restricted_mse <- results %>%
                      values = c("#668877", "darkgreen", "#70AD47"), 
                      labels = c("mLASSO-StARS", "weightedEN", "weightedLASSO"))+
   theme(strip.background = element_blank(),
-        legend.position = "none");restricted_mse
+        legend.position = "right");restricted_mse
 
+```
 
-# diversity <- results %>%
-#   group_by(alpha, model, strategy) %>%
-#   summarize(n_genes_in_grn = sum(mse != 1)) %>%
-#   ggplot(aes(x=alpha, y = n_genes_in_grn, color = model))+
-#   geom_point()+ ylab("Number of targets in the GRN");diversity
-# 
-# mse_plot <- diversity + restricted_mse
-# 
-# hist(mses, breaks = 50)
-# results_div <- results
-# 
-# results_div$genes <- rep(genes, 24)
+Final comparison plot:
 
-final_comp <- plot_rf + comps_en + restricted_mse + plot_layout(heights = c(0.33, 0.33,1, 0.33))+plot_annotation(tag_levels = "a")
+```{r}
+final_comp <- plot_rf + comps_en + model_complexity_hist + restricted_mse + 
+  plot_layout(heights = c(0.33, 0.33,1, 0.33, 0.33))+plot_annotation(tag_levels = "a")
 
 
 ggexport(final_comp, 
          filename = "results/comparisons_to_existing_methods/final_comparison.pdf", 
-         width = 12, height = 15)
-
-```
-
-Mesures d'importance moins equitablement distribuées entre les gènes?
-
-
-```{r, fig.width=15}
-all_results <-results %>%
-  rownames_to_column("genes") %>%
-  mutate(genes = substr(genes, 1, nchar(genes[1]))) %>%
-  full_join(results_div, by = c("genes", "model", "alpha", "strategy")) %>%
-  mutate(is_included = mse!=1)
-
-all_results%>%
-  ggplot(aes(x=is_included, y = nb_tf, color = model))+
-  geom_boxplot()+facet_wrap(model~alpha, ncol = 12)
-
-
-save(all_results, file = "results/comparisons_to_existing_methods/linear_mse_complexity_results.rdata")
+         width = 12, height = 16)
 ```
 
 
-
-
-Tests for weightedEN:
-
-
-```{r}
-importances_wLASSO <- weightedLASSO_inference(counts, genes, tfs, alpha = 0, 
-                                                  N = 50, pwm_occurrence = pwm_occurrence, 
-                                                  nCores = nCores, EN_param = 0.1)
-
-importances_wLASSO_cheap <- weightedLASSO_inference(counts, genes, tfs, alpha = 0, 
-                                                  N = 25, pwm_occurrence = pwm_occurrence, 
-                                                  nCores = 45, EN_param = 0.1)
-cor(importances_wLASSO["mse",], importances_wLASSO_cheap["mse",])
-
-
-d <- data.frame(normal = c(importances_wLASSO[!str_detect(rownames(importances_wLASSO), "mse"),]), 
-     cheap = c(importances_wLASSO_cheap[!str_detect(rownames(importances_wLASSO_cheap), "mse"),]))
-
-d %>%
-  ggplot(aes(x=normal, y=cheap))+
-    geom_point(alpha = 0.5)+stat_cor()
-
-
-eval <- evaluate_fully_connected(importances_wLASSO[tfs,], 
-                                             pwm_occurrence = pwm_occurrence,
-                              input_genes = genes, input_tfs = tfs, 
-                                             validation = c("DAPSeq"),
-                                             nCores =10) %>%
-      mutate(alpha = 0, method = "weightedLASSO",
-             mse = median(importances_wLASSO["mse",], na.rm = T),
-             aupr = MESS::auc(recall, precision, type = 'linear')) 
-
-eval_cheap <- evaluate_fully_connected(importances_wLASSO_cheap[tfs,], 
-                                             pwm_occurrence = pwm_occurrence,
-                              input_genes = genes, input_tfs = tfs, 
-                                             validation = c("DAPSeq"),
-                                             nCores =10) %>%
-      mutate(alpha = 0, method = "weightedLASSO",
-             mse = median(importances_wLASSO_cheap["mse",], na.rm = T),
-             aupr = MESS::auc(recall, precision, type = 'linear')) 
-
-```
-
-
-Zoomer sur les courbes précision rappel pour les densités <) 0.1
-
-lambda min alpha = 0.5 : [1] 0.2581444
-
-lambda 1se alpha = 0.5 : [1] 0.2240055
-
-lambda min alpha = 0.5 EN 0.5 : [1] 0.202
-
-lambda 1se alpha = 0.5 EN 0.5 : [1] 0.187
-
-lambda min alpha = 0 : [1] 0.245
-
-lambda 1se alpha = 0 : [1] 0.208
-
-lambda min alpha = 1 : [1] 0.245
-
-lambda 1se alpha = 1 : [1] 0.248
-
-
-
-Nb reg pour weightedLASSO (EN, LASSO, lambda min et lambda 1se) et 
