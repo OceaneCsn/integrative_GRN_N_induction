@@ -27,6 +27,8 @@ GRNs are inferred from expression profiles of the root response to nitrate induc
 
 + In the `inferred_GRN` folder, we make available to the community the end product of DIOgene on the nitrate induction case study, for anyone interested in mining the inferred GRN.
 
++ `Comparison_to_existing_methods.Rmd` contains code to reproduce our comparison of weightedRF and weightedLASSO to state of the art competitor algorithms for integrative regression-based GRN inference.
+
 
 # Requirements
 ---

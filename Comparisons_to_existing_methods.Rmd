@@ -140,10 +140,6 @@ plot_rf <- plot_rf & scale_color_manual(name = "Method", values = c("#668877", "
   scale_fill_manual(name = "Method", values = c("#668877", "#70AD47"))&
   theme_bw() & theme(strip.background = element_blank());plot_rf
 
-# ggexport(plot_rf, filename = "results/comparisons_to_existing_methods/non_linear_comparison.pdf", 
-#          width = 10, height = 6)
-
-
 ```
 
 
@@ -294,11 +290,6 @@ comps_en <- (all_results %>%
   theme_bw() & theme(strip.background = element_blank(), 
                      legend.position = "right"); comps_en
 
-
-# 
-# ggexport(comps_en, filename = "results/comparisons_to_existing_methods/comparison_en.pdf", 
-#          width = 11, height = 8)
-
 ```
 
 
@@ -348,9 +339,6 @@ load("results/rdata/mLASSO_stars_importances_10reps.rdata")
 mats_stars <- importances
 
 
-# load("results/rdata/gene_specific/gene_specific_grns_true_sd.rdata")
-# mats_lasso <- mats
-
 results <- NULL
 ALPHAS <- c(0,0.5,1)
   
@@ -396,32 +384,6 @@ for(alpha in ALPHAS){
   results <- rbind.data.frame(results, to_add)
 }
 
-hist(mat_mean_stars)
-# loading DIOgene importance matrices
-# load("results/rdata/gene_specific/gene_specific_grns_true_sd.rdata")
-# mats <- mats[str_detect(names(mats),"true")]
-# mats <- mats[str_detect(names(mats),"LASSO")]
-# mat_mean_lasso_diogene <- apply(simplify2array(mats), 1:2, mean)
-# selection <- mat_mean_lasso_diogene != 0
-# to_add <- data.frame(model = "LASSO", alpha = "DIOgene", 
-#                      nb_tf = c(colSums(selection)),
-#                      mean_nb_tf = mean(colSums(selection)), 
-#                      sd_nb_tf = sd(colSums(selection)), strategy = "DIOgene")
-# results <- rbind.data.frame(results, to_add)
-#   
-
-# loading DIOgene importance matrices EN
-# load("results/rdata/gene_specific/gene_specific_grns_true_sd_en.rdata")
-# mats <- mats[str_detect(names(mats),"true")]
-# mats <- mats[str_detect(names(mats),"LASSO")]
-# mat_mean_en_diogene <- apply(simplify2array(mats), 1:2, mean)
-# selection <- mat_mean_en_diogene != 0
-# to_add <- data.frame(model = "EN", alpha = "DIOgene", 
-#                      nb_tf = c(colSums(selection)),
-#                      mean_nb_tf = mean(colSums(selection)), 
-#                      sd_nb_tf = sd(colSums(selection)), strategy = "DIOgene")
-# results <- rbind.data.frame(results, to_add)
-  
 
 model_complexity_hist <- results %>%
   filter(alpha %in% c(0,0.5,1)) %>%
@@ -439,17 +401,6 @@ model_complexity_hist <- results %>%
                      labels = c("mLASSO-StARS", "weightedEN", "weightedLASSO"))+
   theme_bw()+theme(strip.background = element_blank());model_complexity_hist
 
-
-# model_complexity <- results %>%
-#   ggplot(aes(x=alpha, y = mean_nb_tf, color = model))+
-#   geom_point()+ylim(c(0,120)) + 
-#   geom_segment(aes(y = mean_nb_tf - sd_nb_tf, 
-#                    yend = mean_nb_tf + sd_nb_tf, xend = alpha))+
-#   geom_line()
-# 
-# compl <- model_complexity / model_complexity_hist
-
-# ggexport(compl, filename = "results/comparisons_to_existing_methods/linear_model_complexity.pdf", width = 15)
 ```
 
 MSE of restricted models:
