@@ -621,6 +621,11 @@ mats_rf <- mats
 Evaluating all GRNs for the different settings:
 
 ```{r}
+
+N_genes <- read.table("data/Ngenes.csv", h = T, sep = ";")
+n_genes <- intersect(N_genes$AGI, genes)
+n_tfs <- intersect(N_genes$AGI, tfs)
+
 results <- NULL
 
 for(alpha in ALPHAS){
@@ -637,8 +642,8 @@ for(alpha in ALPHAS){
     mat_mean <- apply(simplify2array(mats_10), 1:2, mean)
     
     # mse <- median(mat_mean["mse",], na.rm = T)
-    eval <- evaluate_grn(mat_mean)
-    genes_eval <- evaluate_genes(mat_mean, nCores = 40)
+    eval <- evaluate_grn(mat_mean[n_tfs, genes])
+    genes_eval <- evaluate_genes(mat_mean[n_tfs, genes], nCores = 40)
     
     to_add <- genes_eval %>%
       mutate(alpha = alpha, model = paste0("weighted", model), 
@@ -678,8 +683,8 @@ for(model in c("EN", "LASSO", "RF")){
     mat_mean <- apply(simplify2array(mats_10), 1:2, mean)
     
     # mse <- median(mat_mean["mse",], na.rm = T)
-    eval <- evaluate_grn(mat_mean)
-    genes_eval <- evaluate_genes(mat_mean, nCores = 40)
+    eval <- evaluate_grn(mat_mean[n_tfs, genes])
+    genes_eval <- evaluate_genes(mat_mean[n_tfs, genes], nCores = 40)
     
     to_add <- genes_eval %>%
       mutate(alpha = "DIOgene", model = paste0("weighted", model), 
@@ -691,7 +696,7 @@ for(model in c("EN", "LASSO", "RF")){
     results <- rbind.data.frame(results, to_add)
 }
 
-save(results, file = "results/comparisons_to_existing_methods/auc_global_results_EN_LASSO_RF.rdata")
+save(results, file = "results/comparisons_to_existing_methods/auc_global_results_EN_LASSO_RF_nitrate_tfs.rdata")
 ```
 
 
@@ -739,7 +744,7 @@ results %>%
   plot_layout(nrow = 4) & theme(strip.background = element_blank(),
                                 strip.text = element_text(size =15))
 
-ggexport(auc_plot, filename = "results/comparisons_to_existing_methods/auc_global_results_EN_LASSO_RF.pdf", width = 15, height = 13)
+ggexport(auc_plot, filename = "results/comparisons_to_existing_methods/auc_global_results_EN_LASSO_RF_nitrate_tfs.pdf", width = 15, height = 13)
 
 ```
 
@@ -769,7 +774,7 @@ results %>%
   plot_layout(nrow = 2) & theme(strip.background = element_blank(),
                                 strip.text = element_text(size =15))
 
-ggexport(aupr_plot, filename = "results/comparisons_to_existing_methods/aupr_global_results_EN_LASSO_RF.pdf", 
+ggexport(aupr_plot, filename = "results/comparisons_to_existing_methods/aupr_global_results_EN_LASSO_RF_nitrate_tfs.pdf", 
          width = 15, height = 8)
 ```
 
@@ -788,9 +793,7 @@ results %>%
   mutate(alpha_opt = c(alphas_en, alphas_lasso, alphas_rf)) %>%
   ggplot(aes(x=alpha_opt > 0, y=auc))+
   geom_violin(draw_quantiles = c(0.5))+
-  facet_wrap(~model)
-
-
+  facet_wrap(~model)+
 results %>%
   filter(alpha == "DIOgene") %>%
   mutate(alpha_opt = c(alphas_en, alphas_lasso, alphas_rf)) %>%
@@ -860,7 +863,6 @@ matrix(c(length(same_lasso), length(lost_lasso), length(saved_lasso),
          length(genes) - length(same_lasso) - length(lost_lasso) - length(saved_lasso)), 
        nrow = 2, byrow = F, dimnames = list(c("data integration div", "no data integration div"),
                                             c("data integration min", "no data integration min")))
-
 
 ```
 

@@ -63,7 +63,8 @@ evaluate_grn <- function(mat, plot = F, pAUC_specificity=0.9,
 }
 
 
-evaluate_genes <- function(mat, plot = F, pAUC_specificity = 0.9, nCores = 34){
+evaluate_genes <- function(mat, plot = F, pAUC_specificity = 0.9, nCores = 34,
+                           validation = "DAPSeq"){
   
   # validation edges restricted to genes of interest
   val <- validated_edges %>%
@@ -82,6 +83,9 @@ evaluate_genes <- function(mat, plot = F, pAUC_specificity = 0.9, nCores = 34){
       mutate(gold = ifelse(is.na(type), 0, 1))
     
     if(sum(val_data$gold)==0){
+      return(NA)
+    }
+    if(sum(val_data$gold)==nrow(val_data)){
       return(NA)
     }
     else{

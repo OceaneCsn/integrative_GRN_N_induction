@@ -244,6 +244,34 @@ weightedLASSO_network <- function(mat, density, pwm_occurrence, genes, tfs, decr
 }
 
 
+#' Threshold weighted LASSO GRN to a desired density
+#'
+#' @param mat result of weightedLASSO_inference function
+#' @param density desired network density
+#' @param pwm_occurrence matrix of prior data Pi containing TFBS scores between
+#' TFs and genes
+#' @param genes list of genes used as inputs for GRN inference
+#' @param tfs list of TFs used as predictors for GRN inference
+#'
+#' @return dataframe of oriented edges, and their prior value in pwm_occurrence
+weightedLASSO_network_gene_topN <- function(mat, topN = 3, pwm_occurrence, 
+                                            genes, tfs){
+  
+  # takes to first topN regulators per gene
+  edges <- mat %>%
+    reshape2::melt() %>%
+    rename(from = Var1, to = Var2, importance = value) %>%
+    filter(from != "mse") %>%
+    group_by(to) %>%
+    slice_max(order_by = importance, n = topN)
+
+  
+  pwm_imputed <- pwm_occurrence
+  pwm_imputed[is.na(pwm_imputed)] <- 0.5
+  
+  edges$pwm <- pwm_imputed[cbind(edges$to, edges$from)]
+  return(edges[,c("from", "to", "pwm")])
+}
 
 getLinkListLasso <- function (weightMatrix, reportMax = NULL, threshold = 0, decreasing=FALSE) 
 {
@@ -305,8 +333,6 @@ weightedLASSO_predictions <- function(counts, genes, tfs, edges, alpha=0.25,
                                     nfolds.cv=5, lambda = "1se",
                                     nCores = ifelse(is.na(detectCores()),1,
                                                     max(detectCores() - 1, 1))){
-  
-  
   
   
   # for a gaussian lasso, data is log transformed
