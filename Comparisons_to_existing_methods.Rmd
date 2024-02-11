@@ -142,6 +142,27 @@ plot_rf <- plot_rf & scale_color_manual(name = "Method", values = c("#668877", "
 
 ```
 
+Adding DIOgene to these results:
+
+```{r}
+
+load("results/rdata/gene_specific/gene_specific_mse_true_sd.rdata")
+mse_diogene_rf <-median(rowMeans(lmses[str_detect(names(lmses), "RF_trueData")]))
+
+mses_with_diogene_rf <- results %>%
+   mutate(case = "Non linear case") %>%
+  group_by(alpha, method) %>%
+  mutate(mean_mse = mean(mse, na.rm = T)) %>%
+  select(case, method, mean_mse, alpha, mse) %>%
+  ungroup() %>%
+  mutate(alpha = as.character(alpha)) %>%
+  add_row(case = "Non linear case", method = "DIOgene", alpha = "Gene-specific",
+          mean_mse = mse_diogene_rf, mse = mse_diogene_rf)
+
+
+```
+
+
 
 # Linear case : closest implementation to mLASSO-stars
 
@@ -477,6 +498,35 @@ for(alpha in alphas){
   
   results <- rbind.data.frame(results, to_add)
 }
+save(results, file = "results/comparisons_to_existing_methods/restricted_mse_results_linear.rdata")
+
+load("results/comparisons_to_existing_methods/restricted_mse_results_linear.rdata")
+
+# restricted MSES at 3 top regulators for linear DIogene:
+load("results/rdata/gene_specific/gene_specific_grns_true_sd.rdata")
+mats <- mats[str_detect(names(mats),"true")]
+mats <- mats[str_detect(names(mats),"LASSO")]
+mat_mean_lasso_diogene <- apply(simplify2array(mats), 1:2, mean)
+
+diogene_grn_lasso <- weightedLASSO_network_gene_topN(mat_mean_lasso_diogene, topN = 3,
+                                pwm_occurrence = pwm_occurrence, 
+                                genes = genes, tfs = tfs)
+
+load("results/rdata/gene_specific/alpha_per_gene_weightedLASSO_true_sd.rdata")
+
+mses_lasso_restricted <- weightedLASSO_predictions(counts, genes, tfs, edges = diogene_grn_lasso, 
+                                  pwm_occurrence = pwm_occurrence, EN_param = 1,
+                                  N = 25, nCores = 40, alpha = alphas_lasso)
+
+restricted_mses_with_diogene <- rbind.data.frame(results, data.frame(model = "LASSO", alpha = "Gene-specific", 
+                       mse = c(mses_lasso_restricted),
+                       strategy = "DIOgene")) %>%
+   mutate(model = str_replace(model, "EN", "weightedEN"),
+         model = str_replace(model, "^LASSO", "weightedLASSO"))%>%
+  group_by(model, alpha) %>%
+  summarise(mse = median(mse, na.rm = T)) %>%
+  mutate(mse_to_plot = ifelse(mse>0.3, 0.3, mse)) 
+
 
 
 # loading DIOgene importance matrices
@@ -517,10 +567,7 @@ for(alpha in alphas){
 # hist(mses, breaks = 100)
 # results <- rbind.data.frame(results, to_add)
 
-save(results, file = "results/comparisons_to_existing_methods/restricted_mse_results_linear.rdata")
 
-
-load("results/comparisons_to_existing_methods/restricted_mse_results_linear.rdata")
 restricted_mse <- results %>%
   mutate(model = str_replace(model, "EN", "weightedEN"),
          model = str_replace(model, "^LASSO", "weightedLASSO"))%>%
@@ -543,6 +590,37 @@ restricted_mse <- results %>%
         legend.position = "right");restricted_mse
 
 ```
+Plot line to add to main figure:
+
+```{r, fig.height=3, fig.width=10}
+
+rbind.data.frame(restricted_mses_with_diogene %>%
+  mutate(case = "Linear case") %>%
+  mutate(mean_mse = mse,
+         model = ifelse(alpha == "Gene-specific", "DIOgene", model)),
+  mses_with_diogene_rf %>%
+  mutate(case = "Non-linear Case") %>%
+  rename(model = method) %>%
+  mutate(mse_to_plot = mse) %>%
+    distinct(mean_mse, .keep_all = T)) %>%
+ggplot(aes(y=mse_to_plot, x =model, fill = model)) +
+  geom_segment(aes(xend = model, y = 0, yend = mse, color = model),size = 2.5) + 
+  geom_label(aes(label = round(mean_mse, 2), y=0.12, color = model), 
+             nudge_x = 0.2, fill = "white", show.legend = F)+
+  ylab("Restricted median MSE")+ 
+  geom_point(color = "black", aes(y=mse), show.legend = F)+
+  ggh4x::facet_nested_wrap(vars(case, paste("alpha =", alpha)), 
+                           nest_line = T, scales = "free_x", ncol = 8)+
+  scale_color_manual(name = "Method", values = c( "#4670CD", "#668877", "darkgreen", 
+                                                  "#668877", "#70AD47", "#70AD47" ))+
+  scale_fill_manual(name = "Method", values = c( "#4670CD", "#668877", "darkgreen", 
+                                                  "#668877", "#70AD47", "#70AD47" ))+
+  theme_bw() + theme(strip.background = element_blank())
+                                                           
+
+```
+
+
 
 Final comparison plot:
 
