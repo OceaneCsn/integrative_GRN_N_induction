@@ -317,6 +317,7 @@ comps_en <- (all_results %>%
 Results:
 
 ```{r}
+
 load(file = "results/mLASSO_stars_weightedLASSO_comparison_reps.rdata")
 
 
@@ -594,7 +595,7 @@ Plot line to add to main figure:
 
 ```{r, fig.height=3, fig.width=10}
 
-rbind.data.frame(restricted_mses_with_diogene %>%
+data_for_restricted_mse_top_3 <- rbind.data.frame(restricted_mses_with_diogene %>%
   mutate(case = "Linear case") %>%
   mutate(mean_mse = mse,
          model = ifelse(alpha == "Gene-specific", "DIOgene", model)),
@@ -602,7 +603,15 @@ rbind.data.frame(restricted_mses_with_diogene %>%
   mutate(case = "Non-linear Case") %>%
   rename(model = method) %>%
   mutate(mse_to_plot = mse) %>%
-    distinct(mean_mse, .keep_all = T)) %>%
+    distinct(mean_mse, .keep_all = T))
+  
+  
+  save(data_for_restricted_mse_top_3, file = "results/comparisons_to_existing_methods/restricted_mse_top3_results_linear.rdata")
+  
+  
+load("results/comparisons_to_existing_methods/restricted_mse_top3_results_linear.rdata")
+
+  data_for_restricted_mse_top_3 %>%
 ggplot(aes(y=mse_to_plot, x =model, fill = model)) +
   geom_segment(aes(xend = model, y = 0, yend = mse, color = model),size = 2.5) + 
   geom_label(aes(label = round(mean_mse, 2), y=0.12, color = model), 
@@ -616,8 +625,12 @@ ggplot(aes(y=mse_to_plot, x =model, fill = model)) +
   scale_fill_manual(name = "Method", values = c( "#4670CD", "#668877", "darkgreen", 
                                                   "#668877", "#70AD47", "#70AD47" ))+
   theme_bw() + theme(strip.background = element_blank())
-                                                           
+                       
+  
+  
+  data_for_restricted_mse_top_3$case                                    
 
+  
 ```
 
 
