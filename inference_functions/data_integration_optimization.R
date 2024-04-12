@@ -117,18 +117,20 @@ draw_gene_mse <- function(gene, lmses, title = NULL){
 #' @param metric Type of metric : "dev" for the maximal deviation from the shuffled baseline, "min" for
 #' minimal MSE regardless of permutations.
 #'
-#' @return A ggplot object of a value of alpha.
+#' @return A ggplot object, or a value of alpha.
 #' @export
 get_opt_alpha_per_gene <- function(gene, mats, lmses, type = "rank", dev = "true",
-                                   return_alpha = F, metric = 'div'){
+                                   return_alpha = F, metric = 'div', pval.adjust = "fdr"){
   tfs_with_motif <- names(which(pwm_occurrence[gene,]==1))
+  
+ 
   # gene with no TFBS has an optimal alpha of 0
   if(return_alpha & length(tfs_with_motif)==0) return(0)
   # else
   if(length(tfs_with_motif)>0){
     
     if(type == "rank")
-      data <- data.frame(lapply(mats, function(mat){mean(rank(mat[,gene])[tfs_with_motif])}))
+     data <- data.frame(lapply(mats, function(mat){mean(rank(mat[,gene])[tfs_with_motif])}))
     if(type == "imp")
       data <- data.frame(lapply(mats, function(mat){mean(mat[,gene][tfs_with_motif])}))
     
@@ -156,7 +158,7 @@ get_opt_alpha_per_gene <- function(gene, mats, lmses, type = "rank", dev = "true
       summarise(mean_mse = mean(value, na.rm = T),
                 sd_mse = sd(value, na.rm = T)) 
     
-    # Approximates shuflled mean MSE and sd MSE for all true values of data integration
+    # Approximates shuffled mean MSE and sd MSE for all true values of data integration
     # ( as the two curves are not aligned in terms of effectiva data integration)
     curves <- curves %>%
       group_by(dataset) %>%
@@ -188,6 +190,20 @@ get_opt_alpha_per_gene <- function(gene, mats, lmses, type = "rank", dev = "true
       true$div <- ifelse(2*(shuff$approx_mse - true$mean_mse)/(true$sd_mse+shuff$approx_sd)>1, 
                          2*(shuff$approx_mse - true$mean_mse)/(true$sd_mse+shuff$approx_sd), 
                          0)
+    
+    if(dev=="student"){
+      # number of observations in the compared samples
+      N = length(mats)/nrow(true)/2
+      # quantile to be exceeded to be significant at the 5% threshold
+      # critical_value = qt(p=.05/nrow(true), df=N-2, lower.tail=F)
+      # student statistic is maximized
+      pvals <- p.adjust(pt((shuff$approx_mse - true$mean_mse)/sqrt((true$sd_mse^2+shuff$approx_sd^2)/N), 
+                  df = N-2, lower.tail = F), method = pval.adjust)
+      true$div <- ifelse(pvals < 0.05, 
+                         (shuff$approx_mse - true$mean_mse)/sqrt((true$sd_mse^2+shuff$approx_sd^2)/N), 
+                         0)
+    }
+      
     
     # gets the value of alpha optimizing the chosen criterion
     if(metric == "div"){

@@ -193,11 +193,19 @@ load("results/rdata/weightedRF_mse_100rep.rdata")
 # loads the importances
 load("results/rdata/weightedRF_importances_100rep.rdata")
 
+# value of alpha per genes with student criterion:
+stud_rf <- mcsapply(genes, get_opt_alpha_per_gene,mats = mats, 
+                         lmses = lmses, dev = "student",
+                          return_alpha=T, mc.cores=34, pval.adjust = "fdr")
+save(stud_rf, file = "results/rdata/gene_specific/alpha_per_gene_weightedRF_student.rdata")
+
+
 # value of alpha per genes:
 alphas_rf <- mcsapply(genes, get_opt_alpha_per_gene,mats = mats, 
                          lmses = lmses,
                           return_alpha=T, mc.cores=34)
 save(alphas_rf, file = "results/rdata/gene_specific/alpha_per_gene_weightedRF_true_sd.rdata")
+
 
 # doing the same but with the value of alpha minimising the mse:
 alphas_rf <- mcsapply(genes, get_opt_alpha_per_gene, metric = "min",mats = mats, 
@@ -207,15 +215,21 @@ save(alphas_rf, file = "results/rdata/gene_specific/alpha_per_gene_weightedRF_mi
 ```
 
 
+
+
 For weightedLASSO :
 
 ```{r, eval=FALSE}
 # loads mse and importances for weightedLASSO
-# load("results/rdata/weightedLASSO_mse_50rep.rdata")
-# load("results/rdata/weightedLASSO_importances_50rep.rdata")
+load("results/rdata/weightedLASSO_mse_50rep.rdata")
+load("results/rdata/weightedLASSO_importances_50rep.rdata")
 
-load("results/rdata/weightedEN_mse_50rep.rdata")
-load("results/rdata/weightedEN_importances_50rep.rdata")
+
+# value of alpha per genes with student criterion:
+stud_lasso <- mcsapply(genes, get_opt_alpha_per_gene,mats = mats, 
+                         lmses = lmses, dev = "student", pval.adjust = "fdr",
+                          return_alpha=T, mc.cores=34)
+save(stud_lasso, file = "results/rdata/gene_specific/alpha_per_gene_weightedLASSO_student.rdata")
 
 
 # value of alpha per genes:
@@ -224,14 +238,42 @@ alphas_lasso <- mcsapply(genes, get_opt_alpha_per_gene, mats = mats,
                           return_alpha=T, mc.cores=34)
 hist(alphas_lasso, breaks = 20)
 
-save(alphas_lasso, file = "results/rdata/gene_specific/alpha_per_gene_weightedEN_true_sd.rdata")
+save(alphas_lasso, file = "results/rdata/gene_specific/alpha_per_gene_weightedLASSO_true_sd.rdata")
+
 
 # doing the same but with the value of alpha minimising the mse:
 alphas_lasso <- mcsapply(genes, get_opt_alpha_per_gene, mats = mats, 
                          lmses = lmses, return_alpha=T, metric = "min", mc.cores=34)
-save(alphas_lasso, file = "results/rdata/gene_specific/alpha_per_gene_weightedEN_min.rdata")
+save(alphas_lasso, file = "results/rdata/gene_specific/alpha_per_gene_weightedLASSO_min.rdata")
 ```
 
+
+is student very different from our delta?
+
+```{r}
+load("results/rdata/gene_specific/alpha_per_gene_weightedRF_true_sd.rdata")
+load("results/rdata/gene_specific/alpha_per_gene_weightedLASSO_true_sd.rdata")
+
+# tmp <- data.frame(stduent_rf = stud_rf, delta_rf = alphas_rf) %>%
+#   ggplot(aes(x=delta, y = stud)) +
+#   geom_point(alpha = 0.1)+
+#   stat_cor()
+# 
+# ggsave(tmp, file = "tmp.pdf")
+
+
+tmp <- data.frame(student_lasso_fdr = stud_lasso,
+                  delta_lasso = alphas_lasso, 
+                  student_rf_fdr = stud_rf,
+                  delta_rf = alphas_rf) %>%
+  reshape2::melt() %>%
+  ggplot(aes(x=value))+
+  geom_histogram()+facet_wrap(~variable, ncol = 2)
+ggsave(tmp, file = "student_vs_delta.pdf")
+
+cor(alphas_lasso, stud_lasso);cor(alphas_rf, stud_rf)
+cor(alphas_lasso, alphas_rf );cor(stud_lasso, stud_rf)
+```
 
 ## Some gene examples to illustrate our gene-specific optimization of alpha
 
@@ -267,6 +309,8 @@ p <- draw_gene_effective_integration(gene_benefit, mats = mats, prior = 1) +
   get_opt_alpha_per_gene(gene_benefit, mats = mats, lmses = lmses)+
   plot_annotation(title = gene_benefit)
 
+ test <- get_opt_alpha_per_gene(gene, mats = mats, lmses = lmses, dev = "true")
+ggsave(test, file = "tmp.pdf")
 
 figure <- (draw_gene_effective_integration(gene_benefit, mats = mats, prior = 1) +
   draw_gene_mse(gene_benefit, lmses = lmses)+ylim(c(0.045, 0.1))+
@@ -333,7 +377,8 @@ The following code chunks learns GRNs with the optimal values of alpha determine
 ```{r, eval = F}
 # imports the optimal values of alpha of the proposed approach:
 ## weightedLASSO:
-# load("results/rdata/gene_specific/alpha_per_gene_weightedLASSO_true_sd.rdata")
+load("results/rdata/gene_specific/alpha_per_gene_weightedLASSO_student.rdata")
+load("results/rdata/gene_specific/alpha_per_gene_weightedRF_student.rdata")
 
 # load("results/rdata/gene_specific/alpha_per_gene_weightedEN_true_sd.rdata")
 
@@ -342,9 +387,8 @@ The following code chunks learns GRNs with the optimal values of alpha determine
 # load("results/rdata/gene_specific/alpha_per_gene_weightedRF_true_sd.rdata")
 
 
-nCores = 34
+nCores = 30
 
-load(file = "results/rdata/gene_specific/gene_specific_grns_min.rdata")
 
 hist(alphas_lasso)
 mats <- list()
@@ -352,39 +396,25 @@ nrep <- 10
 for(rep in 1:nrep){ # exploring inherent variability
   
   mat_lasso <- weightedLASSO_inference(counts, genes, tfs,
-                                   alpha = alphas_lasso, N = 25,
+                                   alpha = stud_lasso, N = 50,
                                    tf_expression_permutation = FALSE,
-                                   mda_type = "shuffle", EN_param = 0.1,
+                                   mda_type = "shuffle", EN_param = 1,
                                    pwm_occurrence = pwm_occurrence,
                                    nCores = nCores)
 
-  # mat_lasso_perm <- weightedLASSO_inference(counts, genes, tfs,
-  #                                  alpha = alphas_lasso, N = 50,
-  #                                  tf_expression_permutation = TRUE,
-  #                                  int_pwm_noise = 0, mda_type = "shuffle",
-  #                                  pwm_occurrence = pwm_occurrence,
-  #                                  nCores = nCores)
+
 
   mats[[paste0("LASSO_trueData_", rep)]] <- mat_lasso
-  # mats[[paste0("LASSO_shuffled_", rep)]] <- mat_lasso_perm
   
-  #  mat_rf <- weightedRF_inference(counts, genes, tfs, nTrees = 2000,
-  #                           alpha = alphas_rf,
-  #                           pwm_occurrence = pwm_occurrence,
-                            nCores = nCores,
-  #                           importance = "%IncMSE")
-  #   
-  #   mat_rf_perm <- weightedRF_inference(counts, genes, tfs, nTrees = 2000,
-  #                           alpha = alphas_rf, 
-  #                           tf_expression_permutation = TRUE,
-  #                           pwm_occurrence = pwm_occurrence,
-  #                           nCores = nCores,
-  #                           importance = "%IncMSE")
-  # 
-  # mats[[paste0("RF_trueData_", rep)]] <- mat_rf
-  # mats[[paste0("RF_shuffled_", rep)]] <- mat_rf_perm
+   mat_rf <- weightedRF_inference(counts, genes, tfs, nTrees = 2000,
+                            alpha = stud_rf,
+                            pwm_occurrence = pwm_occurrence,
+                           nCores = nCores,
+                            importance = "%IncMSE")
+
+  mats[[paste0("RF_trueData_", rep)]] <- mat_rf
 }
-save(mats, file = "results/rdata/gene_specific/gene_specific_grns_min_en.rdata")
+save(mats, file = "results/rdata/gene_specific/gene_specific_grns_student.rdata")
 
 
 edges <- list()
@@ -403,8 +433,8 @@ for(name in names(mats)){
         lmses[,name] <- mats[[name]]["mse",]
       }
 }
-save(lmses, file = "results/rdata/gene_specific/gene_specific_mse_min_en.rdata") 
-save(edges, file = "results/rdata/gene_specific/gene_specific_edges_min_en.rdata") 
+save(lmses, file = "results/rdata/gene_specific/gene_specific_mse_student.rdata") 
+save(edges, file = "results/rdata/gene_specific/gene_specific_edges_student.rdata") 
 
 # validation against DAP-Seq
 settings <- c("model", "dataset", "rep", "density")
@@ -418,7 +448,7 @@ val_specific <-
   )
 val_specific[, settings] <-
   str_split_fixed(val_specific$network_name, '_', length(settings))
-save(val_specific, file = "results/rdata/gene_specific/gene_specific_validation_min_en.rdata")
+save(val_specific, file = "results/rdata/gene_specific/gene_specific_validation_student.rdata")
 ```
 
 

@@ -519,14 +519,24 @@ mses_lasso_restricted <- weightedLASSO_predictions(counts, genes, tfs, edges = d
                                   pwm_occurrence = pwm_occurrence, EN_param = 1,
                                   N = 25, nCores = 40, alpha = alphas_lasso)
 
+
+load("results/comparisons_to_existing_methods/restricted_mse_top3_results_linear.rdata")
+
+
 restricted_mses_with_diogene <- rbind.data.frame(results, data.frame(model = "LASSO", alpha = "Gene-specific", 
                        mse = c(mses_lasso_restricted),
                        strategy = "DIOgene")) %>%
    mutate(model = str_replace(model, "EN", "weightedEN"),
          model = str_replace(model, "^LASSO", "weightedLASSO"))%>%
-  group_by(model, alpha) %>%
-  summarise(mse = median(mse, na.rm = T)) %>%
-  mutate(mse_to_plot = ifelse(mse>0.3, 0.3, mse)) 
+  mutate(mse_to_plot = ifelse(mse>0.3, 0.3, mse))
+
+
+
+
+# %>%
+#   group_by(model, alpha) %>%
+#   summarise(mse = median(mse, na.rm = T)) %>%
+#   mutate(mse_to_plot = ifelse(mse>0.3, 0.3, mse)) 
 
 
 
