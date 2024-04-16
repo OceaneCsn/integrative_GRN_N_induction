@@ -343,7 +343,8 @@ plot_lasso <- plot_lasso & scale_color_manual(values = c("#668877", "#70AD47"))&
   theme_bw() & theme(strip.background = element_blank());plot_lasso
 
 
-ggexport(plot_lasso, filename = "results/comparisons_to_existing_methods/linear_comparison.pdf", width = 10, height = 6)
+ggexport(plot_lasso, filename = "results/comparisons_to_existing_methods/linear_comparison.pdf", 
+         width = 10, height = 6)
 ```
 
 
@@ -504,7 +505,7 @@ save(results, file = "results/comparisons_to_existing_methods/restricted_mse_res
 load("results/comparisons_to_existing_methods/restricted_mse_results_linear.rdata")
 
 # restricted MSES at 3 top regulators for linear DIogene:
-load("results/rdata/gene_specific/gene_specific_grns_true_sd.rdata")
+load("results/rdata/gene_specific/gene_specific_grns_student.rdata")
 mats <- mats[str_detect(names(mats),"true")]
 mats <- mats[str_detect(names(mats),"LASSO")]
 mat_mean_lasso_diogene <- apply(simplify2array(mats), 1:2, mean)
@@ -513,12 +514,13 @@ diogene_grn_lasso <- weightedLASSO_network_gene_topN(mat_mean_lasso_diogene, top
                                 pwm_occurrence = pwm_occurrence, 
                                 genes = genes, tfs = tfs)
 
-load("results/rdata/gene_specific/alpha_per_gene_weightedLASSO_true_sd.rdata")
+load("results/rdata/gene_specific/alpha_per_gene_weightedLASSO_student.rdata")
 
 mses_lasso_restricted <- weightedLASSO_predictions(counts, genes, tfs, edges = diogene_grn_lasso, 
                                   pwm_occurrence = pwm_occurrence, EN_param = 1,
-                                  N = 25, nCores = 40, alpha = alphas_lasso)
+                                  N = 25, nCores = 40, alpha = stud_lasso)
 
+mse_diogene_student <- mses_lasso_restricted
 
 load("results/comparisons_to_existing_methods/restricted_mse_top3_results_linear.rdata")
 
@@ -569,9 +571,14 @@ data_for_restricted_mse_top_3 <- rbind.data.frame(restricted_mses_with_diogene %
     distinct(mean_mse, .keep_all = T))
   
   
-  save(data_for_restricted_mse_top_3, file = "results/comparisons_to_existing_methods/restricted_mse_top3_results_linear.rdata")
+data_for_restricted_mse_top_3[10,"mse"] <- median(mse_diogene_student)
+data_for_restricted_mse_top_3[10,"mean_mse"] <- median(mse_diogene_student)
+data_for_restricted_mse_top_3[10,"mse_to_plot"] <- median(mse_diogene_student)
+
+save(data_for_restricted_mse_top_3, file = "results/comparisons_to_existing_methods/restricted_mse_top3_results_linear.rdata")
   
   
+
 load("results/comparisons_to_existing_methods/restricted_mse_top3_results_linear.rdata")
 
   data_for_restricted_mse_top_3 %>%
@@ -591,7 +598,6 @@ ggplot(aes(y=mse_to_plot, x =model, fill = model)) +
                        
   
   
-  data_for_restricted_mse_top_3$case                                    
 
   
 ```

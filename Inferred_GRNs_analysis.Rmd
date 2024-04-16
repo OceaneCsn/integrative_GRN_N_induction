@@ -307,7 +307,7 @@ precision_lasso <- draw_validation(validation = val_lasso)+
 
 precision_rf <- draw_validation(validation = val_rf)+
   plot_annotation(title = "weightedRF") & 
-  theme(plot.title = element_text(size = 20, hjust = 0.5) )
+  theme(plot.title = element_text(size = 20, hjust = 0.5))
 
 # 
 # ggexport(precision_rf, filename = "results/supp_figures/precision_recall_weightedRF.pdf", 
