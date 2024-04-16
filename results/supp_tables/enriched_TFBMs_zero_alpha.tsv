@@ -1,5 +1,4 @@
 label	description	pvalue
-AT1G12630	AT1G12630	encodes a member of the DREB subfamily A-4 of ERF/AP2 transcription factor family. The protein contains one AP2 domain. There are 17 members in this subfamily including TINY.	0.0428767622413547
-AT5G47230	ERF5	encodes a member of the ERF (ethylene response factor) subfamily B-3 of ERF/AP2 transcription factor family (ATERF-5). The protein contains one AP2 domain. There are 18 members in this subfamily including ATERF-1, ATERF-2, AND ATERF-5. The mRNA is cell-to-cell mobile.	0.0422696501496978
-AT2G22430	HB6	Encodes a homeodomain leucine zipper class I (HD-Zip I) protein that is a target of the protein phosphatase ABI1 and regulates hormone responses in Arabidopsis.	0.00267203308867986
-AT5G23930	MTERF34	Mitochondrial transcription termination factor family protein	0.0133890888443878
+AT2G22430	HB6	Encodes a homeodomain leucine zipper class I (HD-Zip I) protein that is a target of the protein phosphatase ABI1 and regulates hormone responses in Arabidopsis.	0.00944758308938549
+AT3G01220	HB20	Encodes a homeodomain leucine zipper class I (HD-Zip I) protein.  Expressed during seed germination in the micropylar endosperm and in the root cap, and increases ABA sensitivity and seed dormancy when mutated. The mRNA is cell-to-cell mobile.	0.031703877322994
+AT1G32510	NAC011	NAC domain containing protein 11	0.0371770915999425

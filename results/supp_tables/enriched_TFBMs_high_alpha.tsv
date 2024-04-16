@@ -1,8 +1,5 @@
 label	description	pvalue
-AT3G18990	VRN1	Required for vernalization. Essential for the complete repression of FLC in vernalized plants. Required for the methylation of  histone H3	2.04903670341189e-05
-AT1G45249	ABF2	Leucine zipper transcription factor that binds to the abscisic acid (ABA)?responsive element (ABRE) motif in the promoter region of ABA-inducible genes. Enhances drought tolerance in vegetative tissues. Required for normal glucose response. Localized in the nucleus.  Expressed constitutively in roots,  leaf vascular tissues, and hydathodes or  in all tissues under stress conditions. It's phosphorylated by a ABA-activated 42-KDa kinase. Overexpression of the phosphorylated active form of AREB1 expressed many ABA-inducible genes, such as RD29B, without ABA treatment.	0.0276939950429401
-AT4G34000	ABF3	Encodes an ABA-responsive element-binding protein with similarity to transcription factors that is expressed in response to stress and abscisic acid.	0.0418663053371624
-AT1G64620	DOF1.8	Dof-type zinc finger DNA-binding family protein	0.0113033272135119
-AT3G50700	ID	zinc finger protein, similar to maize Indeterminate1 (ID1)	0.00111483633876303
-AT3G11280	AT3G11280	Putative transcription factors interacting with the gene product of VHA-B1 (vacuolar ATPase subunit B1	0.0206012501325905
-AT5G58900	DIV1	R-R-type MYB protein	0.0396596178620222
+AT3G18990	VRN1	Required for vernalization. Essential for the complete repression of FLC in vernalized plants. Required for the methylation of  histone H3	0.000360876493310282
+AT1G64620	DOF1.8	Dof-type zinc finger DNA-binding family protein	0.0277645964040664
+AT3G50700	ID	zinc finger protein, similar to maize Indeterminate1 (ID1)	0.0063586424868997
+AT3G11280	AT3G11280	Putative transcription factors interacting with the gene product of VHA-B1 (vacuolar ATPase subunit B1	0.00752513260025578

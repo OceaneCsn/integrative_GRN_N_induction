@@ -99,7 +99,7 @@ for(alpha in alphas){
   }
 }
 
-save(results, file = "results/irafnet_weightedRF_comparison_reps.rdata")
+save(results, file = "results/comparisons_to_existing_methods/irafnet_weightedRF_comparison_reps.rdata")
 
 
 ```
@@ -108,7 +108,7 @@ Showing the results:
 
 ```{r, fig.width=20}
 
-load("results/irafnet_weightedRF_comparison_reps.rdata")
+load("results/comparisons_to_existing_methods/irafnet_weightedRF_comparison_reps.rdata")
 
 plot_rf <- (results %>%
               mutate(case = "Non linear case") %>%
@@ -530,53 +530,6 @@ restricted_mses_with_diogene <- rbind.data.frame(results, data.frame(model = "LA
          model = str_replace(model, "^LASSO", "weightedLASSO"))%>%
   mutate(mse_to_plot = ifelse(mse>0.3, 0.3, mse))
 
-
-
-
-# %>%
-#   group_by(model, alpha) %>%
-#   summarise(mse = median(mse, na.rm = T)) %>%
-#   mutate(mse_to_plot = ifelse(mse>0.3, 0.3, mse)) 
-
-
-
-# loading DIOgene importance matrices
-# load("results/rdata/gene_specific/gene_specific_grns_true_sd.rdata")
-# mats <- mats[str_detect(names(mats),"true")]
-# mats <- mats[str_detect(names(mats),"LASSO")]
-# mat_mean_lasso_diogene <- apply(simplify2array(mats), 1:2, mean)
-# diogene_grn_lasso <- weightedLASSO_network(mat_mean_lasso_diogene, density = 0.005, 
-#                                            pwm_occurrence = pwm_occurrence, genes = genes, tfs = tfs)
-# 
-# load("results/rdata/gene_specific/alpha_per_gene_weightedLASSO_true_sd.rdata")
-# mses <- weightedLASSO_predictions(counts, genes, tfs, edges = diogene_grn_lasso, 
-#                                   pwm_occurrence = pwm_occurrence, 
-#                                   N = 25, nCores = 34, alpha = alphas_lasso)
-# 
-# to_add <- data.frame(model = "LASSO", alpha = "DIOgene", 
-#                        mse = c(mses), 
-#                        strategy = "DIOgene")
-# 
-# results <- rbind.data.frame(results, to_add)
-
-# loading DIOgene importance matrices EN
-# load("results/rdata/gene_specific/gene_specific_grns_true_sd_en.rdata")
-# mats <- mats[str_detect(names(mats),"true")]
-# mats <- mats[str_detect(names(mats),"LASSO")]
-# mat_mean_en_diogene <- apply(simplify2array(mats), 1:2, mean)
-# diogene_grn_en <- weightedLASSO_network(mat_mean_en_diogene, density = 0.005, 
-#                                            pwm_occurrence = pwm_occurrence, genes = genes, tfs = tfs)
-# 
-# load("results/rdata/gene_specific/alpha_per_gene_weightedEN_true_sd.rdata")
-# mses <- weightedLASSO_predictions(counts, genes, tfs, edges = diogene_grn_en, 
-#                                   pwm_occurrence = pwm_occurrence, EN_param = 0.1,
-#                                   N = 25, nCores = 34, alpha = alphas_lasso)
-# 
-# to_add <- data.frame(model = "EN", alpha = "DIOgene", 
-#                        mse = c(mses), 
-#                        strategy = "DIOgene")
-# hist(mses, breaks = 100)
-# results <- rbind.data.frame(results, to_add)
 
 
 restricted_mse <- results %>%

@@ -261,18 +261,18 @@ load("results/rdata/gene_specific/alpha_per_gene_weightedLASSO_true_sd.rdata")
 # 
 # ggsave(tmp, file = "tmp.pdf")
 
-
-tmp <- data.frame(student_lasso_fdr = stud_lasso,
-                  delta_lasso = alphas_lasso, 
-                  student_rf_fdr = stud_rf,
-                  delta_rf = alphas_rf) %>%
-  reshape2::melt() %>%
-  ggplot(aes(x=value))+
-  geom_histogram()+facet_wrap(~variable, ncol = 2)
-ggsave(tmp, file = "student_vs_delta.pdf")
-
-cor(alphas_lasso, stud_lasso);cor(alphas_rf, stud_rf)
-cor(alphas_lasso, alphas_rf );cor(stud_lasso, stud_rf)
+# 
+# tmp <- data.frame(student_lasso_fdr = stud_lasso,
+#                   delta_lasso = alphas_lasso, 
+#                   student_rf_fdr = stud_rf,
+#                   delta_rf = alphas_rf) %>%
+#   reshape2::melt() %>%
+#   ggplot(aes(x=value))+
+#   geom_histogram()+facet_wrap(~variable, ncol = 2)
+# ggsave(tmp, file = "student_vs_delta.pdf")
+# 
+# cor(alphas_lasso, stud_lasso);cor(alphas_rf, stud_rf)
+# cor(alphas_lasso, alphas_rf );cor(stud_lasso, stud_rf)
 ```
 
 ## Some gene examples to illustrate our gene-specific optimization of alpha
@@ -309,9 +309,6 @@ p <- draw_gene_effective_integration(gene_benefit, mats = mats, prior = 1) +
   get_opt_alpha_per_gene(gene_benefit, mats = mats, lmses = lmses)+
   plot_annotation(title = gene_benefit)
 
- test <- get_opt_alpha_per_gene(gene, mats = mats, lmses = lmses, dev = "true")
-ggsave(test, file = "tmp.pdf")
-
 figure <- (draw_gene_effective_integration(gene_benefit, mats = mats, prior = 1) +
   draw_gene_mse(gene_benefit, lmses = lmses)+ylim(c(0.045, 0.1))+
   get_opt_alpha_per_gene(gene_benefit, mats = mats, lmses = lmses))+
@@ -323,18 +320,15 @@ figure <- (draw_gene_effective_integration(gene_benefit, mats = mats, prior = 1)
   plot_annotation(tag_levels = c('a', '1')) + 
   plot_layout(heights = c(0.8,0.8))
 
-ggexport(figure, filename = "results/gene_examples_weightedRF.pdf", width = 10, height = 6)
+ggexport(figure, filename = "results/main_figures/Figure_1_gene_examples_weightedRF.pdf", width = 10, height = 6)
 
 ```
 
 
 ```{r}
-# genes lost by our approach but for which min MSE integrates TFBM
-genes_removed <- get_opt_alpha_per_gene("AT4G22570", mats = mats, lmses = lmses, dev = "true")+ggtitle("AT4G22570")+
-  get_opt_alpha_per_gene("AT3G04530", mats = mats, lmses = lmses, dev = "true")+ggtitle("AT3G04530")
-
-ggexport(genes_removed, filename = "results/supp_figures/wRF_example_gene_lost.pdf", width = 6, height = 3)
-
+# example of gene lost by our approach but for which min MSE integrates TFBM
+genes_removed <- get_opt_alpha_per_gene("AT3G04530", mats = mats, lmses = lmses)+ggtitle("AT3G04530")
+ggexport(genes_removed, filename = "results/supp_figures/wRF_example_gene_lost.pdf", width = 3, height = 3)
 ```
 
 
@@ -343,9 +337,9 @@ ggexport(genes_removed, filename = "results/supp_figures/wRF_example_gene_lost.p
 
 ```{r fig.height=10, fig.width=10}
 # loads mse and importances for weightedLASSO
-# load("results/rdata/weightedLASSO_mse_50rep.rdata")
-# load("results/rdata/weightedLASSO_importances_50rep.rdata")
-# 
+load("results/rdata/weightedLASSO_mse_50rep.rdata")
+load("results/rdata/weightedLASSO_importances_50rep.rdata")
+
 
 gene_benefit = "AT3G52060"
 gene_benefit_optimum = "AT2G41440"
@@ -366,7 +360,7 @@ p <- draw_gene_effective_integration(gene_benefit, mats = mats, prior = 1) +
 
 n/o/p
 figure <- n/o/p
-ggexport(figure, filename = "results/supp_figures/gene_examples_weightedEN.pdf", width = 10, height = 9)
+ggexport(figure, filename = "results/supp_figures/gene_examples_weightedLASSO.pdf", width = 10, height = 9)
 ```
 
 
@@ -379,13 +373,6 @@ The following code chunks learns GRNs with the optimal values of alpha determine
 ## weightedLASSO:
 load("results/rdata/gene_specific/alpha_per_gene_weightedLASSO_student.rdata")
 load("results/rdata/gene_specific/alpha_per_gene_weightedRF_student.rdata")
-
-# load("results/rdata/gene_specific/alpha_per_gene_weightedEN_true_sd.rdata")
-
-# load("results/rdata/gene_specific/alpha_per_gene_weightedEN_min.rdata")
-# weightedRF:
-# load("results/rdata/gene_specific/alpha_per_gene_weightedRF_true_sd.rdata")
-
 
 nCores = 30
 
@@ -455,6 +442,10 @@ save(val_specific, file = "results/rdata/gene_specific/gene_specific_validation_
 Saving averaged importances matrices and one final optimized GRN for weightedLASSO and weightedRF (for three densities):
 
 ```{r}
+
+load(file = "results/rdata/gene_specific/gene_specific_grns_student.rdata")
+
+
 # taking only GRNs from true data (and not the simulated null dataset)
 importances_true_lasso <- mats[str_detect(names(mats), "LASSO_true")] 
 importances_true_rf <- mats[str_detect(names(mats), "RF_true")]

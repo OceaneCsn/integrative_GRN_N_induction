@@ -119,7 +119,7 @@ draw_gene_mse <- function(gene, lmses, title = NULL){
 #'
 #' @return A ggplot object, or a value of alpha.
 #' @export
-get_opt_alpha_per_gene <- function(gene, mats, lmses, type = "rank", dev = "true",
+get_opt_alpha_per_gene <- function(gene, mats, lmses, type = "rank", dev = "student",
                                    return_alpha = F, metric = 'div', pval.adjust = "fdr"){
   tfs_with_motif <- names(which(pwm_occurrence[gene,]==1))
   
