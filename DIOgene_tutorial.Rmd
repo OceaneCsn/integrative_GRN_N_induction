@@ -1,0 +1,117 @@
+---
+title: "DIOgene tutorial"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+
+source('inference_functions/DIOgene.R')
+
+```
+
+This document demonstrates the use of DIOgene based on a plant biology case study: the regulatory pathways of *Arabidopsis thaliana*'s roots in response to nitrate (N) induction from [Varala et al., 2018](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE97500).
+
+DIOgene uses as inputs the expression profiles of genes and TFBM information (PWM scores). 
+Prior TFBM information was built by searching in the promoters of the nitrate-responsive genes (-1000 bp upstream and 200bp downstream of the TSS) the PWM of the N-responsive regulators found in the [JASPAR database](https://jaspar.genereg.net/). 
+
+## Data import
+
+
+### Expression data
+
+Import of the expression data and the N-responsive genes and regulators :
+
+```{r}
+load('rdata/inference_input_N_response_varala.rdata')
+genes <- input_data$grouped_genes; length(genes)
+tfs <- input_data$grouped_regressors; length(tfs)
+counts <- input_data$counts; dim(counts)
+```
+
+### TFBS data
+
+
+```{r}
+load("rdata/pwm_occurrences_N_response_varala.rdata")
+dim(pwm_occurrence)
+```
+
+The following code illustrates how to use DIOgene on a subset of the data (the first 5 genes) and light parameters, for a fast demonstration. The code to reproduce the results of the paper can be found at the end of this notebook.
+
+```{r}
+genes <- genes[1:5]
+```
+
+
+# Running DIOgene
+
+## Non-linear model (weightedRF)
+
+```{r}
+diogene_results <- DIOgene(counts, genes, tfs, pwm_occurrence, 
+                           model = "non-linear", nrep = 5, 
+                           nCores = 5, 
+                           S = 100)
+
+```
+
+
+The diogene attribute in the results is the importance matrix between TFs and target genes with a gene specific tuning of alpha.
+A final sparse GRN can then be pruned to a specific density with the following function:
+
+
+```{r}
+
+grn_RF <- weightedRF_network(diogene_results$diogene, 
+                             density = 0.005, pwm_occurrence, 
+                             genes, tfs)
+  
+head(grn_RF); dim(grn_RF)
+mean(grn_RF$pwm)
+```
+
+
+Finally, the following code can be used to plot the optimal alpha and the MSE trends as a function of EDI for a given gene (here taken randomly):
+
+```{r}
+get_opt_alpha_per_gene(gene = sample(genes, size = 1), 
+                       mats = diogene_results$mats, 
+                       lmses = diogene_results$mse)
+```
+
+
+The resulting GRN can then be mined for biological insights...
+
+## Linear model (weightedLASSO)
+
+The use of DIOgene is very similar in the linear case:
+
+```{r}
+diogene_results <- DIOgene(counts, genes, tfs, pwm_occurrence, 
+                           model = "linear", nrep = 3, 
+                           nCores = 5, 
+                           S = 5)
+
+grn_lasso <- weightedLASSO_network(importances_lasso, density = 0.005, 
+                                       pwm_occurrence, genes, tfs, decreasing = TRUE)
+head(grn_lasso); dim(grn_lasso)
+mean(grn_lasso$pwm)
+```
+
+# Settings to reproduce the results of the article
+
+
+These commands and parameters should be used to obtain results like those presented in our article:
+(`genes` being the 1426 nitrate responsive genes).
+
+
+```{r}
+diogene_results_non_linear <- DIOgene(counts, genes, tfs, pwm_occurrence, 
+                           model = "non-linear", nrep = 100)
+diogene_results_linear <- DIOgene(counts, genes, tfs, pwm_occurrence, 
+                           model = "linear", nrep = 100)
+```
+

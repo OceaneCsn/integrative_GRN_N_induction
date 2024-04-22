@@ -7,8 +7,6 @@ library(glmnet)
 library(tictoc)
 
 
-
-
 #' weightedLASSO GRN inference
 #'
 #' @param counts Expression matrix (genes in rownames, conditions in columns)
@@ -38,11 +36,9 @@ weightedLASSO_inference <- function(counts, genes, tfs, alpha=0.25,
                                 family = "poisson", EN_param = 1,
                                 tf_expression_permutation = FALSE,
                                 nfolds.cv=5, lambda = "1se",
+                                quiet = TRUE,
                                 nCores = ifelse(is.na(detectCores()),1,
                                                 max(detectCores() - 1, 1))){
-  
-  
-  
   
   # for a gaussian lasso, data is log transformed
   if(family == "gaussian")
@@ -62,9 +58,9 @@ weightedLASSO_inference <- function(counts, genes, tfs, alpha=0.25,
   
   # parallel computing of the lasso
   registerDoParallel(cores = nCores)
-  message(paste("\n weightedLASSO is running using", foreach::getDoParWorkers(), "cores."))
+  if(!quiet) message(paste("\n weightedLASSO is running using", foreach::getDoParWorkers(), "cores."))
   "%dopar%" <- foreach::"%dopar%"
-  tic()
+  if(!quiet) tic()
   suppressPackageStartupMessages(result.reg <-
                                    doRNG::"%dorng%"(foreach::foreach(target = genes, .combine = cbind, 
                                                                      .final = function(x) {colnames(x) <- genes; x}, 
@@ -207,7 +203,7 @@ weightedLASSO_inference <- function(counts, genes, tfs, alpha=0.25,
                                                     }))
   attr(result.reg, "rng") <- NULL # It contains the whole sequence of RNG seeds
   edges <- result.reg
-  toc()
+  if(!quiet) toc()
   return(edges)
 }
 

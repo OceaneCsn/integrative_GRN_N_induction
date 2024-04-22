@@ -36,7 +36,9 @@ GRNs are inferred from expression profiles of the root response to nitrate induc
 R > 4.0.1.
 
 
-Before being able to use weightedRF, the modified C++ Random Forest implementation from iRafNet have to be set up on your computer. To do so, run the following commands in your system terminal from the root of this project :
+The list of packages to install in order to run DIOgene is : "parallel, tidyverse, igraph, pROC, PRROC, reshape2, stringr, foreach, doRNG, dplyr, ggh4x, org.At.tair.db, AnnotationDbi, randomForest, doParallel, glmnet, tictoc, ppcor, tidyr, ggplot2, ggpubr".
+
+Before being able to use weightedRF, the modified C++ Random Forest implementation from iRafNet have to be set up on your computer (only once). To do so, run the following commands in your system terminal from the root of this project :
 
 ```
 R CMD SHLIB inference_functions/Cpp_dependencies/rfutils.c
@@ -46,7 +48,7 @@ R CMD SHLIB inference_functions/Cpp_dependencies/regrf_mse.c
 
 These dependencies will then be automatically called when running the weightedRF function.
 
-Many packages are used in the R scripts, and can be installed from the CRAN in the usual way with install.packages(), except for DIANE, that should be installed as follows :
+For the demonstration dataset preparation, the tool DIANE was used that should be installed as follows :
 
 ```
 library(remotes)

@@ -45,6 +45,7 @@ library(igraph)
 weightedRF_inference <- function(counts, genes, tfs, alpha=0.25, 
                           tf_expression_permutation = FALSE, scale = FALSE,
                           pwm_occurrence, nTrees=500, importance="%IncMSE",
+                          quiet = T,
                           nCores = ifelse(is.na(detectCores()),1,
                                           max(detectCores() - 1, 1))){
   
@@ -66,9 +67,9 @@ weightedRF_inference <- function(counts, genes, tfs, alpha=0.25,
   gene_specific = length(alpha) > 1
   # the regressions for each genes are done in parallel
   registerDoParallel(cores = nCores)
-  message(paste("\nweightedRF is running using", foreach::getDoParWorkers(), "cores."))
+  if(!quiet) message(paste("\nweightedRF is running using", foreach::getDoParWorkers(), "cores."))
   "%dopar%" <- foreach::"%dopar%"
-  tic()
+  if(!quiet) tic()
   suppressPackageStartupMessages(result.reg <-
                                    doRNG::"%dorng%"(foreach::foreach(target = genes, .combine = cbind, 
                                                                      .final = function(x) {colnames(x) <- genes; x}, 
@@ -97,7 +98,6 @@ weightedRF_inference <- function(counts, genes, tfs, alpha=0.25,
                                                                                -sqrt(1-(alpha_gene-1)^2)+1))
                                                       
                                                       
-                                                      
                                                      
                                                       if(sum(weights)>0){
                                                         weights <- weights/sum(weights)
@@ -124,7 +124,7 @@ weightedRF_inference <- function(counts, genes, tfs, alpha=0.25,
                                                     }))
   attr(result.reg, "rng") <- NULL # It contains the whole sequence of RNG seeds
   mat <- result.reg
-  toc()
+  if(!quiet) toc()
   return(mat)
 }
 
