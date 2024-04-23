@@ -17,7 +17,11 @@ For each target gene, it optimizes the contribution of prior data (here TFBMs, c
 Here is how to use it:
 
 ```r
+
 source('inference_functions/DIOgene.R')
+# the inference_functions folder must be present entirely as DIOgene calls other 
+# functions from this folder (e.g weightedRF or weightedLASSO, and so on)
+
 
 DIOgene_results <- DIOgene(counts, genes, tfs, prior_matrix,
                     model = "non-linear",
