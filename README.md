@@ -53,7 +53,7 @@ on the true and shuffled datasets
 
 
 A reproducible example on a handful of genes in our demonstration dataset is provided in the notebook `DIOgene_tutorial.Rmd`.
-It further shows how the prune the inferred importance matrix, and how to plot the optimal value of $\$\alpha$$ for a given gene.
+It further shows how the prune the inferred importance matrix, and how to plot the optimal value of $\alpha$ for a given gene.
 
 
 # Repository overview
