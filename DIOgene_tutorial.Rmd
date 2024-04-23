@@ -9,12 +9,13 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 
 source('inference_functions/DIOgene.R')
+source('inference_functions/evaluateNetwork.R')
 
 ```
 
 This document demonstrates the use of DIOgene based on a plant biology case study: the regulatory pathways of *Arabidopsis thaliana*'s roots in response to nitrate (N) induction from [Varala et al., 2018](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE97500).
 
-DIOgene uses as inputs the expression profiles of genes and TFBM information (PWM scores). 
+DIOgene uses as inputs the expression profiles of genes and TFBM information (it can also be another type of prior). 
 Prior TFBM information was built by searching in the promoters of the nitrate-responsive genes (-1000 bp upstream and 200bp downstream of the TSS) the PWM of the N-responsive regulators found in the [JASPAR database](https://jaspar.genereg.net/). 
 
 ## Data import
@@ -31,7 +32,7 @@ tfs <- input_data$grouped_regressors; length(tfs)
 counts <- input_data$counts; dim(counts)
 ```
 
-### TFBS data
+### TFBM data
 
 
 ```{r}
@@ -39,9 +40,10 @@ load("rdata/pwm_occurrences_N_response_varala.rdata")
 dim(pwm_occurrence)
 ```
 
-The following code illustrates how to use DIOgene on a subset of the data (the first 5 genes) and light parameters, for a fast demonstration. The code to reproduce the results of the paper can be found at the end of this notebook.
+The following code illustrates how to use DIOgene on a subset of the data (the first 5 genes) with light parameters, for a fast demonstration. The code to reproduce the results of the paper on all the data and robust parameters can be found at the end of this notebook.
 
 ```{r}
+# subsetting the input genes
 genes <- genes[1:5]
 ```
 
@@ -59,7 +61,7 @@ diogene_results <- DIOgene(counts, genes, tfs, pwm_occurrence,
 ```
 
 
-The diogene attribute in the results is the importance matrix between TFs and target genes with a gene specific tuning of alpha.
+The `diogene` attribute in the results is the importance matrix between TFs and target genes with a gene specific tuning of alpha.
 A final sparse GRN can then be pruned to a specific density with the following function:
 
 
@@ -69,12 +71,10 @@ grn_RF <- weightedRF_network(diogene_results$diogene,
                              density = 0.005, pwm_occurrence, 
                              genes, tfs)
   
-head(grn_RF); dim(grn_RF)
-mean(grn_RF$pwm)
+head(grn_RF)
 ```
 
-
-Finally, the following code can be used to plot the optimal alpha and the MSE trends as a function of EDI for a given gene (here taken randomly):
+Finally, the following code can be used to plot the optimal alpha and the MSE trends as a function of EDI for a given gene, as in the 1st figure of the article (one gene here taken randomly):
 
 ```{r}
 get_opt_alpha_per_gene(gene = sample(genes, size = 1), 
@@ -82,8 +82,19 @@ get_opt_alpha_per_gene(gene = sample(genes, size = 1),
                        lmses = diogene_results$mse)
 ```
 
+The DAP-Seq evaluation can b computed as follows:
 
-The resulting GRN can then be mined for biological insights...
+
+```{r}
+evaluate_networks(list("weightedRF" = grn_RF),
+                  input_genes = genes, input_tfs = tfs,
+                  validation = c("DAPSeq"),
+                  nCores =1)
+```
+
+
+
+The resulting GRN can then be mined for biological insights.
 
 ## Linear model (weightedLASSO)
 
@@ -97,8 +108,7 @@ diogene_results <- DIOgene(counts, genes, tfs, pwm_occurrence,
 
 grn_lasso <- weightedLASSO_network(importances_lasso, density = 0.005, 
                                        pwm_occurrence, genes, tfs, decreasing = TRUE)
-head(grn_lasso); dim(grn_lasso)
-mean(grn_lasso$pwm)
+head(grn_lasso)
 ```
 
 # Settings to reproduce the results of the article
@@ -109,9 +119,14 @@ These commands and parameters should be used to obtain results like those presen
 
 
 ```{r}
+# reloading the full vector of genes data
+load('rdata/inference_input_N_response_varala.rdata')
+genes <- input_data$grouped_genes; length(genes)
+
 diogene_results_non_linear <- DIOgene(counts, genes, tfs, pwm_occurrence, 
                            model = "non-linear", nrep = 100)
 diogene_results_linear <- DIOgene(counts, genes, tfs, pwm_occurrence, 
                            model = "linear", nrep = 100)
 ```
 
+Note: Running DIOgene for several hundreds of genes and a robust number of replicates requires several hours (even in parallel).

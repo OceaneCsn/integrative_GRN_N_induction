@@ -597,9 +597,6 @@ ggplot(aes(y=mse_to_plot, x =model, fill = model)) +
   theme_bw() + theme(strip.background = element_blank())
                        
   
-  
-
-  
 ```
 
 

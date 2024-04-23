@@ -2,11 +2,61 @@
 ---
 
 This repository contains code and data for the manuscript "Gene-specific optimization of data integration improves regression-based Gene Regulatory Network inference in _Arabidopsis thaliana_".
-GRNs are inferred from expression profiles of the root response to nitrate induction in *Arabidopsis thaliana*, from [Varala et al, 2018](https://www.pnas.org/doi/abs/10.1073/pnas.1721487115) and from TF binding motifs information (TFBMs). 
+GRNs are inferred from expression profiles of the root response to nitrate induction in *Arabidopsis thaliana*, from [Varala et al, 2018](https://www.pnas.org/doi/abs/10.1073/pnas.1721487115) and from TF binding motifs information as a prior (TFBMs). 
 
 **Our work introduces a novel methodology to optimize the intensity of data integration in a hypothesis-driven and gene-specific manner.**
 
+
+# DIOgene: usage
+
+
+The main R function allows the inference of integrative GRNs with a data driven gene-specific contribution of the prior data.
+
+It optimizes the contribution of prior data (here TFBMs) to gene expression, using the maximal improvement of MSE (accuracy in predicting the target genes expression) over a simulated null hypothesis, for each gene, as a function of prior integration.
+
+Here is how to use it:
+
+```r
+DIOgene_results <- DIOgene(counts, genes, tfs, prior_matrix,
+                    model = "non-linear",
+                    nrep = 100,  nCores = 45,
+                    ALPHAS = seq(0,1, by = 0.1))
+```
+
+**Arguments:**
+
++  `counts` Expression matrix (genes in rownames, conditions in columns)
++  `genes` Vector of genes (must be present in the rownames of counts) to be used in GRN inference as target genes
++  `tfs` vector of genes (must be present in the rownames of counts) that are transcriptional regulators to be used as predictors in the regressions for GRN inference
++  `prior_matrix` Prior matrix Pi, a score (*e.g* 0, 0.5, 1) for each TF-target interaction.
+Can contain NAs for pairs that do not have a prior value available. NAs will be turned into neutral priors of 1/2.
++  `model` "linear" or "non-linear": the type of regression that must be performed. "linear"" is for weightedLASSO, "non-linear" is for weightedRF.
++  `nrep` Number of repetitions of each regression model at each alpha value, to estimate the MSE mean and dispersion on the true and null datasets. Must be large enough (*e.g* 100 by default).
++  `nCores` Number of cores for multithreading. (Not supported on Windows)
++  `quiet` Removing prints of individual model estimation times? 
++  `ALPHAS` Set of alpha values to be explored. Default/recommended value: from 0 to 1 with a step of 0.1.
++  `S` Number of bootstrapped samples for robust regression models estimation. If NULL (default), it is automatically set as in the article depending on the chosen regression model (2000 for weightedRF or 500 for weightedLASSO).
+
+**Output**
+
+It returns a list containing:
+
++ `mats`: the list of importance matrices for each alpha value and each replicate,
+on the true and shuffled datasets
++ `mse`: the MSE values for each gene, alpha value and replicate on the true and shuffled datasets
++ `edges`: the list of inferred edges for each alpha value, replicate, and three densities
+on the true and shuffled datasets
++ `alphas_opt`: the list of optimal alpha values per gene.
++ `diogene`: the importance matrix of the gene-specific models with optimal alpha. It can be used as is, or pruned to a sparse GRN using the functions `weightedLASSO_network` or `weightedRF_network`, depending on the chisen model.
+
+
+A reproducible example on a handful of genes in our demonstration dataset is provided in the notebook `DIOgene_tutorial.Rmd`.
+It furhter shows how the pruned the inferred importance matrix, and how to plot the optimal value of $\alpha$ for a given gene.
+
+
 # Repository overview
+
+The other notebooks or scripts are available to further explore our code and reproduce the article's analyses:
 
 + Raw expression data and prepared rdata files used as inputs are contained in the `data` and `rdata` folders.
 
