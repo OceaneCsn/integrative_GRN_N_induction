@@ -12,7 +12,7 @@ GRNs are inferred from expression profiles of the root response to nitrate induc
 
 The main R function allows the inference of integrative GRNs with an otpimized contribution of the prior data to gene expression.
 
-For each target gene, it optimizes the contribution of prior data (here TFBMs) to gene expression by maximizing the improvement of MSE (accuracy in predicting the target genes expression)  as a function of prior integration over a simulated null hypothesis. Depending on the specified `model`, DIOgene will either rely on linear regressions (weightedLASSO), or non-linear regressions (weightedRF).
+For each target gene, it optimizes the contribution of prior data (here TFBMs, controled by a parameter $\alpha$) to gene expression by maximizing the improvement of MSE (accuracy in predicting the target genes expression)  as a function of prior integration over a simulated null hypothesis. Depending on the specified `model`, DIOgene will either rely on linear regressions (weightedLASSO), or non-linear regressions (weightedRF).
 
 Here is how to use it:
 
