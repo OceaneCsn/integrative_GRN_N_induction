@@ -20,7 +20,7 @@ Here is how to use it:
 
 source('inference_functions/DIOgene.R')
 # the inference_functions folder must be present entirely as DIOgene calls other 
-# functions from this folder (e.g weightedRF or weightedLASSO, and so on)
+# functions from this folder (e.g weightedRF or weightedLASSO, ...)
 
 
 DIOgene_results <- DIOgene(counts, genes, tfs, prior_matrix,
