@@ -87,7 +87,6 @@ The other notebooks or scripts are available to further explore our code and rep
 
 
 # Requirements
----
 
 R > 4.0.1.
 
